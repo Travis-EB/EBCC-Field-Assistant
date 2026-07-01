@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — EBCC Field Assistant</title>
+<meta name="theme-color" content="#1851a2">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="icon" href="/icons/logo.png">
+<style>
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/assets/inter/InterVariable.woff2') format('woff2');
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: linear-gradient(160deg, #1851a2 0%, #123f7e 100%);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.card {
+  width: 100%; max-width: 380px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 20px;
+  padding: 32px 26px;
+  text-align: center;
+  backdrop-filter: blur(6px);
+}
+.logo {
+  width: 84px; height: 84px; border-radius: 18px;
+  background: #fff; padding: 8px; object-fit: contain;
+  margin: 0 auto 18px; display: block;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+}
+h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
+p.sub { font-size: 13px; color: rgba(255,255,255,0.75); margin-top: 6px; line-height: 1.5; }
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; margin-top: 26px;
+  background: #fff; color: #1f2937;
+  border: none; border-radius: 12px;
+  padding: 14px 16px; font-size: 15px; font-weight: 600;
+  font-family: inherit; cursor: pointer; text-decoration: none;
+  transition: transform .06s ease, box-shadow .15s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+.btn:active { transform: translateY(1px); }
+.ms-logo { width: 18px; height: 18px; display: inline-block; }
+.foot { margin-top: 20px; font-size: 11px; color: rgba(255,255,255,0.55); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="/icons/icon-192.png" alt="Earth Basics Contracting">
+    <h1>EBCC Field Assistant</h1>
+    <p class="sub">Sign in with your Earth Basics Microsoft account to continue.</p>
+    <a class="btn" id="signin" href="/.auth/login/aad?post_login_redirect_uri=/">
+      <svg class="ms-logo" viewBox="0 0 23 23" aria-hidden="true">
+        <rect x="1" y="1" width="10" height="10" fill="#f25022"/>
+        <rect x="12" y="1" width="10" height="10" fill="#7fba00"/>
+        <rect x="1" y="12" width="10" height="10" fill="#00a4ef"/>
+        <rect x="12" y="12" width="10" height="10" fill="#ffb900"/>
+      </svg>
+      Sign in with Microsoft
+    </a>
+    <div class="foot">Earth Basics Contracting · Authorized users only</div>
+  </div>
+  <script>
+    // If already authenticated, skip the login screen.
+    fetch('/.auth/me').then(r => r.ok ? r.json() : null).then(d => {
+      if (d && d.clientPrincipal) window.location.replace('/');
+    }).catch(function(){});
+  </script>
+</body>
+</html>

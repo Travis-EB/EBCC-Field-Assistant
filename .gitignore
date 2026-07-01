@@ -1,0 +1,11 @@
+# Secrets & machine-local config — never commit these
+api/local.settings.json
+.claude/
+
+# Dependencies (if added later)
+node_modules/
+
+# OS cruft
+Thumbs.db
+Desktop.ini
+.DS_Store

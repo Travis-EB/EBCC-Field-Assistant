@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json.schemastore.org/staticwebapp.config.json",
+  "auth": {
+    "identityProviders": {
+      "azureActiveDirectory": {
+        "registration": {
+          "openIdIssuer": "https://login.microsoftonline.com/REPLACE_WITH_TENANT_ID/v2.0",
+          "clientIdSettingName": "AAD_CLIENT_ID",
+          "clientSecretSettingName": "AAD_CLIENT_SECRET"
+        }
+      }
+    }
+  },
+  "routes": [
+    { "route": "/login.html", "allowedRoles": ["anonymous", "authenticated"] },
+    { "route": "/assets/*", "allowedRoles": ["anonymous", "authenticated"] },
+    { "route": "/icons/*", "allowedRoles": ["anonymous", "authenticated"] },
+    { "route": "/manifest.webmanifest", "allowedRoles": ["anonymous", "authenticated"] },
+    { "route": "/service-worker.js", "allowedRoles": ["anonymous", "authenticated"] },
+    { "route": "/.auth/*", "allowedRoles": ["anonymous", "authenticated"] },
+    { "route": "/api/*", "allowedRoles": ["authenticated"] },
+    { "route": "/*", "allowedRoles": ["authenticated"] }
+  ],
+  "responseOverrides": {
+    "401": { "statusCode": 302, "redirect": "/login.html" },
+    "403": { "statusCode": 302, "redirect": "/login.html" }
+  },
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/api/*", "/assets/*", "/icons/*", "/*.png", "/*.woff2", "/.auth/*", "/login.html", "/service-worker.js", "/manifest.webmanifest"]
+  },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin"
+  },
+  "mimeTypes": {
+    ".webmanifest": "application/manifest+json",
+    ".woff2": "font/woff2"
+  }
+}
