@@ -23,8 +23,25 @@
   the Cost Per Yard Edit-rates panel). Renamed console ids to `adm-*`.
 - Docs: `README.md`, `SETUP-AZURE.md`, memory files.
 
+## 2026-07-09 — Deployment (LIVE)
+- Travis created GitHub account + repo `Travis-EB/EBCC-Field-Assistant`; pushed `main`.
+- Azure provisioned by Travis: rg `rg-ebcc-field-assistant`, Cosmos `ebcc-field-assistant`
+  (free tier, westus2), SWA `EBCC-Field-Assistant` (app `./public`, api `api`).
+- Travis lacked Entra app-registration rights → IT created the app registration.
+  Client ID `f5ef35ef-006e-4143-b1f4-0420484a394a`, tenant `f95ee318-b7d4-49aa-b795-b188b614caca`.
+- **Gotcha 1:** `staticwebapp.config.json` at repo root is IGNORED — must be inside
+  `public/` (app location). First deploys served the app with NO auth. Moved + pushed.
+- **Gotcha 2:** custom `auth` block requires the **Standard** SKU; Free-tier deploy failed
+  with "auth configuration only supported on Standard." Travis upgraded to Standard.
+- Re-ran the workflow (GitHub API); deploy succeeded. Verified live:
+  `/`, `/index.html`, `/api/me` all 302 → `/login.html`; login chain reaches
+  `login.microsoftonline.com/<tenant>` with IT's client id. App URL:
+  https://black-sky-02b506c1e.7.azurestaticapps.net
+
 ### Next / open
-- IT to provision Azure (SETUP-AZURE.md), then deploy and run the end-to-end verification
-  (two real users → isolation; admin disable → block).
+- Travis to sign in as first user (auto-seeds admin via ADMIN_EMAILS) and confirm the
+  Manage Users tab; then a second employee for the isolation check.
+- Confirm SWA app settings all present: AAD_CLIENT_ID, AAD_CLIENT_SECRET, COSMOS_CONN,
+  ADMIN_EMAILS; ANTHROPIC_API_KEY still needed for Truck Ticket OCR.
 - Optional later: move photos to Blob Storage if ticket volume grows; consider syncing the
   calculators if Travis wants that visibility.
