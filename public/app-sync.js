@@ -43,12 +43,20 @@
 
   // ---------- auth gate ----------
   function boot() {
+    var debug = /[?&]debug=1/.test(window.location.search);
+    var status = 0;
     apiFetch('/api/me').then(function (r) {
-      if (r.status === 401) { window.location.replace('/login.html'); return null; }
-      return r.json();
-    }).then(function (me) {
-      if (!me) return;
-      if (me.authenticated === false) { window.location.replace('/login.html'); return; }
+      status = r.status;
+      return r.text();
+    }).then(function (txt) {
+      var me = null;
+      try { me = JSON.parse(txt); } catch (e) {}
+      if (debug) showDebug(status, txt);
+      if (status === 401 || (me && me.authenticated === false)) {
+        if (!debug) window.location.replace('/login.html');
+        return;
+      }
+      if (!me) { installSyncHooks(); return; } // non-JSON response — run on local data
       if (me.disabled) { showDisabled(me); return; }
       ME = me;
       renderAccountMenu(me);
@@ -57,10 +65,21 @@
         installSyncHooks();
         flushPending();
       });
-    }).catch(function () {
+    }).catch(function (e) {
       // Offline: let the app run on local data. Sync will retry when back online.
+      if (debug) showDebug(status, 'fetch failed: ' + (e && e.message));
       installSyncHooks();
     });
+  }
+
+  function showDebug(status, txt) {
+    var box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:10px;right:10px;bottom:10px;z-index:99999;background:#111827;color:#e5e7eb;border-radius:12px;padding:14px;font:12px/1.5 monospace;box-shadow:0 8px 30px rgba(0,0,0,.4);word-break:break-all;max-height:45vh;overflow:auto';
+    box.innerHTML = '<div style="color:#fbbf24;font-weight:700;margin-bottom:6px">DIAGNOSTIC — /api/me (tap to close)</div>' +
+      '<div>HTTP status: <b>' + status + '</b></div>' +
+      '<div style="margin-top:6px">' + esc(String(txt).slice(0, 1200)) + '</div>';
+    box.addEventListener('click', function () { box.remove(); });
+    document.body.appendChild(box);
   }
 
   function showDisabled(me) {
