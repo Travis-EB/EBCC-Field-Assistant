@@ -18,6 +18,15 @@ module.exports = async function (context, req) {
     if (nameClaim && nameClaim.val) displayName = nameClaim.val;
   } catch (e) {}
 
+  // The client reads the 'name' claim from /.auth/me (not always present in the
+  // header principal) and passes it along. Cosmetic only — a user can only affect
+  // their own display name; identity/role never come from the client.
+  const qName = req.query && req.query.name;
+  if (qName && typeof qName === 'string') {
+    const clean = qName.replace(/[^\p{L}\p{M} .,'-]/gu, "").trim().slice(0, 80);
+    if (clean) displayName = clean;
+  }
+
   try {
     const user = await ensureUser(principal, displayName);
     if (user.role === 'disabled') {

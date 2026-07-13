@@ -45,7 +45,23 @@
   function boot() {
     var debug = /[?&]debug=1/.test(window.location.search);
     var status = 0;
-    apiFetch('/api/me').then(function (r) {
+    // Read the user's full name from the login ticket claims (/.auth/me) and pass it
+    // along so the server can store a friendly display name instead of the email.
+    fetch('/.auth/me').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
+    .then(function (auth) {
+      var name = '';
+      try {
+        var claims = (auth && auth.clientPrincipal && auth.clientPrincipal.claims) || [];
+        for (var i = 0; i < claims.length; i++) {
+          var t = claims[i].typ;
+          if (t === 'name' || t === 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name') {
+            name = claims[i].val || '';
+            break;
+          }
+        }
+      } catch (e) {}
+      return apiFetch('/api/me' + (name ? '?name=' + encodeURIComponent(name.slice(0, 80)) : ''));
+    }).then(function (r) {
       status = r.status;
       return r.text();
     }).then(function (txt) {
