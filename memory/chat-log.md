@@ -38,6 +38,18 @@
   `login.microsoftonline.com/<tenant>` with IT's client id. App URL:
   https://black-sky-02b506c1e.7.azurestaticapps.net
 
+## 2026-07-13 — Login debugging (RESOLVED)
+- Symptom: sign-in bounced back to login screen (phone) / appeared to do nothing (laptop,
+  silent SSO + bounce). Outbound authorize request verified correct (client id, tenant,
+  redirect_uri, response_type code+id_token).
+- Fix 1: enabled "ID tokens (implicit & hybrid flows)" on the app registration (off by
+  default on new registrations) — necessary but not sufficient.
+- Fix 2 (root cause): **AAD_CLIENT_SECRET value was incorrect** in SWA env vars. Corrected
+  → login works end-to-end.
+- ⚠️ Rotate later: a client secret and the Cosmos primary key were pasted into chat during
+  setup. Regenerate both once stable (Entra: new client secret → update AAD_CLIENT_SECRET;
+  Cosmos: regenerate key → update COSMOS_CONN).
+
 ### Next / open
 - Travis to sign in as first user (auto-seeds admin via ADMIN_EMAILS) and confirm the
   Manage Users tab; then a second employee for the isolation check.
