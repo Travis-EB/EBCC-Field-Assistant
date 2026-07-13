@@ -50,9 +50,24 @@
   setup. Regenerate both once stable (Entra: new client secret → update AAD_CLIENT_SECRET;
   Cosmos: regenerate key → update COSMOS_CONN).
 
+## 2026-07-13 — Backend 500 debugging (RESOLVED — fully live)
+- Symptom: signed in fine but Manage Users missing; /api/me returned an EMPTY 500 (no
+  JSON body) → Functions host itself was crashing before any function code ran.
+- Root cause: `api/package.json` declared `"main": "index.js"` but no such file exists at
+  api root — the Node worker treats `main` as a v4-model entry point and dies on load,
+  killing every endpoint. Fix: removed `main`, pinned `engines.node` to `20.x`.
+- Also added: anonymous-allowed route for `/api/me` (function self-checks identity;
+  enables external health probes) and a `?debug=1` overlay in app-sync.js that shows the
+  raw /api/me status+body; /api/me 500s now include a `detail` field.
+- Verified: /api/me anonymous → 401 {"authenticated":false}; Travis authenticated →
+  200 role=admin, isAdmin=true. Admin seeding via ADMIN_EMAILS works.
+- Cosmetic note: `name` shows the email (AAD name claim not present in principal claims).
+
 ### Next / open
-- Travis to sign in as first user (auto-seeds admin via ADMIN_EMAILS) and confirm the
-  Manage Users tab; then a second employee for the isolation check.
+- Second employee sign-in for the isolation check; Add to Home Screen rollout.
+- ANTHROPIC_API_KEY still needed for Truck Ticket OCR.
+- Rotate credentials pasted in chat during setup (Cosmos key → COSMOS_CONN; AAD client
+  secret → AAD_CLIENT_SECRET).
 - Confirm SWA app settings all present: AAD_CLIENT_ID, AAD_CLIENT_SECRET, COSMOS_CONN,
   ADMIN_EMAILS; ANTHROPIC_API_KEY still needed for Truck Ticket OCR.
 - Optional later: move photos to Blob Storage if ticket volume grows; consider syncing the
