@@ -38,6 +38,9 @@ module.exports = async function (context, req) {
     });
   } catch (e) {
     context.log.error('me error', e);
-    return json(context, 500, { authenticated: true, error: 'Server error resolving user.' });
+    // Surface the underlying cause (code + message) — this endpoint is auth-only,
+    // and we need field-visible diagnostics while there's no App Insights.
+    const detail = (e && (e.code || '') + ' ' + (e.message || String(e))).slice(0, 300);
+    return json(context, 500, { authenticated: true, error: 'Server error resolving user.', detail: detail });
   }
 };
