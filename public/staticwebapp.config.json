@@ -18,6 +18,7 @@
     { "route": "/manifest.webmanifest", "allowedRoles": ["anonymous", "authenticated"] },
     { "route": "/service-worker.js", "allowedRoles": ["anonymous", "authenticated"] },
     { "route": "/.auth/*", "allowedRoles": ["anonymous", "authenticated"] },
+    { "route": "/api/me", "allowedRoles": ["anonymous", "authenticated"] },
     { "route": "/api/*", "allowedRoles": ["authenticated"] },
     { "route": "/*", "allowedRoles": ["authenticated"] }
   ],
