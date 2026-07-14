@@ -33,10 +33,15 @@ Key constants preserved: `SQFT_PER_SQYD=9`, `LIME_TRUCK_LBS=20000`,
 - **OCR** moved from Netlify function to `api/ocr-truck-ticket` (same prompt/logic).
 
 ## Synced vs local
-- **Synced per user:** Truck Tickets (`ebcc_trucking_tickets_v1`), Load Count
-  (`ebcc_load_count_v1`), Extra Work Tickets (`ebcc_ewt_records_v1`, captured on
-  preview/email). Server type keys: `trucking_tickets`, `load_count`, `ewt_records`.
-- **Local only:** the four calculators (Cost Per Yard, Flat Work, Lime, Flex Base).
+- **Everything syncs per user now** (2026-07-14, at Travis's request): Truck Tickets
+  (`ebcc_trucking_tickets_v1`→`trucking_tickets`), Load Count (`ebcc_load_count_v1`→
+  `load_count`), Extra Work Tickets (`ebcc_ewt_records_v1`→`ewt_records`), Cost Per Yard
+  (`ebcc_cpy_state_v1`→`cpy_state`), Flat Work (`ebcc_flat_state_v1`→`flat_state`),
+  Lime (`ebcc_lime_state_v1`→`lime_state`), Flex Base (`ebcc_flexbase_state_v1`→
+  `flexbase_state`).
+- Lime & Flex Base input persistence is implemented in `app-sync.js`
+  (`installSimpleCalcPersistence`) — the core app never persisted those inputs.
+- Admin "View" drill-down shows all seven types per user, calculators with as-of dates.
 
 ## Status
 Frontend + backend written and UI-verified against a mock admin. **Not yet deployed** —
