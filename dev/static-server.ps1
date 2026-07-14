@@ -34,6 +34,8 @@ while ($listener.IsListening) {
       $json = '{"ok":true}'
       if ($path -eq '/api/me') {
         $json = '{"authenticated":true,"userId":"dev-admin","email":"travis@earthbasics.net","name":"Travis Pecoy","role":"admin","isAdmin":true}'
+      } elseif ($path -like '/api/records*' -and $req.Url.Query -like '*userId=*') {
+        $json = '{"ownerId":"u2","records":{"cpy_state":{"updatedAt":"2026-07-14T09:30:00Z","data":{"hoursPerDay":8,"ydPerLoad":28,"yardsToMove":40000,"items":[{"name":"Scraper: CAT657","quantity":2,"rate":466,"producer":true,"roundTime":3},{"name":"Labor: Foreman","quantity":1,"rate":105}]}},"flat_state":{"updatedAt":"2026-07-14T10:00:00Z","data":{"hoursPerDay":8,"sqftPerDay":25000,"jobSqft":100000,"items":[{"name":"Compactor: CAT824","quantity":1,"rate":210}]}},"lime_state":{"updatedAt":"2026-07-14T10:05:00Z","data":{"lime-rate":"33","lime-area":"50000"}},"flexbase_state":{"updatedAt":"2026-07-14T10:06:00Z","data":{"fb-area":"50000","fb-depth":"6","fb-truck-tons":"22"}}}}'
       } elseif ($path -like '/api/records*') {
         $json = '{"ownerId":"dev-admin","records":{}}'
       } elseif ($path -like '/api/users*') {

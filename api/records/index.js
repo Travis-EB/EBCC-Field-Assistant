@@ -8,7 +8,11 @@
 // from the trusted client-principal, never from the request body.
 const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
 
-const ALLOWED_TYPES = new Set(['trucking_tickets', 'load_count', 'ewt_records']);
+const ALLOWED_TYPES = new Set([
+  'trucking_tickets', 'load_count', 'ewt_records',
+  // Calculator tabs — synced so admins can review what's being priced out
+  'cpy_state', 'flat_state', 'lime_state', 'flexbase_state',
+]);
 
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);

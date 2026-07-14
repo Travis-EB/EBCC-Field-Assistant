@@ -10,7 +10,12 @@
   var SYNC_MAP = {
     'ebcc_trucking_tickets_v1': 'trucking_tickets',
     'ebcc_load_count_v1': 'load_count',
-    'ebcc_ewt_records_v1': 'ewt_records'
+    'ebcc_ewt_records_v1': 'ewt_records',
+    // Calculator tabs — synced so the admin can review them per user
+    'ebcc_cpy_state_v1': 'cpy_state',
+    'ebcc_flat_state_v1': 'flat_state',
+    'ebcc_lime_state_v1': 'lime_state',
+    'ebcc_flexbase_state_v1': 'flexbase_state'
   };
   var EWT_KEY = 'ebcc_ewt_records_v1';
   var PENDING_KEY = 'ebcc_sync_pending';
@@ -165,10 +170,46 @@
       if (SYNC_MAP[key]) queuePush(key);
     };
     installEwtCapture();
+    installSimpleCalcPersistence();
     window.addEventListener('online', flushPending);
     window.addEventListener('pagehide', flushNow);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'hidden') flushNow();
+    });
+  }
+
+  // Lime & Flex Base inputs aren't persisted by the core app — save/restore them
+  // here so they survive reloads and sync for admin review.
+  function installSimpleCalcPersistence() {
+    var CALCS = [
+      { key: 'ebcc_lime_state_v1', ids: ['lime-rate', 'lime-area'] },
+      { key: 'ebcc_flexbase_state_v1', ids: ['fb-area', 'fb-depth', 'fb-truck-tons'] }
+    ];
+    CALCS.forEach(function (cfg) {
+      // Restore first (before attaching listeners), then let the app recalculate.
+      var st = null;
+      try { st = JSON.parse(localStorage.getItem(cfg.key) || 'null'); } catch (e) {}
+      if (st) {
+        cfg.ids.forEach(function (id) {
+          var el = document.getElementById(id);
+          // Saved values win over built-in defaults (e.g. fb-truck-tons defaults to 22).
+          if (el && st[id] != null && st[id] !== '' && el.value !== st[id]) {
+            el.value = st[id];
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+      }
+      cfg.ids.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', function () {
+          var out = {};
+          cfg.ids.forEach(function (i2) {
+            var e2 = document.getElementById(i2);
+            out[i2] = e2 ? e2.value : '';
+          });
+          localStorage.setItem(cfg.key, JSON.stringify(out)); // synced via the hook above
+        });
+      });
     });
   }
 
@@ -327,6 +368,10 @@
         section('Truck Tickets (' + (Array.isArray(tickets) ? tickets.length : 0) + ')', ticketsHtml(tickets)) +
         section('Load Count', loadCountHtml(loadCount)) +
         section('Extra Work Tickets (' + (Array.isArray(ewt) ? ewt.length : 0) + ')', ewtHtml(ewt)) +
+        section('Cost Per Yard' + updatedTag(rec.cpy_state), cpyHtml(rec.cpy_state && rec.cpy_state.data)) +
+        section('Flat Work' + updatedTag(rec.flat_state), flatHtml(rec.flat_state && rec.flat_state.data)) +
+        section('Lime Trucks' + updatedTag(rec.lime_state), limeHtml(rec.lime_state && rec.lime_state.data)) +
+        section('Flex Base' + updatedTag(rec.flexbase_state), fbHtml(rec.flexbase_state && rec.flexbase_state.data)) +
       '</div>';
       box.innerHTML = html;
       var cl = document.getElementById('admin-detail-close');
@@ -361,6 +406,39 @@
       return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">Ticket ' + esc(x.ticketNo || '—') + ' · ' + esc(x.date || '') +
         ' · ' + esc(x.customer || '') + '<br><span style="color:var(--gray)">' + esc((x.description || '').slice(0, 140)) + '</span></div>';
     }).join('');
+  }
+  function updatedTag(entry) {
+    if (!entry || !entry.updatedAt) return '';
+    try { return ' — as of ' + new Date(entry.updatedAt).toLocaleDateString(); } catch (e) { return ''; }
+  }
+  function none() { return '<em style="color:var(--gray)">None</em>'; }
+  function equipList(items) {
+    return items.map(function (it) {
+      return '· ' + esc(it.name || '?') + '  ×' + esc(it.quantity != null ? it.quantity : 1) + '  ($' + esc(it.rate || 0) + '/hr)' +
+        (it.producer && it.roundTime ? '  — round ' + esc(it.roundTime) + ' min' : '');
+    }).join('<br>');
+  }
+  function cpyHtml(st) {
+    if (!st || !Array.isArray(st.items) || !st.items.length) return none();
+    var head = 'Hours/day ' + esc(st.hoursPerDay != null ? st.hoursPerDay : '—') +
+      ' · Yd/load ' + esc(st.ydPerLoad != null ? st.ydPerLoad : '—') +
+      ' · Yards to move ' + esc(st.yardsToMove || 0) + '<br>';
+    return head + equipList(st.items);
+  }
+  function flatHtml(st) {
+    if (!st || !Array.isArray(st.items) || !st.items.length) return none();
+    var head = 'Hours/day ' + esc(st.hoursPerDay != null ? st.hoursPerDay : '—') +
+      ' · SqFt/day ' + esc(st.sqftPerDay || 0) +
+      ' · Job size ' + esc(st.jobSqft || 0) + ' sqft<br>';
+    return head + equipList(st.items);
+  }
+  function limeHtml(st) {
+    if (!st || (!st['lime-rate'] && !st['lime-area'])) return none();
+    return 'Spec rate ' + esc(st['lime-rate'] || '—') + ' lb/sy · Area ' + esc(st['lime-area'] || '—') + ' sqft';
+  }
+  function fbHtml(st) {
+    if (!st || (!st['fb-area'] && !st['fb-depth'])) return none();
+    return 'Area ' + esc(st['fb-area'] || '—') + ' sqft · Depth ' + esc(st['fb-depth'] || '—') + '" · Truck ' + esc(st['fb-truck-tons'] || '—') + ' tons';
   }
 
   // ---------- go ----------
