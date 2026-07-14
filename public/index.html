@@ -5974,7 +5974,24 @@ if (!lcState.meta.date) {
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/service-worker.js').catch(function(){});
+    // Track whether a SW was already controlling this page — controllerchange on a
+    // fresh first install must NOT trigger the update-reload.
+    var hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('/service-worker.js').then(function (reg) {
+      try { reg.update(); } catch (e) {}
+      // Also check for updates whenever the app comes back to the foreground
+      // (installed PWAs can live for days without a fresh navigation).
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') { try { reg.update(); } catch (e) {} }
+      });
+    }).catch(function(){});
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      // A new version took control — reload once so the fresh shell is used now.
+      if (!hadController) return;
+      if (sessionStorage.getItem('ebcc_sw_reloaded')) return;
+      sessionStorage.setItem('ebcc_sw_reloaded', '1');
+      window.location.reload();
+    });
   });
 }
 </script>

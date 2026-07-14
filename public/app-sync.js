@@ -77,7 +77,12 @@
         if (!debug) window.location.replace('/login.html');
         return;
       }
-      if (!me) { installSyncHooks(); return; } // non-JSON response — run on local data
+      if (!me) {
+        // Non-JSON response means the auth layer redirected us (expired session).
+        // Don't run half-featured — send the user back through sign-in.
+        if (!debug) window.location.replace('/login.html');
+        return;
+      }
       if (me.disabled) { showDisabled(me); return; }
       ME = me;
       renderAccountMenu(me);

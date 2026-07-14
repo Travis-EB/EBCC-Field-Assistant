@@ -2,7 +2,7 @@
  * Offline-first app shell. Never caches /api/ or /.auth/ (identity + data must be live).
  * Bump CACHE_VERSION on any shell change to force clients to refresh.
  */
-const CACHE_VERSION = 'ebcc-shell-v6';
+const CACHE_VERSION = 'ebcc-shell-v9';
 const SHELL = [
   '/',
   '/index.html',
@@ -45,17 +45,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: cache-first, then network (and cache same-origin responses).
+  // Static assets: stale-while-revalidate — serve from cache instantly for speed,
+  // but always refresh the cached copy in the background so the next load is
+  // current. Cached-forever assets never go permanently stale this way.
   event.respondWith(
     caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req).then((res) => {
+      const fetchPromise = fetch(req).then((res) => {
         if (url.origin === self.location.origin && res && res.status === 200) {
           const copy = res.clone();
           caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
         }
         return res;
       }).catch(() => cached);
+      return cached || fetchPromise;
     })
   );
 });
