@@ -2105,6 +2105,9 @@ const EQUIPMENT_LIBRARY_CA = [
   { name: 'Rock Truck: JD 410E (29.7 cy)',      rate: 315, roundTime: 4, cyPerLoad: 29.7, prodRate: 1, producer: true, fixedLoad: true },
   { name: 'Rock Truck: Volvo A30G (22.9 cy)',   rate: 245, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
   { name: 'Rock Truck: Volvo A40 (30 cy)',      rate: 319, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
+  // CAT 777 has a real rate only in the TX sheet ($502.50); CA rate is that figure
+  // scaled by the A40's CA/TX ratio (319/224) — estimate, adjust when priced.
+  { name: 'Rock Truck: CAT 777 (60 cy)',        rate: 715, roundTime: 5, cyPerLoad: 60,   prodRate: 1, producer: true, fixedLoad: true },
   // Backhoes
   { name: 'Backhoe: JD410/CAT424',                rate: 186, producer: false },
   { name: 'Backhoe: JD710/CAT446',                rate: 226, producer: false },
@@ -5100,6 +5103,7 @@ const TRK_DEFAULT_CUSTOMER = 'Earth Basics Contracting';
     { ca: 'Rock Truck: JD 410E (29.7 cy)',    tx: 'Rock Truck: JD 410E (29.7 cy)' },
     { ca: 'Rock Truck: Volvo A30G (22.9 cy)', tx: 'Rock Truck: Volvo A30G (22.9 cy)' },
     { ca: 'Rock Truck: Volvo A40 (30 cy)',    tx: 'Rock Truck: Volvo A40 (30 cy)' },
+    { ca: 'Rock Truck: CAT 777 (60 cy)',      tx: 'Rock Truck: CAT 777 (60 cy)' },
 
     // Excavators (closest match — CA CAT345 ≈ TX Cat 345C L)
     { ca: 'Excavator: CAT345',  tx: 'Excavator: Cat 345C L' },
