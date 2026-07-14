@@ -298,6 +298,32 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
   font-size: 14px;
   font-family: inherit;
 }
+#tab-calculator .search-bar::before {
+  content: '+';
+  position: absolute;
+  left: 13px;
+  top: 23px;
+  transform: translateY(-50%);
+  color: var(--blue);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+#tab-calculator .search-bar input { padding-left: 34px; }
+.empty-add-link {
+  display: inline-block;
+  margin-top: 6px;
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-weight: 600;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px 0;
+}
 .search-results {
   position: absolute;
   top: 100%;
@@ -1574,7 +1600,7 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
   <div id="rates-editor"></div>
 </div>
 
-<div class="section-header">Yard producers (scrapers)</div>
+<div class="section-header">Yard producers (scrapers &amp; rock trucks)</div>
 <div class="col-headers">
   <div></div>
   <div class="qty-h">Qty</div>
@@ -2067,6 +2093,18 @@ const EQUIPMENT_LIBRARY_CA = [
   { name: 'Scraper: CAT623',  rate: 308, roundTime: 3,    cyPerLoad: 14, prodRate: 0.97, producer: true },
   { name: 'Scraper: CAT637',  rate: 385, roundTime: 3.5,  cyPerLoad: 22, prodRate: 0.85, producer: true },
   { name: 'Scraper: CAT657',  rate: 466, roundTime: 3,    cyPerLoad: 28, prodRate: 0.90, producer: true },
+  // Rock trucks (articulated haulers) — fixed body capacity, so the global Yd/Load
+  // override does NOT apply (fixedLoad). Volvo A40 rate is from the CA rate sheet
+  // ("Rock Truck: VolvoA40 Articulating", 30cys/43tons); other rock-truck rates are
+  // estimates scaled by capacity from the A40 — adjust via Edit Rates as needed.
+  { name: 'Rock Truck: CAT 725 (19.6 cy)',      rate: 210, roundTime: 4, cyPerLoad: 19.6, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: CAT 730 (22.9 cy)',      rate: 245, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: CAT 740 (30 cy)',        rate: 319, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: JD 260E (19.6 cy)',      rate: 210, roundTime: 4, cyPerLoad: 19.6, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: JD 310E (22.9 cy)',      rate: 245, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: JD 410E (29.7 cy)',      rate: 315, roundTime: 4, cyPerLoad: 29.7, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: Volvo A30G (22.9 cy)',   rate: 245, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: Volvo A40 (30 cy)',      rate: 319, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
   // Backhoes
   { name: 'Backhoe: JD410/CAT424',                rate: 186, producer: false },
   { name: 'Backhoe: JD710/CAT446',                rate: 226, producer: false },
@@ -2126,7 +2164,6 @@ const EQUIPMENT_LIBRARY_CA = [
   { name: 'PU Truck: Ford F250-Super/Foreman', rate: 34, producer: false },
   { name: 'PU Truck: F450-Crew/Oiler Truck',   rate: 75, producer: false },
   // Rock Truck
-  { name: 'Rock Truck: VolvoA40 Articulating', rate: 319, producer: false },
   // Sawcut
   { name: 'Sawcut (Up to 15")', rate: 180, producer: false },
   // Screen
@@ -2171,6 +2208,19 @@ const EQUIPMENT_LIBRARY_TX = [
   { name: 'Scraper: CAT623G', rate: 262.75, roundTime: 3,   cyPerLoad: 14, prodRate: 0.97, producer: true },
   { name: 'Scraper: CAT637',  rate: 384.50, roundTime: 3.5, cyPerLoad: 22, prodRate: 0.85, producer: true },
   { name: 'Scraper: CAT657',  rate: 440.00, roundTime: 3,   cyPerLoad: 28, prodRate: 0.90, producer: true },
+  // Rock trucks (articulated haulers) — fixed body capacity (fixedLoad; global Yd/Load
+  // does not apply). Volvo A40 ($224) and Cat 777 ($502.50) rates are from the TX rate
+  // sheet ("TODAY'S RATE/HR"); other rock-truck rates are estimates scaled by capacity
+  // from the A40 — adjust via Edit Rates as needed.
+  { name: 'Rock Truck: CAT 725 (19.6 cy)',      rate: 145, roundTime: 4, cyPerLoad: 19.6, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: CAT 730 (22.9 cy)',      rate: 170, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: CAT 740 (30 cy)',        rate: 224, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: JD 260E (19.6 cy)',      rate: 145, roundTime: 4, cyPerLoad: 19.6, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: JD 310E (22.9 cy)',      rate: 170, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: JD 410E (29.7 cy)',      rate: 220, roundTime: 4, cyPerLoad: 29.7, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: Volvo A30G (22.9 cy)',   rate: 170, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: Volvo A40 (30 cy)',      rate: 224, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: CAT 777 (60 cy)',        rate: 502.50, roundTime: 5, cyPerLoad: 60, prodRate: 1, producer: true, fixedLoad: true },
   // Backhoes
   { name: 'Backhoe: Cat 446',                          rate: 145.00, producer: false },
   { name: 'Backhoe: Compaction Wheel (160/330/450/460)', rate: 51.00, producer: false },
@@ -2261,8 +2311,6 @@ const EQUIPMENT_LIBRARY_TX = [
   { name: 'Blade: JD 772D/Cat 140', rate: 211.75, producer: false },
   { name: 'Blade: JD 872GP/Cat 14', rate: 227.25, producer: false },
   // Rock Truck
-  { name: 'Rock Truck: Volvo A40F Articulating', rate: 224.00, producer: false },
-  { name: 'Rock Truck: Cat 777',                 rate: 502.50, producer: false },
   // Skidsteers
   { name: 'Skid Steer: CAT 299', rate: 108.75, producer: false },
   { name: 'Skid Steer: CAT 289', rate: 106.75, producer: false },
@@ -2327,8 +2375,10 @@ function computeRow(item) {
   let yardsPerDay = 0;
   if (item.producer && +item.roundTime > 0) {
     const loadsPerHour = 60 / +item.roundTime;
-    // ydPerLoad is the page-level override; applies uniformly to every scraper in the spread.
-    yardsPerDay = qty * loadsPerHour * (+ydPerLoad || 0) * (+item.prodRate || 1) * hoursPerDay;
+    // Fixed-body producers (rock trucks) always haul their own capacity;
+    // scrapers use the page-level Yd/Load override, applied uniformly to the spread.
+    const perLoad = item.fixedLoad ? (+item.cyPerLoad || 0) : (+ydPerLoad || 0);
+    yardsPerDay = qty * loadsPerHour * perLoad * (+item.prodRate || 1) * hoursPerDay;
   }
   return { costPerDay, yardsPerDay };
 }
@@ -2381,7 +2431,7 @@ function render() {
   });
 
   if (!hasProducers) {
-    prodList.innerHTML = '<div class="empty">No scrapers added yet. Add a 637, 657, 651, or 623 to see yards per day and cost per yard.</div>';
+    prodList.innerHTML = '<div class="empty">No yard producers added yet. Add a scraper or rock truck to see yards per day and cost per yard.<br><button type="button" class="empty-add-link" id="add-producer-link">+ Add yard-producing equipment</button></div>';
   }
   if (!hasSupport) {
     supList.innerHTML = '<div class="empty">No support equipment yet. Add foreman, grade checker, water truck, etc.</div>';
@@ -2531,6 +2581,18 @@ searchResults.addEventListener('click', (e) => {
 });
 
 document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'add-producer-link') {
+    // Show every yard producer (scrapers + rock trucks) in the search dropdown
+    const producers = getLibrary().filter(eq => eq.producer);
+    searchResults.innerHTML = producers.map(eq =>
+      `<div class="search-result" data-add="${eq.name}">
+        <span>${eq.name}</span><span class="rate">$${eq.rate}/hr</span>
+      </div>`
+    ).join('');
+    searchResults.classList.add('open');
+    try { searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) { searchInput.scrollIntoView(); }
+    return;
+  }
   if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
     searchResults.classList.remove('open');
   }
@@ -5029,8 +5091,15 @@ const TRK_DEFAULT_CUSTOMER = 'Earth Basics Contracting';
     { ca: 'Blade: JD772/CAT140',  tx: 'Blade: JD 772D/Cat 140' },
     { ca: 'Blade: JD872/CAT14',   tx: 'Blade: JD 872GP/Cat 14' },
 
-    // Rock Truck
-    { ca: 'Rock Truck: VolvoA40 Articulating',  tx: 'Rock Truck: Volvo A40F Articulating' },
+    // Rock Trucks (same names in both libraries; rates swap to the state's rate)
+    { ca: 'Rock Truck: CAT 725 (19.6 cy)',    tx: 'Rock Truck: CAT 725 (19.6 cy)' },
+    { ca: 'Rock Truck: CAT 730 (22.9 cy)',    tx: 'Rock Truck: CAT 730 (22.9 cy)' },
+    { ca: 'Rock Truck: CAT 740 (30 cy)',      tx: 'Rock Truck: CAT 740 (30 cy)' },
+    { ca: 'Rock Truck: JD 260E (19.6 cy)',    tx: 'Rock Truck: JD 260E (19.6 cy)' },
+    { ca: 'Rock Truck: JD 310E (22.9 cy)',    tx: 'Rock Truck: JD 310E (22.9 cy)' },
+    { ca: 'Rock Truck: JD 410E (29.7 cy)',    tx: 'Rock Truck: JD 410E (29.7 cy)' },
+    { ca: 'Rock Truck: Volvo A30G (22.9 cy)', tx: 'Rock Truck: Volvo A30G (22.9 cy)' },
+    { ca: 'Rock Truck: Volvo A40 (30 cy)',    tx: 'Rock Truck: Volvo A40 (30 cy)' },
 
     // Excavators (closest match — CA CAT345 ≈ TX Cat 345C L)
     { ca: 'Excavator: CAT345',  tx: 'Excavator: Cat 345C L' },
