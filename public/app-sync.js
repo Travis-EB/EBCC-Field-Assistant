@@ -424,18 +424,24 @@
     }).join('<br>');
   }
   function cpyHtml(st) {
-    if (!st || !Array.isArray(st.items) || !st.items.length) return none();
+    // Synced state uses `job`; keep `items` as a fallback for older snapshots.
+    var items = st && (st.job || st.items);
+    if (!st || !Array.isArray(items) || !items.length) return none();
     var head = 'Hours/day ' + esc(st.hoursPerDay != null ? st.hoursPerDay : '—') +
       ' · Yd/load ' + esc(st.ydPerLoad != null ? st.ydPerLoad : '—') +
-      ' · Yards to move ' + esc(st.yardsToMove || 0) + '<br>';
-    return head + equipList(st.items);
+      ' · Yards to move ' + esc(st.yardsToMove || 0) +
+      (st.procShifts ? ' · Processor shifts ' + esc(st.procShifts) + ' × ' + esc(st.procShiftHours != null ? st.procShiftHours : '—') + 'h' : '') + '<br>';
+    return head + equipList(items);
   }
   function flatHtml(st) {
-    if (!st || !Array.isArray(st.items) || !st.items.length) return none();
-    var head = 'Hours/day ' + esc(st.hoursPerDay != null ? st.hoursPerDay : '—') +
-      ' · SqFt/day ' + esc(st.sqftPerDay || 0) +
-      ' · Job size ' + esc(st.jobSqft || 0) + ' sqft<br>';
-    return head + equipList(st.items);
+    // Synced state uses `flatJob`/`flat*` keys; keep old names as fallback.
+    var items = st && (st.flatJob || st.items);
+    if (!st || !Array.isArray(items) || !items.length) return none();
+    var hours = st.flatHoursPerDay != null ? st.flatHoursPerDay : st.hoursPerDay;
+    var head = 'Hours/day ' + esc(hours != null ? hours : '—') +
+      ' · SqFt/day ' + esc(st.flatSqftPerDay || st.sqftPerDay || 0) +
+      ' · Job size ' + esc(st.flatJobSqft || st.jobSqft || 0) + ' sqft<br>';
+    return head + equipList(items);
   }
   function limeHtml(st) {
     if (!st || (!st['lime-rate'] && !st['lime-area'])) return none();

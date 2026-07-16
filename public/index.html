@@ -245,6 +245,9 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
 .equipment-card.producer {
   border-left: 3px solid var(--green);
 }
+.equipment-card.processor {
+  border-left: 3px solid var(--blue);
+}
 .equipment-card .name { font-weight: 500; font-size: 14px; }
 .equipment-card .rate { font-size: 11px; color: var(--gray); margin-top: 1px; }
 .equipment-card input[type="number"] {
@@ -1620,6 +1623,36 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
 </div>
 <div id="support-list"></div>
 
+<div id="processor-section" style="display:none">
+  <div class="section-header">Material processors (Wirtgen)</div>
+  <div class="controls">
+    <label class="hours-control">
+      <span>Shifts</span>
+      <div class="stepper">
+        <button type="button" class="stepper-btn" id="proc-shifts-minus" aria-label="Fewer shifts">&minus;</button>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="proc-shifts-input" value="1">
+        <button type="button" class="stepper-btn" id="proc-shifts-plus" aria-label="More shifts">+</button>
+      </div>
+    </label>
+    <label class="hours-control">
+      <span>Hours/shift</span>
+      <input type="number" id="proc-shift-hours-input" value="8" min="0" max="24" step="0.5" inputmode="decimal">
+    </label>
+  </div>
+  <div class="col-headers">
+    <div></div>
+    <div class="qty-h">Qty</div>
+    <div class="rt-h">Yd/hr</div>
+    <div class="cost-h">$/day &middot; yds</div>
+    <div></div>
+  </div>
+  <div id="processors-list"></div>
+  <div class="empty" id="processed-total-row" style="border-style:solid;text-align:left;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-weight:600;color:var(--dark)">Processed material</span>
+    <span><b id="processed-total" style="color:var(--orange);font-size:16px">0</b> <span style="color:var(--gray)">cy/day</span> <span id="processed-total-sub" style="color:var(--gray)"></span></span>
+  </div>
+</div>
+
 <div class="search-bar">
   <input type="text" id="search" placeholder="Add equipment to this job — type to search…" autocomplete="off">
   <div class="search-results" id="search-results"></div>
@@ -2092,7 +2125,15 @@ const EQUIPMENT_LIBRARY_CA = [
   { name: 'Scraper: CAT613',  rate: 258, roundTime: 3,    cyPerLoad: 11, prodRate: 0.95, producer: true },
   { name: 'Scraper: CAT623',  rate: 308, roundTime: 3,    cyPerLoad: 14, prodRate: 0.97, producer: true },
   { name: 'Scraper: CAT637',  rate: 385, roundTime: 3.5,  cyPerLoad: 22, prodRate: 0.85, producer: true },
+  // CAT651: single-engine 657 (same bowl) — Travis: runs $80/hr under the 657 in both states
+  { name: 'Scraper: CAT651',  rate: 386, roundTime: 3,    cyPerLoad: 28, prodRate: 0.90, producer: true },
   { name: 'Scraper: CAT657',  rate: 466, roundTime: 3,    cyPerLoad: 28, prodRate: 0.90, producer: true },
+  // Material processors (Wirtgen) — don't move dirt; they break/size rock or cut water
+  // into fill at ydPerHr, run in shifts. TX sheet has real rates (SM220 $618, WR240
+  // $318.50); CA rates are those scaled by the A40 CA/TX ratio — estimates, adjust when
+  // priced. ydPerHr defaults are starting points; editable per card.
+  { name: 'Material Processor: Wirtgen SM220', rate: 880, ydPerHr: 250, processor: true, producer: false },
+  { name: 'Material Processor: Wirtgen WR240', rate: 455, ydPerHr: 400, processor: true, producer: false },
   // Rock trucks (articulated haulers) — fixed body capacity, so the global Yd/Load
   // override does NOT apply (fixedLoad). Volvo A40 rate is from the CA rate sheet
   // ("Rock Truck: VolvoA40 Articulating", 30cys/43tons); other rock-truck rates are
@@ -2210,7 +2251,13 @@ const EQUIPMENT_LIBRARY_TX = [
   { name: 'Scraper: CAT613G', rate: 193.50, roundTime: 3,   cyPerLoad: 11, prodRate: 0.95, producer: true },
   { name: 'Scraper: CAT623G', rate: 262.75, roundTime: 3,   cyPerLoad: 14, prodRate: 0.97, producer: true },
   { name: 'Scraper: CAT637',  rate: 384.50, roundTime: 3.5, cyPerLoad: 22, prodRate: 0.85, producer: true },
+  // CAT651: single-engine 657 (same bowl) — Travis: runs $80/hr under the 657 in both states
+  { name: 'Scraper: CAT651',  rate: 360.00, roundTime: 3,   cyPerLoad: 28, prodRate: 0.90, producer: true },
   { name: 'Scraper: CAT657',  rate: 440.00, roundTime: 3,   cyPerLoad: 28, prodRate: 0.90, producer: true },
+  // Material processors (Wirtgen) — real TX sheet rates ("Wirtgen SM220*" $618,
+  // "Wirtgen WR240" $318.50). ydPerHr defaults are starting points; editable per card.
+  { name: 'Material Processor: Wirtgen SM220', rate: 618,    ydPerHr: 250, processor: true, producer: false },
+  { name: 'Material Processor: Wirtgen WR240', rate: 318.50, ydPerHr: 400, processor: true, producer: false },
   // Rock trucks (articulated haulers) — fixed body capacity (fixedLoad; global Yd/Load
   // does not apply). Volvo A40 ($224) and Cat 777 ($502.50) rates are from the TX rate
   // sheet ("TODAY'S RATE/HR"); other rock-truck rates are estimates scaled by capacity
@@ -2360,7 +2407,9 @@ function setActiveState(next) {
 let hoursPerDay = 8;
 let yardsToMove = 0;
 let ydPerLoad = 28;  // Global yd-per-load override applied to all producer scrapers
-let job = []; // [{ name, rate, quantity, roundTime, cyPerLoad, prodRate, producer, custom? }]
+let procShifts = 1;       // Material processors can run day + night shifts
+let procShiftHours = 8;   // Hours per processor shift
+let job = []; // [{ name, rate, quantity, roundTime, cyPerLoad, prodRate, producer, processor?, ydPerHr?, custom? }]
 
 function formatMoney(n) {
   if (!isFinite(n) || n === 0) return '$0';
@@ -2374,28 +2423,77 @@ function formatYards(n) {
 function computeRow(item) {
   const qty = +item.quantity || 0;
   const costPerHour = qty * (+item.rate || 0);
-  const costPerDay = costPerHour * hoursPerDay;
+  let costPerDay = costPerHour * hoursPerDay;
   let yardsPerDay = 0;
-  if (item.producer && +item.roundTime > 0) {
+  let processedPerShift = 0;
+  let processedPerDay = 0;
+  if (item.processor) {
+    // Material processors (Wirtgens) run on their own shift schedule — cost and
+    // production come from shifts × hours/shift, not the page Hours/day.
+    processedPerShift = qty * (+item.ydPerHr || 0) * procShiftHours;
+    processedPerDay = processedPerShift * procShifts;
+    costPerDay = costPerHour * procShiftHours * procShifts;
+  } else if (item.producer && +item.roundTime > 0) {
     const loadsPerHour = 60 / +item.roundTime;
     // Fixed-body producers (rock trucks) always haul their own capacity;
     // scrapers use the page-level Yd/Load override, applied uniformly to the spread.
     const perLoad = item.fixedLoad ? (+item.cyPerLoad || 0) : (+ydPerLoad || 0);
     yardsPerDay = qty * loadsPerHour * perLoad * (+item.prodRate || 1) * hoursPerDay;
   }
-  return { costPerDay, yardsPerDay };
+  return { costPerDay, yardsPerDay, processedPerShift, processedPerDay };
 }
 
 function render() {
   const prodList = document.getElementById('producers-list');
   const supList = document.getElementById('support-list');
+  const procList = document.getElementById('processors-list');
+  const procSection = document.getElementById('processor-section');
   prodList.innerHTML = '';
   supList.innerHTML = '';
+  if (procList) procList.innerHTML = '';
 
   let hasProducers = false;
   let hasSupport = false;
+  let hasProcessors = false;
 
   job.forEach((item, idx) => {
+    // Material processor cards get their own section with a Yd/hr stepper.
+    if (item.processor) {
+      hasProcessors = true;
+      const card = document.createElement('div');
+      card.className = 'equipment-card processor';
+      card.dataset.cardIdx = idx;
+      card.innerHTML = `
+        <div>
+          <div class="name">${item.name}${item.custom ? ' <span style="font-size:10px;color:var(--blue);">(custom)</span>' : ''}</div>
+          <div class="rate">$${item.rate}/hr</div>
+        </div>
+        <div class="qty-wrap">
+          <label class="input-label">Qty</label>
+          <div class="stepper">
+            <button type="button" class="stepper-btn" data-step-idx="${idx}" data-step-field="quantity" data-step-by="-1" aria-label="Decrease">&minus;</button>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" value="${item.quantity}" data-idx="${idx}" data-field="quantity" />
+            <button type="button" class="stepper-btn" data-step-idx="${idx}" data-step-field="quantity" data-step-by="1" aria-label="Increase">+</button>
+          </div>
+        </div>
+        <div class="rt-wrap">
+          <label class="input-label">Yd/hr</label>
+          <div class="stepper">
+            <button type="button" class="stepper-btn" data-step-idx="${idx}" data-step-field="ydPerHr" data-step-by="-10" aria-label="Decrease">&minus;</button>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" value="${item.ydPerHr || 0}" data-idx="${idx}" data-field="ydPerHr" />
+            <button type="button" class="stepper-btn" data-step-idx="${idx}" data-step-field="ydPerHr" data-step-by="10" aria-label="Increase">+</button>
+          </div>
+        </div>
+        <div class="cost-wrap">
+          <div class="cost"></div>
+          <div class="yards processed"></div>
+        </div>
+        <button class="remove-btn" data-remove="${idx}" title="Remove">&times;</button>
+      `;
+      if (procList) procList.appendChild(card);
+      return;
+    }
+
     if (item.producer) hasProducers = true; else hasSupport = true;
 
     const card = document.createElement('div');
@@ -2439,6 +2537,8 @@ function render() {
   if (!hasSupport) {
     supList.innerHTML = '<div class="empty">No support equipment yet. Add foreman, grade checker, water truck, etc.</div>';
   }
+  // Material processor section only exists on screen when a processor is in the job.
+  if (procSection) procSection.style.display = hasProcessors ? '' : 'none';
 
   updateCalculatorTotals();
 }
@@ -2446,18 +2546,32 @@ function render() {
 function updateCalculatorTotals() {
   let totalCost = 0;
   let totalYards = 0;
+  let totalProcessed = 0;
   job.forEach((item, idx) => {
-    const { costPerDay, yardsPerDay } = computeRow(item);
+    const { costPerDay, yardsPerDay, processedPerShift, processedPerDay } = computeRow(item);
     totalCost += costPerDay;
     totalYards += yardsPerDay;
+    totalProcessed += processedPerDay;
     const card = document.querySelector('[data-card-idx="' + idx + '"]');
     if (card) {
       const costEl = card.querySelector('.cost');
       if (costEl) costEl.textContent = formatMoney(costPerDay);
       const yardsEl = card.querySelector('.yards');
-      if (yardsEl) yardsEl.textContent = formatYards(yardsPerDay) + ' cy';
+      if (yardsEl) {
+        yardsEl.textContent = item.processor
+          ? formatYards(processedPerShift) + ' cy/shift'
+          : formatYards(yardsPerDay) + ' cy';
+      }
     }
   });
+
+  // Processed-material rollup (visible only while a processor is in the job)
+  const procTotalEl = document.getElementById('processed-total');
+  if (procTotalEl) {
+    procTotalEl.textContent = formatYards(totalProcessed);
+    const sub = document.getElementById('processed-total-sub');
+    if (sub) sub.textContent = '(' + procShifts + (procShifts === 1 ? ' shift' : ' shifts') + ' × ' + procShiftHours + ' hrs)';
+  }
 
   document.getElementById('total-cost').textContent = formatMoney(totalCost);
   document.getElementById('total-yards').textContent = formatYards(totalYards);
@@ -2516,6 +2630,34 @@ document.getElementById('yards-to-move-input').addEventListener('input', (e) => 
     ydPerLoad = (parseInt(yplInput.value, 10) || ydPerLoad) + 1;
     yplInput.value = ydPerLoad;
     if (typeof updateCalculatorTotals === 'function') updateCalculatorTotals();
+  });
+})();
+
+(function setupProcessorShifts() {
+  const shiftsInput = document.getElementById('proc-shifts-input');
+  const hoursInput  = document.getElementById('proc-shift-hours-input');
+  const minusBtn = document.getElementById('proc-shifts-minus');
+  const plusBtn  = document.getElementById('proc-shifts-plus');
+  if (!shiftsInput) return;
+  shiftsInput.addEventListener('input', () => {
+    const v = parseInt(shiftsInput.value, 10);
+    procShifts = (isFinite(v) && v >= 1) ? v : 1;
+    updateCalculatorTotals();
+  });
+  if (minusBtn) minusBtn.addEventListener('click', () => {
+    procShifts = Math.max(1, (parseInt(shiftsInput.value, 10) || procShifts) - 1);
+    shiftsInput.value = procShifts;
+    updateCalculatorTotals();
+  });
+  if (plusBtn) plusBtn.addEventListener('click', () => {
+    procShifts = (parseInt(shiftsInput.value, 10) || procShifts) + 1;
+    shiftsInput.value = procShifts;
+    updateCalculatorTotals();
+  });
+  hoursInput.addEventListener('input', () => {
+    const v = parseFloat(hoursInput.value);
+    procShiftHours = (isFinite(v) && v >= 0) ? v : 0;
+    updateCalculatorTotals();
   });
 })();
 
@@ -5076,7 +5218,12 @@ const TRK_DEFAULT_CUSTOMER = 'Earth Basics Contracting';
     { ca: 'Scraper: CAT613',  tx: 'Scraper: CAT613G' },
     { ca: 'Scraper: CAT623',  tx: 'Scraper: CAT623G' },
     { ca: 'Scraper: CAT637',  tx: 'Scraper: CAT637' },
+    { ca: 'Scraper: CAT651',  tx: 'Scraper: CAT651' },
     { ca: 'Scraper: CAT657',  tx: 'Scraper: CAT657' },
+
+    // Material processors (same names in both libraries; rates swap to the state's rate)
+    { ca: 'Material Processor: Wirtgen SM220', tx: 'Material Processor: Wirtgen SM220' },
+    { ca: 'Material Processor: Wirtgen WR240', tx: 'Material Processor: Wirtgen WR240' },
 
     // Bulldozers
     { ca: 'Bulldozer: CAT D10T',  tx: 'Bulldozer: Cat D10T' },
@@ -5888,6 +6035,8 @@ if (!lcState.meta.date) {
         hoursPerDay: (typeof hoursPerDay !== 'undefined') ? hoursPerDay : 8,
         yardsToMove: (typeof yardsToMove !== 'undefined') ? yardsToMove : 0,
         ydPerLoad:   (typeof ydPerLoad   !== 'undefined') ? ydPerLoad   : 28,
+        procShifts:     (typeof procShifts     !== 'undefined') ? procShifts     : 1,
+        procShiftHours: (typeof procShiftHours !== 'undefined') ? procShiftHours : 8,
       }));
     } catch (_) {}
   }
@@ -5941,6 +6090,16 @@ if (!lcState.meta.date) {
       ydPerLoad = cpy.ydPerLoad;
       const el = document.getElementById('yd-per-load-input');
       if (el) el.value = ydPerLoad;
+    }
+    if (typeof cpy.procShifts === 'number' && isFinite(cpy.procShifts) && cpy.procShifts >= 1) {
+      procShifts = cpy.procShifts;
+      const el = document.getElementById('proc-shifts-input');
+      if (el) el.value = procShifts;
+    }
+    if (typeof cpy.procShiftHours === 'number' && isFinite(cpy.procShiftHours) && cpy.procShiftHours >= 0) {
+      procShiftHours = cpy.procShiftHours;
+      const el = document.getElementById('proc-shift-hours-input');
+      if (el) el.value = procShiftHours;
     }
     if (typeof render === 'function') render();
   }
