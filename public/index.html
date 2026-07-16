@@ -211,6 +211,11 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 10px;
+}
+.summary.has-processed {
+  grid-template-columns: repeat(4, 1fr);
+}
+.summary .processed-stat .value { color: var(--blue);
   text-align: center;
 }
 .summary .stat { padding: 6px; }
@@ -523,7 +528,7 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
 }
 
 @media (max-width: 540px) {
-  .summary { grid-template-columns: 1fr 1fr; }
+  .summary, .summary.has-processed { grid-template-columns: 1fr 1fr; }
   .summary .cost-per-yard { grid-column: span 2; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
   .equipment-card {
     grid-template-columns: 1fr 32px;
@@ -1536,6 +1541,11 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
     <div class="label">Total Yards</div>
     <div class="value" id="total-yards">0</div>
   </div>
+  <div class="stat processed-stat" id="processed-stat" style="display:none">
+    <div class="label">Processed Material</div>
+    <div class="value" id="processed-total">0</div>
+    <div class="label" id="processed-total-sub" style="margin-top:2px"></div>
+  </div>
   <div class="stat cost-per-yard">
     <div class="label">Cost Per Yard</div>
     <div class="value" id="cost-per-yard">—</div>
@@ -1627,10 +1637,6 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
     <div></div>
   </div>
   <div id="processors-list"></div>
-  <div class="empty" id="processed-total-row" style="border-style:solid;text-align:left;display:flex;justify-content:space-between;align-items:center">
-    <span style="font-weight:600;color:var(--dark)">Processed material</span>
-    <span><b id="processed-total" style="color:var(--orange);font-size:16px">0</b> <span style="color:var(--gray)">cy/day</span> <span id="processed-total-sub" style="color:var(--gray)"></span></span>
-  </div>
 </div>
 
 <div class="section-header">Yard producers (scrapers &amp; rock trucks)</div>
@@ -2563,12 +2569,18 @@ function updateCalculatorTotals() {
     }
   });
 
-  // Processed-material rollup (visible only while a processor is in the job)
-  const procTotalEl = document.getElementById('processed-total');
-  if (procTotalEl) {
-    procTotalEl.textContent = formatYards(totalProcessed);
-    const sub = document.getElementById('processed-total-sub');
-    if (sub) sub.textContent = '(' + procShifts + (procShifts === 1 ? ' shift' : ' shifts') + ' × ' + procShiftHours + ' hrs)';
+  // Processed-material summary tile (shown only while a processor is in the job)
+  const hasProc = job.some(it => it.processor);
+  const procStat = document.getElementById('processed-stat');
+  if (procStat) {
+    procStat.style.display = hasProc ? '' : 'none';
+    const summaryEl = procStat.closest('.summary');
+    if (summaryEl) summaryEl.classList.toggle('has-processed', hasProc);
+    if (hasProc) {
+      document.getElementById('processed-total').textContent = formatYards(totalProcessed);
+      const sub = document.getElementById('processed-total-sub');
+      if (sub) sub.textContent = 'cy/day · ' + procShifts + (procShifts === 1 ? ' shift' : ' shifts') + ' × ' + procShiftHours + ' hrs';
+    }
   }
 
   document.getElementById('total-cost').textContent = formatMoney(totalCost);
