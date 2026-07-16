@@ -2138,7 +2138,7 @@ const EQUIPMENT_LIBRARY_CA = [
   // into fill at ydPerHr, run in shifts. TX sheet has real rates (SM220 $618, WR240
   // $318.50); CA rates are those scaled by the A40 CA/TX ratio — estimates, adjust when
   // priced. ydPerHr defaults are starting points; editable per card.
-  { name: 'Material Processor: Wirtgen SM220', rate: 880, ydPerHr: 250, processor: true, producer: false },
+  { name: 'Material Processor: Wirtgen SM220', rate: 880, ydPerHr: 600, processor: true, producer: false },
   { name: 'Material Processor: Wirtgen WR240', rate: 455, ydPerHr: 400, processor: true, producer: false },
   // Rock trucks (articulated haulers) — fixed body capacity, so the global Yd/Load
   // override does NOT apply (fixedLoad). Volvo A40 rate is from the CA rate sheet
@@ -2262,7 +2262,7 @@ const EQUIPMENT_LIBRARY_TX = [
   { name: 'Scraper: CAT657',  rate: 440.00, roundTime: 3,   cyPerLoad: 28, prodRate: 0.90, producer: true },
   // Material processors (Wirtgen) — real TX sheet rates ("Wirtgen SM220*" $618,
   // "Wirtgen WR240" $318.50). ydPerHr defaults are starting points; editable per card.
-  { name: 'Material Processor: Wirtgen SM220', rate: 618,    ydPerHr: 250, processor: true, producer: false },
+  { name: 'Material Processor: Wirtgen SM220', rate: 618,    ydPerHr: 600, processor: true, producer: false },
   { name: 'Material Processor: Wirtgen WR240', rate: 318.50, ydPerHr: 400, processor: true, producer: false },
   // Rock trucks (articulated haulers) — fixed body capacity (fixedLoad; global Yd/Load
   // does not apply). Volvo A40 ($224) and Cat 777 ($502.50) rates are from the TX rate
