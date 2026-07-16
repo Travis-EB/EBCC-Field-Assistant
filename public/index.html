@@ -1603,26 +1603,6 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
   <div id="rates-editor"></div>
 </div>
 
-<div class="section-header">Yard producers (scrapers &amp; rock trucks)</div>
-<div class="col-headers">
-  <div></div>
-  <div class="qty-h">Qty</div>
-  <div class="rt-h">Round (min)</div>
-  <div class="cost-h">$/day &middot; yds</div>
-  <div></div>
-</div>
-<div id="producers-list"></div>
-
-<div class="section-header">Support equipment &amp; crew</div>
-<div class="col-headers">
-  <div></div>
-  <div class="qty-h">Qty</div>
-  <div></div>
-  <div class="cost-h">$/day</div>
-  <div></div>
-</div>
-<div id="support-list"></div>
-
 <div id="processor-section" style="display:none">
   <div class="section-header">Material processors (Wirtgen)</div>
   <div class="controls">
@@ -1652,6 +1632,26 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
     <span><b id="processed-total" style="color:var(--orange);font-size:16px">0</b> <span style="color:var(--gray)">cy/day</span> <span id="processed-total-sub" style="color:var(--gray)"></span></span>
   </div>
 </div>
+
+<div class="section-header">Yard producers (scrapers &amp; rock trucks)</div>
+<div class="col-headers">
+  <div></div>
+  <div class="qty-h">Qty</div>
+  <div class="rt-h">Round (min)</div>
+  <div class="cost-h">$/day &middot; yds</div>
+  <div></div>
+</div>
+<div id="producers-list"></div>
+
+<div class="section-header">Support equipment &amp; crew</div>
+<div class="col-headers">
+  <div></div>
+  <div class="qty-h">Qty</div>
+  <div></div>
+  <div class="cost-h">$/day</div>
+  <div></div>
+</div>
+<div id="support-list"></div>
 
 <div class="search-bar">
   <input type="text" id="search" placeholder="Add equipment to this job — type to search…" autocomplete="off">
@@ -2350,9 +2350,7 @@ const EQUIPMENT_LIBRARY_TX = [
   { name: 'Mixer: Cat RM300',     rate: 276.75, producer: false },
   { name: 'Mixer: Cat RM500',     rate: 354.00, producer: false },
   { name: 'Mixer: Bomag 446/460', rate: 359.25, producer: false },
-  { name: 'Mixer: Wirtgen WR240', rate: 318.50, producer: false },
-  // Surface Miner
-  { name: 'Surface Miner: Wirtgen SM220', rate: 618.00, producer: false },
+  // (Wirtgen WR240 + SM220 live in the Material Processor entries above — no duplicates)
   // Mobilization (lowbeds)
   { name: 'Mobilization: Peterbilt 5 Axle Lowbed', rate: 145.00, producer: false },
   { name: 'Mobilization: Peterbilt 7 Axle Lowbed', rate: 175.00, producer: false },
