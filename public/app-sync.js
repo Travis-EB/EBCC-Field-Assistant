@@ -258,6 +258,33 @@
       var b = document.getElementById(id);
       if (b) b.addEventListener('click', function () { setTimeout(captureEwt, 50); }, true);
     });
+    installEwtAutoNumber();
+  }
+
+  // Auto-generate the EWT ticket number (company-wide sequence from the server,
+  // starting at 21100). Reserved the moment someone starts filling a new ticket,
+  // so numbers are only consumed for real tickets. Field stays manually editable.
+  function installEwtAutoNumber() {
+    var tab = document.getElementById('tab-ewt');
+    var field = document.getElementById('ewt-ticket-no');
+    if (!tab || !field) return;
+    if (!field.value.trim()) field.placeholder = 'auto';
+    var fetching = false;
+    tab.addEventListener('input', function (e) {
+      if (fetching) return;
+      if (e.target === field) return;      // typing a manual number — leave it alone
+      if (field.value.trim()) return;      // this ticket is already numbered
+      fetching = true;
+      apiFetch('/api/ticket-number', { method: 'POST' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (res) {
+          if (res && res.number && !field.value.trim()) {
+            field.value = res.number;
+          }
+        })
+        .catch(function () {}) // offline — leave blank for manual entry
+        .then(function () { fetching = false; });
+    });
   }
   function val(id) { var e = document.getElementById(id); return e ? e.value : ''; }
   function scrapeRows(containerId) {

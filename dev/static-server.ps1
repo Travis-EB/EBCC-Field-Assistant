@@ -23,6 +23,7 @@ $mime = @{
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$Port/")
 $listener.Start()
+$ticketCounter = 21099
 Write-Host "EBCC dev preview on http://localhost:$Port/  root=$Root  (MOCK admin auth)"
 while ($listener.IsListening) {
   try {
@@ -32,7 +33,10 @@ while ($listener.IsListening) {
     if ($path -eq '/') { $path = '/index.html' }
     if ($path -like '/api/*' -or $path -like '/.auth/*') {
       $json = '{"ok":true}'
-      if ($path -eq '/api/me') {
+      if ($path -eq '/api/ticket-number') {
+        $ticketCounter++
+        $json = '{"number":' + $ticketCounter + '}'
+      } elseif ($path -eq '/api/me') {
         $json = '{"authenticated":true,"userId":"dev-admin","email":"travis@earthbasics.net","name":"Travis Pecoy","role":"admin","isAdmin":true}'
       } elseif ($path -like '/api/records*' -and $req.Url.Query -like '*userId=*') {
         $json = '{"ownerId":"u2","records":{"cpy_state":{"updatedAt":"2026-07-14T09:30:00Z","data":{"hoursPerDay":8,"ydPerLoad":28,"yardsToMove":40000,"procShifts":2,"procShiftHours":10,"job":[{"name":"Scraper: CAT657","quantity":2,"rate":466,"producer":true,"roundTime":3},{"name":"Material Processor: Wirtgen SM220","quantity":1,"rate":880,"processor":true,"ydPerHr":250},{"name":"Labor: Foreman","quantity":1,"rate":105}]}},"flat_state":{"updatedAt":"2026-07-14T10:00:00Z","data":{"flatHoursPerDay":8,"flatSqftPerDay":25000,"flatJobSqft":100000,"flatJob":[{"name":"Compactor: CAT824","quantity":1,"rate":210}]}},"lime_state":{"updatedAt":"2026-07-14T10:05:00Z","data":{"lime-rate":"33","lime-area":"50000"}},"flexbase_state":{"updatedAt":"2026-07-14T10:06:00Z","data":{"fb-area":"50000","fb-depth":"6","fb-truck-tons":"22"}}}}'
