@@ -122,7 +122,7 @@
     if (!el) return;
     var initials = (me.name || me.email || '?').trim().slice(0, 1).toUpperCase();
     el.innerHTML =
-      '<button id="acct-btn" title="' + esc(me.email) + '" style="width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:#2563eb;color:#fff;font-weight:600;cursor:pointer;font-family:inherit">' + esc(initials) + '</button>' +
+      '<button id="acct-btn" title="' + esc(me.email) + '" style="width:34px;height:34px;border-radius:50%;border:none;background:#23272e;color:#fff;font-weight:600;cursor:pointer;font-family:inherit">' + esc(initials) + '</button>' +
       '<div id="acct-pop" style="display:none;position:absolute;right:12px;margin-top:6px;background:#fff;color:#1f2937;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(16,24,40,.16);padding:10px;min-width:200px;z-index:50">' +
         '<div style="font-weight:600;font-size:14px">' + esc(me.name || '') + '</div>' +
         '<div style="font-size:12px;color:#6b7280;margin-bottom:8px">' + esc(me.email) + (me.isAdmin ? ' · Admin' : '') + '</div>' +
