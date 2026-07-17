@@ -321,16 +321,9 @@ header p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
 #tab-calculator .search-bar input { padding-left: 34px; }
 .empty-add-link {
   display: inline-block;
-  margin-top: 6px;
-  background: none;
-  border: none;
-  color: var(--blue);
+  margin-top: 10px;
+  padding: 10px 16px;
   font-weight: 600;
-  font-size: 13px;
-  font-family: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 4px 0;
 }
 .search-results {
   position: absolute;
@@ -2536,7 +2529,7 @@ function render() {
   });
 
   if (!hasProducers) {
-    prodList.innerHTML = '<div class="empty">No yard producers added yet. Add a scraper or rock truck to see yards per day and cost per yard.<br><button type="button" class="empty-add-link" id="add-producer-link">+ Add yard-producing equipment</button></div>';
+    prodList.innerHTML = '<div class="empty">No yard producers added yet. Add a scraper or rock truck to see yards per day and cost per yard.<br><button type="button" class="btn btn-primary empty-add-link" id="add-producer-link">+ Add yard-producing equipment</button></div>';
   }
   if (!hasSupport) {
     supList.innerHTML = '<div class="empty">No support equipment yet. Add foreman, grade checker, water truck, etc.</div>';
