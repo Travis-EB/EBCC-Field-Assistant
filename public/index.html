@@ -212,10 +212,16 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   margin-bottom: 12px;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
+  grid-auto-rows: 1fr;
   gap: 1px;
   overflow: hidden;
 }
-.summary .stat { background: white; }
+.summary .stat {
+  background: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 .summary.has-processed {
   grid-template-columns: repeat(4, 1fr);
 }
@@ -543,6 +549,8 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 @media (max-width: 540px) {
   .summary, .summary.has-processed { grid-template-columns: 1fr 1fr; }
   .summary .cost-per-yard { grid-column: span 2; }
+  /* With the processed tile visible, keep a perfect 2x2 grid — no orphan cells */
+  .summary.has-processed .cost-per-yard { grid-column: auto; }
   .equipment-card {
     grid-template-columns: 1fr 32px;
     grid-template-areas: "name remove" "qty qty" "rt rt" "cost cost";
@@ -2592,7 +2600,7 @@ function updateCalculatorTotals() {
     if (hasProc) {
       document.getElementById('processed-total').textContent = formatYards(totalProcessed);
       const sub = document.getElementById('processed-total-sub');
-      if (sub) sub.textContent = 'cy/day · ' + procShifts + (procShifts === 1 ? ' shift' : ' shifts') + ' × ' + procShiftHours + ' hrs';
+      if (sub) sub.textContent = 'cy/day · ' + procShifts + '×' + procShiftHours + 'h';
     }
   }
 
