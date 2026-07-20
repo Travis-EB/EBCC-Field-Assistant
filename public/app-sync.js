@@ -176,6 +176,9 @@
     };
     installEwtCapture();
     installSimpleCalcPersistence();
+    // Reconcile: an EWT finalized before this hook was installed (fast user, slow
+    // network) sits in localStorage without a pending flag — push it now.
+    if (localStorage.getItem(EWT_KEY)) queuePush(EWT_KEY);
     window.addEventListener('online', flushPending);
     window.addEventListener('pagehide', flushNow);
     document.addEventListener('visibilitychange', function () {
@@ -252,14 +255,44 @@
     flushPending();
   }
 
-  // ---------- EWT capture (persist submitted Extra Work Tickets for admin review) ----------
+  // ---------- EWT capture (store finalized Extra Work Tickets + their PDFs) ----------
+  var EWT_PDF_KEEP = 8;   // newest N tickets keep their full PDF (keeps the synced doc small)
+  var EWT_MAX = 100;
+
   function installEwtCapture() {
-    ['ewt-email-btn', 'ewt-preview-btn'].forEach(function (id) {
-      var b = document.getElementById(id);
-      if (b) b.addEventListener('click', function () { setTimeout(captureEwt, 50); }, true);
-    });
     installEwtAutoNumber();
   }
+
+  // The app dispatches 'ebcc-ewt-finalized' (with the collected ticket + PDF data URI)
+  // whenever a ticket is previewed or emailed. Attached at load — never misses one.
+  window.addEventListener('ebcc-ewt-finalized', function (e) {
+    try {
+      var d = e.detail || {};
+      var t = d.ticket || {};
+      var rec = {
+        ts: new Date().toISOString(),
+        ticketNo: t.ticketNo || '', date: t.date || '',
+        customer: t.customer || '', jobAddress: t.jobAddress || '',
+        city: t.city || '', state: t.state || '',
+        po: t.po || '', jobNum: t.jobNum || '', phase: t.phase || '',
+        description: t.description || '', title: t.title || '',
+        labor: t.labor || [], equipment: t.equipment || [], materials: t.materials || [],
+        signed: !!t.acceptedBy,   // the signature image itself is inside the PDF
+        pdf: d.pdf || ''
+      };
+      if (!rec.ticketNo && !rec.customer && !rec.description) return; // empty form
+      var arr;
+      try { arr = JSON.parse(localStorage.getItem(EWT_KEY) || '[]'); } catch (err) { arr = []; }
+      var idx = arr.findIndex(function (x) { return x.ticketNo === rec.ticketNo && x.date === rec.date; });
+      if (idx >= 0) arr[idx] = rec; else arr.push(rec);
+      if (arr.length > EWT_MAX) arr = arr.slice(arr.length - EWT_MAX);
+      // Only the newest few keep their PDFs — older entries keep the data fields.
+      for (var i = 0; i < arr.length - EWT_PDF_KEEP; i++) {
+        if (arr[i] && arr[i].pdf) arr[i].pdf = '';
+      }
+      localStorage.setItem(EWT_KEY, JSON.stringify(arr)); // synced via the setItem hook
+    } catch (err) {}
+  });
 
   // Auto-generate the EWT ticket number (company-wide sequence from the server,
   // starting at 21100). Reserved the moment someone starts filling a new ticket,
@@ -286,45 +319,6 @@
         .then(function () { fetching = false; });
     });
   }
-  function val(id) { var e = document.getElementById(id); return e ? e.value : ''; }
-  function scrapeRows(containerId) {
-    var c = document.getElementById(containerId);
-    if (!c) return [];
-    var rows = [];
-    c.querySelectorAll('.row, tr, [data-row], div').forEach(function () {});
-    // Collect input/textarea values grouped by their nearest row container.
-    var inputs = c.querySelectorAll('input, textarea, select');
-    var current = [];
-    inputs.forEach(function (inp) {
-      if (inp.value && inp.value.trim()) current.push(inp.value.trim());
-    });
-    return current;
-  }
-  function captureEwt() {
-    try {
-      var rec = {
-        ts: new Date().toISOString(),
-        ticketNo: val('ewt-ticket-no'), date: val('ewt-date'),
-        customer: val('ewt-customer'), jobAddress: val('ewt-job-address'),
-        city: val('ewt-city'), state: val('ewt-state'),
-        po: val('ewt-po'), jobNum: val('ewt-job-num'), phase: val('ewt-phase'),
-        description: val('ewt-description'), acceptedTitle: val('ewt-title'),
-        labor: scrapeRows('ewt-labor-rows'),
-        equipment: scrapeRows('ewt-equipment-rows'),
-        materials: scrapeRows('ewt-materials-rows')
-      };
-      // Skip empty saves.
-      if (!rec.ticketNo && !rec.customer && !rec.description) return;
-      var arr;
-      try { arr = JSON.parse(localStorage.getItem(EWT_KEY) || '[]'); } catch (e) { arr = []; }
-      // De-dupe by ticketNo+date within the session (update in place).
-      var idx = arr.findIndex(function (x) { return x.ticketNo === rec.ticketNo && x.date === rec.date; });
-      if (idx >= 0) arr[idx] = rec; else arr.push(rec);
-      if (arr.length > 300) arr = arr.slice(arr.length - 300);
-      localStorage.setItem(EWT_KEY, JSON.stringify(arr)); // triggers sync via hook
-    } catch (e) {}
-  }
-
   // ---------- admin console ----------
   function enableAdmin() {
     document.querySelectorAll('.admin-only').forEach(function (el) { el.style.display = ''; });
@@ -432,13 +426,32 @@
     }).join('<br>');
     return head + trucks;
   }
+  var ADMIN_EWT_CACHE = [];
   function ewtHtml(e) {
-    if (!Array.isArray(e) || !e.length) return '<em style="color:var(--gray)">None</em>';
-    return e.map(function (x) {
+    ADMIN_EWT_CACHE = Array.isArray(e) ? e : [];
+    if (!ADMIN_EWT_CACHE.length) return '<em style="color:var(--gray)">None</em>';
+    return ADMIN_EWT_CACHE.map(function (x, i) {
       return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">Ticket ' + esc(x.ticketNo || '—') + ' · ' + esc(x.date || '') +
-        ' · ' + esc(x.customer || '') + '<br><span style="color:var(--gray)">' + esc((x.description || '').slice(0, 140)) + '</span></div>';
+        ' · ' + esc(x.customer || '') + (x.signed ? ' · signed' : '') +
+        (x.pdf ? ' <button type="button" data-ewt-pdf="' + i + '" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:none;background:#f4f5f7;color:#23272e;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Open PDF</button>' : '') +
+        '<br><span style="color:var(--gray)">' + esc((x.description || '').slice(0, 140)) + '</span></div>';
     }).join('');
   }
+  // Open a stored EWT PDF in a new tab (admin drill-down)
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-ewt-pdf]') : null;
+    if (!b) return;
+    var rec = ADMIN_EWT_CACHE[+b.getAttribute('data-ewt-pdf')];
+    if (!rec || !rec.pdf) return;
+    try {
+      var base64 = rec.pdf.slice(rec.pdf.indexOf(',') + 1);
+      var bin = atob(base64);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var blob = new Blob([bytes], { type: 'application/pdf' });
+      window.open(URL.createObjectURL(blob), '_blank');
+    } catch (e) { alert('Could not open this PDF.'); }
+  });
   function updatedTag(entry) {
     if (!entry || !entry.updatedAt) return '';
     try { return ' — as of ' + new Date(entry.updatedAt).toLocaleDateString(); } catch (e) { return ''; }

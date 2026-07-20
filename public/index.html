@@ -3446,7 +3446,7 @@ function ewtFormatText(t) {
   return lines.join('\n');
 }
 
-document.getElementById('ewt-email-btn').addEventListener('click', () => {
+document.getElementById('ewt-email-btn').addEventListener('click', async () => {
   const t = ewtCollect();
   const recipients = ewtGetRecipients();
   const subjectParts = ['EBCC EWT'];
@@ -3458,6 +3458,43 @@ document.getElementById('ewt-email-btn').addEventListener('click', () => {
   const mailto = 'mailto:' + encodeURIComponent(recipients.join(','))
     + '?subject=' + encodeURIComponent(subject)
     + '&body=' + encodeURIComponent(body);
+
+  // Build the actual PDF so it can travel WITH the email (mailto: can't attach files).
+  let pdf = null;
+  if (typeof window.jspdf !== 'undefined') {
+    try {
+      pdf = ewtBuildPDF(t);
+      // Record the finalized ticket + PDF (app shell stores & syncs it for admin review)
+      window.dispatchEvent(new CustomEvent('ebcc-ewt-finalized', {
+        detail: { ticket: t, pdf: pdf.output('datauristring') }
+      }));
+    } catch (e) { pdf = null; }
+  }
+
+  if (pdf) {
+    const fname = 'EWT-' + (t.ticketNo || 'ticket') + '.pdf';
+    try {
+      const blob = pdf.output('blob');
+      const file = new File([blob], fname, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        // Phone/tablet: share sheet with the PDF attached — pick Mail, add recipients.
+        try {
+          await navigator.share({
+            files: [file],
+            title: subject,
+            text: 'To: ' + recipients.join(', ') + '\n\n' + body,
+          });
+        } catch (_) { /* user canceled the share — don't also open a blank email */ }
+        return;
+      }
+      // Desktop: download the PDF, then open the email draft so it can be attached.
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove();
+      alert('PDF downloaded (' + fname + '). Attach it to the email that opens next.');
+    } catch (e) { /* fall through to plain email */ }
+  }
   window.location.href = mailto;
 });
 
@@ -3614,6 +3651,12 @@ document.getElementById('ewt-preview-btn').addEventListener('click', () => {
   }
   const t = ewtCollect();
   const doc = ewtBuildPDF(t);
+  // Record the finalized ticket + PDF (app shell stores & syncs it for admin review)
+  try {
+    window.dispatchEvent(new CustomEvent('ebcc-ewt-finalized', {
+      detail: { ticket: t, pdf: doc.output('datauristring') }
+    }));
+  } catch (e) {}
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
   document.getElementById('ewt-pdf-frame').src = url;
