@@ -3498,148 +3498,207 @@ document.getElementById('ewt-email-btn').addEventListener('click', async () => {
   window.location.href = mailto;
 });
 
+// Renders the EWT as a replica of the EBCC paper Extra Work Ticket:
+// ruled tables with peach header bands, blank ruled rows, totals bands,
+// description lines, and the signature block. Rows are fixed-height with
+// clipped single-line text, so nothing can overlap; long descriptions
+// paginate cleanly with the table band repeated on continuation pages.
 function ewtBuildPDF(t) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
-  const MARGIN = 36;
-  let y = MARGIN;
+  const M = 30;                 // page margin
+  const CW = W - 2 * M;         // content width
+  const ROW = 17;               // table row height
+  const PEACH = [249, 206, 187];
+  const BAND_TEXT = [122, 62, 22];
+  let y = M;
 
-  doc.setFont('helvetica', 'bold').setFontSize(14);
-  doc.text('EBCC EXTRA WORK TICKET', MARGIN, y);
-  doc.setFontSize(10).setFont('helvetica', 'normal');
-  const rightHeader = [];
-  if (t.ticketNo) rightHeader.push('Ticket No. ' + t.ticketNo);
-  rightHeader.push('License No. ' + EWT_LICENSE_NO);
-  rightHeader.forEach((line, i) => doc.text(line, W - MARGIN, y + i*12, { align: 'right' }));
-  y += 24;
-
-  doc.setFontSize(8);
-  doc.text('Earth Basics Contracting Co. | INNOVATIVE - INTEGRATED - INSIGHTFUL', MARGIN, y); y += 10;
-  doc.text('CA: 3010 E. Miraloma Ave., Anaheim, CA 92806  |  TX: 602 Wildlife Pkwy., Grand Prairie, TX 75050  |  www.earth-basics.com', MARGIN, y);
-  y += 14;
-  doc.setDrawColor(180).line(MARGIN, y, W - MARGIN, y); y += 14;
-
-  doc.setFontSize(10);
-  const headerFields = [
-    ['Customer:',     t.customer],
-    ['Date:',         t.date],
-    ['Job Address:',  t.jobAddress],
-    ['PO#:',          t.po],
-    ['City, State:',  [t.city, t.state].filter(Boolean).join(', ')],
-    ['Job#:',         t.jobNum],
-    ['Phase Code(s):',t.phase],
-  ];
-  const colW = (W - 2*MARGIN) / 2;
-  headerFields.forEach((f, i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x = MARGIN + col*colW;
-    const yy = y + row*16;
-    doc.setFont('helvetica', 'bold').text(f[0], x, yy);
-    doc.setFont('helvetica', 'normal').text(f[1] || '', x + 80, yy, { maxWidth: colW - 84 });
-  });
-  y += Math.ceil(headerFields.length/2) * 16 + 8;
-
-  function ensureSpace(needed) {
-    if (y + needed > H - MARGIN - 40) {
-      doc.addPage();
-      y = MARGIN;
-    }
+  function clip(text, width, size) {
+    const s = String(text == null ? '' : text);
+    if (!s) return '';
+    doc.setFontSize(size);
+    const parts = doc.splitTextToSize(s, width);
+    if (parts.length <= 1) return s;
+    let first = parts[0];
+    return first.length > 1 ? first.slice(0, first.length - 1) + '…' : first;
   }
-  function sectionHeader(title) {
-    ensureSpace(40);
-    doc.setFillColor(253, 233, 214).rect(MARGIN, y, W - 2*MARGIN, 16, 'F');
-    doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(80, 40, 0);
-    doc.text(title, MARGIN + 6, y + 11);
-    doc.setTextColor(0);
+  function pageBreak(needed) {
+    if (y + needed > H - M - 14) { doc.addPage(); y = M; return true; }
+    return false;
+  }
+
+  // ---------- Header (EB logo, title, ticket number) ----------
+  const logoHref = (document.querySelector('link[rel="icon"]') || {}).href || '';
+  if (logoHref.indexOf('data:image') === 0) {
+    try { doc.addImage(logoHref, 'PNG', M, y, 44, 44); } catch (e) {}
+  }
+  doc.setFont('helvetica', 'bold').setFontSize(19).setTextColor(0);
+  doc.text('EXTRA WORK TICKET', M + 56, y + 20);
+  doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(90);
+  doc.text('Earth Basics Contracting Co.  ·  General Engineering Contractor  ·  www.earth-basics.com', M + 56, y + 32);
+  doc.text('CA: 3010 E. Miraloma Ave., Anaheim, CA 92806    TX: 602 Wildlife Pkwy., Grand Prairie, TX 75050', M + 56, y + 41);
+  doc.setTextColor(200, 30, 30).setFont('helvetica', 'bold').setFontSize(13);
+  doc.text('No. ' + (t.ticketNo || ''), W - M, y + 14, { align: 'right' });
+  doc.setTextColor(90).setFont('helvetica', 'normal').setFontSize(7.5);
+  doc.text('License No. ' + EWT_LICENSE_NO, W - M, y + 25, { align: 'right' });
+  doc.setTextColor(0);
+  y += 50;
+  // double rule, like the printed form
+  doc.setDrawColor(0).setLineWidth(1.4).line(M, y, W - M, y);
+  doc.setLineWidth(0.5).line(M, y + 2.5, W - M, y + 2.5);
+  y += 16;
+
+  // ---------- Job info: label + underlined value grid ----------
+  function infoRow(cells) {
+    // cells: [label, value, weight] — weights split the row width
+    const totalWeight = cells.reduce((s, c) => s + c[2], 0);
+    let x = M;
+    doc.setFontSize(9);
+    cells.forEach(c => {
+      const cw = CW * (c[2] / totalWeight);
+      doc.setFont('helvetica', 'bold').setTextColor(60);
+      doc.text(c[0], x, y);
+      const lx = x + doc.getTextWidth(c[0]) + 4;
+      const lw = cw - (lx - x) - 10;
+      doc.setFont('helvetica', 'normal').setTextColor(0).setFontSize(10);
+      doc.text(clip(c[1], lw - 4, 10), lx + 2, y - 0.5);
+      doc.setDrawColor(0).setLineWidth(0.6).line(lx, y + 2, lx + lw, y + 2);
+      doc.setFontSize(9);
+      x += cw;
+    });
     y += 20;
   }
+  infoRow([['Customer', t.customer, 3], ['Date', t.date, 1.4]]);
+  infoRow([['Job Address', t.jobAddress, 3], ['City', t.city, 1.5], ['State', t.state, 0.7]]);
+  infoRow([['PO #', t.po, 1.4], ['Job #', t.jobNum, 1.4], ['Phase Code(s)', t.phase, 1.6]]);
+  y += 2;
 
-  if (t.labor.length) {
-    sectionHeader('LABOR');
-    doc.setFont('helvetica', 'bold').setFontSize(9);
-    doc.text('Description', MARGIN, y);
-    doc.text('Trade', MARGIN + 200, y);
-    doc.text('Reg', MARGIN + 320, y);
-    doc.text('OT', MARGIN + 370, y);
-    doc.text('SB', MARGIN + 420, y);
-    y += 12;
-    doc.setFont('helvetica', 'normal');
-    t.labor.forEach(r => {
-      ensureSpace(14);
-      doc.text(String(r.desc || ''), MARGIN, y, { maxWidth: 190 });
-      doc.text(String(r.trade || ''), MARGIN + 200, y, { maxWidth: 110 });
-      doc.text(String(r.reg || ''), MARGIN + 320, y);
-      doc.text(String(r.ot || ''), MARGIN + 370, y);
-      doc.text(String(r.sb || ''), MARGIN + 420, y);
-      y += 12;
+  // ---------- Ruled tables with peach header bands ----------
+  function band(cols, title) {
+    doc.setFillColor(PEACH[0], PEACH[1], PEACH[2]);
+    doc.rect(M, y, CW, ROW, 'F');
+    doc.setDrawColor(0).setLineWidth(0.6).rect(M, y, CW, ROW);
+    let x = M;
+    doc.setFont('helvetica', 'bold').setFontSize(8.5);
+    doc.setTextColor(BAND_TEXT[0], BAND_TEXT[1], BAND_TEXT[2]);
+    cols.forEach((c, i) => {
+      const label = (i === 0 && title) ? title : c.label;
+      const cx = c.align === 'left' ? x + 5 : x + c.w / 2;
+      doc.text(label, cx, y + ROW - 5.5, c.align === 'left' ? undefined : { align: 'center' });
+      if (i > 0) doc.line(x, y, x, y + ROW);
+      x += c.w;
     });
-    y += 6;
+    doc.setTextColor(0);
+    y += ROW;
+  }
+  function table(title, cols, rows, minRows, totalLabel) {
+    pageBreak(ROW * 3);
+    band(cols, title);
+    const n = Math.max(rows.length, minRows);
+    for (let r = 0; r < n; r++) {
+      if (pageBreak(ROW)) band(cols, title + ' (CONT.)');
+      let x = M;
+      doc.setFont('helvetica', 'normal').setFontSize(9);
+      cols.forEach((c, i) => {
+        const v = rows[r] ? rows[r][i] : '';
+        if (v !== '' && v != null) {
+          const txt = clip(v, c.w - 10, 9);
+          if (c.align === 'left') doc.text(txt, x + 5, y + ROW - 5.5);
+          else doc.text(txt, x + c.w / 2, y + ROW - 5.5, { align: 'center' });
+        }
+        if (i > 0) doc.setDrawColor(0).setLineWidth(0.4).line(x, y, x, y + ROW);
+        x += c.w;
+      });
+      doc.setDrawColor(0).setLineWidth(0.4);
+      doc.line(M, y + ROW, W - M, y + ROW);
+      doc.line(M, y, M, y + ROW);
+      doc.line(W - M, y, W - M, y + ROW);
+      y += ROW;
+    }
+    if (totalLabel) {
+      if (pageBreak(ROW)) band(cols, title + ' (CONT.)');
+      const boxW = cols[cols.length - 1].w;
+      const labelW = 150;
+      doc.setFillColor(PEACH[0], PEACH[1], PEACH[2]);
+      doc.rect(W - M - boxW - labelW, y, labelW, ROW, 'F');
+      doc.setDrawColor(0).setLineWidth(0.6);
+      doc.rect(W - M - boxW - labelW, y, labelW, ROW);
+      doc.rect(W - M - boxW, y, boxW, ROW);
+      doc.setFont('helvetica', 'bold').setFontSize(8.5);
+      doc.setTextColor(BAND_TEXT[0], BAND_TEXT[1], BAND_TEXT[2]);
+      doc.text(totalLabel, W - M - boxW - 8, y + ROW - 5.5, { align: 'right' });
+      doc.setTextColor(0);
+      y += ROW;
+    }
+    y += 10;
   }
 
-  if (t.equipment.length) {
-    sectionHeader('EQUIPMENT');
-    doc.setFont('helvetica', 'bold').setFontSize(9);
-    doc.text('Equipment', MARGIN, y);
-    doc.text('Hours', MARGIN + 360, y);
-    doc.text('SB', MARGIN + 420, y);
-    y += 12;
-    doc.setFont('helvetica', 'normal');
-    t.equipment.forEach(r => {
-      ensureSpace(14);
-      doc.text(String(r.name || ''), MARGIN, y, { maxWidth: 350 });
-      doc.text(String(r.hours || ''), MARGIN + 360, y);
-      doc.text(String(r.sb || ''), MARGIN + 420, y);
-      y += 12;
-    });
-    y += 6;
-  }
+  table('LABOR',
+    [{ label: 'LABOR', w: 232, align: 'left' }, { label: 'TRADE', w: 120, align: 'center' },
+     { label: 'REG', w: 66, align: 'center' }, { label: 'OT', w: 66, align: 'center' }, { label: 'SB', w: 68, align: 'center' }],
+    t.labor.map(r => [r.desc, r.trade, r.reg, r.ot, r.sb]),
+    Math.max(4, t.labor.length), 'TOTAL LABOR');
 
-  if (t.materials.length) {
-    sectionHeader('MATERIALS, SUBCONTRACTOR, MISCELLANEOUS');
-    doc.setFont('helvetica', 'bold').setFontSize(9);
-    doc.text('Description', MARGIN, y);
-    doc.text('Quantity', MARGIN + 360, y);
-    y += 12;
-    doc.setFont('helvetica', 'normal');
-    t.materials.forEach(r => {
-      ensureSpace(14);
-      doc.text(String(r.desc || ''), MARGIN, y, { maxWidth: 350 });
-      doc.text(String(r.qty || ''), MARGIN + 360, y);
-      y += 12;
-    });
-    y += 6;
-  }
+  table('EQUIPMENT',
+    [{ label: 'EQUIPMENT', w: 352, align: 'left' }, { label: 'HOURS', w: 100, align: 'center' }, { label: 'SB', w: 100, align: 'center' }],
+    t.equipment.map(r => [r.name, r.hours, r.sb]),
+    Math.max(4, t.equipment.length), 'TOTAL EQUIPMENT');
 
-  if (t.description) {
-    sectionHeader('DESCRIPTION OF WORK');
-    doc.setFontSize(10).setFont('helvetica', 'normal');
-    const split = doc.splitTextToSize(t.description, W - 2*MARGIN);
-    split.forEach(line => {
-      ensureSpace(14);
-      doc.text(line, MARGIN, y);
-      y += 12;
-    });
-    y += 6;
-  }
+  table('MATERIALS / TRUCKING / SUBCONTRACTOR / MISC.',
+    [{ label: 'DESCRIPTION', w: 352, align: 'left' }, { label: 'QUANTITY', w: 200, align: 'center' }],
+    t.materials.map(r => [r.desc, r.qty]),
+    Math.max(3, t.materials.length), 'TOTAL MATERIALS');
 
-  ensureSpace(60);
+  // ---------- Description of work: wrapped text on ruled lines ----------
+  pageBreak(ROW * 3);
+  doc.setFillColor(PEACH[0], PEACH[1], PEACH[2]);
+  doc.rect(M, y, CW, ROW, 'F');
+  doc.setDrawColor(0).setLineWidth(0.6).rect(M, y, CW, ROW);
+  doc.setFont('helvetica', 'bold').setFontSize(8.5);
+  doc.setTextColor(BAND_TEXT[0], BAND_TEXT[1], BAND_TEXT[2]);
+  doc.text('DESCRIPTION OF WORK', M + 5, y + ROW - 5.5);
+  doc.setTextColor(0);
+  y += ROW;
+  doc.setFont('helvetica', 'normal').setFontSize(9.5);
+  const descLines = t.description ? doc.splitTextToSize(t.description, CW - 12) : [];
+  const nDesc = Math.max(4, descLines.length);
+  for (let i = 0; i < nDesc; i++) {
+    if (pageBreak(ROW)) { /* continue lines on the next page */ }
+    if (descLines[i]) doc.text(descLines[i], M + 6, y + ROW - 5.5);
+    doc.setDrawColor(0).setLineWidth(0.4);
+    doc.line(M, y + ROW, W - M, y + ROW);
+    doc.line(M, y, M, y + ROW);
+    doc.line(W - M, y, W - M, y + ROW);
+    y += ROW;
+  }
   y += 16;
-  doc.setFontSize(10).setFont('helvetica', 'bold');
-  doc.text('Accepted By: ', MARGIN, y);
-  const sigIsImage = t.acceptedBy && typeof t.acceptedBy === 'string' && t.acceptedBy.startsWith('data:image');
-  if (sigIsImage) {
-    // Draw the signature image just above the signature baseline
-    try { doc.addImage(t.acceptedBy, 'PNG', MARGIN + 70, y - 22, 210, 28); } catch (e) {}
+
+  // ---------- Signature block ----------
+  pageBreak(64);
+  const sigY = y + 30;
+  doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(60);
+  doc.text('Accepted By', M, sigY + 11);
+  const sigX = M + 62;
+  const sigW = 220;
+  if (t.acceptedBy && typeof t.acceptedBy === 'string' && t.acceptedBy.indexOf('data:image') === 0) {
+    try { doc.addImage(t.acceptedBy, 'PNG', sigX + 6, sigY - 26, 200, 30); } catch (e) {}
   } else if (t.acceptedBy) {
-    doc.setFont('helvetica', 'normal').text(t.acceptedBy, MARGIN + 70, y);
+    doc.setFont('helvetica', 'normal').setTextColor(0).text(clip(t.acceptedBy, sigW - 8, 10), sigX + 4, sigY);
   }
-  doc.setDrawColor(0).line(MARGIN + 70, y + 2, MARGIN + 280, y + 2);
-  doc.setFont('helvetica', 'bold').text('Title: ', MARGIN + 300, y);
-  doc.setFont('helvetica', 'normal').text(t.title || '', MARGIN + 330, y);
-  doc.line(MARGIN + 330, y + 2, W - MARGIN, y + 2);
+  doc.setDrawColor(0).setLineWidth(0.6).line(sigX, sigY + 2, sigX + sigW, sigY + 2);
+  doc.setFont('helvetica', 'bold').setTextColor(60);
+  doc.text('Title', sigX + sigW + 14, sigY + 11);
+  doc.setFont('helvetica', 'normal').setTextColor(0).setFontSize(10);
+  doc.text(clip(t.title, 130, 10), sigX + sigW + 40, sigY);
+  doc.setLineWidth(0.6).line(sigX + sigW + 38, sigY + 2, W - M, sigY + 2);
+  y = sigY + 22;
+
+  // Footer
+  doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(150);
+  doc.text('Earth Basics Contracting Co.  ·  License No. ' + EWT_LICENSE_NO + '  ·  Submitted via EBCC Field Assistant', W / 2, H - 18, { align: 'center' });
+  doc.setTextColor(0);
 
   return doc;
 }

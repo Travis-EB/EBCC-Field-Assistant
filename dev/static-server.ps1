@@ -31,6 +31,22 @@ while ($listener.IsListening) {
     $req = $ctx.Request; $res = $ctx.Response
     $path = [System.Uri]::UnescapeDataString($req.Url.AbsolutePath)
     if ($path -eq '/') { $path = '/index.html' }
+    # Dev-only: accept rendered page images (data URLs) and save to scratchpad
+    if ($path -eq '/_save' -and $req.HttpMethod -eq 'POST') {
+      try {
+        $name = $req.QueryString['name'] -replace '[^a-zA-Z0-9._-]', ''
+        if (-not $name) { $name = 'page.png' }
+        $reader = New-Object IO.StreamReader($req.InputStream)
+        $dataUrl = $reader.ReadToEnd(); $reader.Close()
+        $b64 = $dataUrl.Substring($dataUrl.IndexOf(',') + 1)
+        $outDir = Join-Path $env:TEMP 'ebcc-pdf-pages'
+        New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $outDir $name), [Convert]::FromBase64String($b64))
+        $res.StatusCode = 200
+        $ok = [Text.Encoding]::UTF8.GetBytes('saved')
+        $res.OutputStream.Write($ok,0,$ok.Length); $res.Close(); continue
+      } catch { try { $res.StatusCode = 500; $res.Close() } catch {}; continue }
+    }
     if ($path -like '/api/*' -or $path -like '/.auth/*') {
       $json = '{"ok":true}'
       if ($path -eq '/api/ticket-number') {
