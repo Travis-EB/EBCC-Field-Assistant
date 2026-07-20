@@ -660,7 +660,25 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 }
 .ewt-labor-row { grid-template-columns: 1.4fr 1fr 56px 56px 56px 28px; }
 .ewt-equipment-row { grid-template-columns: 1fr 60px 60px 28px; }
-.ewt-material-row { grid-template-columns: 1fr 80px 28px; }
+.ewt-material-row { grid-template-columns: 1fr 70px 92px 28px; }
+.ewt-row select {
+  font-size: 13px;
+  padding: 6px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: white;
+  font-family: inherit;
+  width: 100%;
+}
+.ewt-totals {
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dark);
+  padding: 6px 4px 2px;
+}
+.ewt-totals span { color: var(--gray); font-weight: 500; }
+.ewt-totals b { color: var(--orange); font-variant-numeric: tabular-nums; }
 .ewt-row input {
   font-size: 14px;
   padding: 6px 8px;
@@ -756,6 +774,7 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   .ewt-grid { grid-template-columns: 1fr; }
   .ewt-labor-row { grid-template-columns: 1.2fr 0.8fr 48px 48px 48px 24px; gap: 3px; }
   .ewt-equipment-row { grid-template-columns: 1fr 54px 54px 24px; gap: 3px; }
+  .ewt-material-row { grid-template-columns: 1fr 54px 80px 24px; gap: 3px; }
 }
 
 /* === Stepper (+/- buttons) for mobile-friendly numeric inputs === */
@@ -1878,12 +1897,14 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 <div class="ewt-section">
   <h3>Labor</h3>
   <div id="ewt-labor-rows"></div>
+  <div class="ewt-totals" id="ewt-labor-totals"></div>
   <button class="btn" id="ewt-add-labor-btn">+ Add labor row</button>
 </div>
 
 <div class="ewt-section">
   <h3>Equipment</h3>
   <div id="ewt-equipment-rows"></div>
+  <div class="ewt-totals" id="ewt-equipment-totals"></div>
   <div class="search-bar" style="margin-top:8px;">
     <input type="text" id="ewt-equipment-search" placeholder="Search equipment to add…" autocomplete="off">
     <div class="search-results" id="ewt-equipment-search-results"></div>
@@ -1900,6 +1921,7 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 <div class="ewt-section">
   <h3>Materials, Subcontractor, Miscellaneous</h3>
   <div id="ewt-materials-rows"></div>
+  <div class="ewt-totals" id="ewt-materials-totals"></div>
   <button class="btn" id="ewt-add-material-btn">+ Add row</button>
 </div>
 
@@ -3208,7 +3230,10 @@ const EWT_LICENSE_NO = 'A692678';
 
 let ewtLabor = [{ desc:'', trade:'', reg:'', ot:'', sb:'' }];
 let ewtEquipment = [];
-let ewtMaterials = [{ desc:'', qty:'' }];
+let ewtMaterials = [{ desc:'', qty:'', unit:'' }];
+
+// Units of measure common to dirt work / materials / trucking
+const EWT_UNITS = ['', 'Tons', 'CY', 'SY', 'SF', 'LF', 'Loads', 'Hours', 'Days', 'Each', 'Gallons', 'Lbs', 'Acres', 'Miles'];
 
 function escAttr(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function escHTML(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -3227,12 +3252,14 @@ function ewtRenderLabor() {
     '</div>'
   ).join('');
   list.innerHTML = header + rows;
+  if (typeof ewtUpdateTotals === 'function') ewtUpdateTotals();
 }
 
 function ewtRenderEquipment() {
   const list = document.getElementById('ewt-equipment-rows');
   if (!ewtEquipment.length) {
     list.innerHTML = '<div class="empty">No equipment added yet. Use the search box below.</div>';
+    if (typeof ewtUpdateTotals === 'function') ewtUpdateTotals();
     return;
   }
   const header = '<div class="ewt-row-headers ewt-equipment-row"><div>Equipment</div><div>Hours</div><div>SB</div><div></div></div>';
@@ -3245,19 +3272,59 @@ function ewtRenderEquipment() {
     '</div>'
   ).join('');
   list.innerHTML = header + rows;
+  if (typeof ewtUpdateTotals === 'function') ewtUpdateTotals();
 }
 
 function ewtRenderMaterials() {
   const list = document.getElementById('ewt-materials-rows');
-  const header = '<div class="ewt-row-headers ewt-material-row"><div>Description</div><div>Quantity</div><div></div></div>';
+  const header = '<div class="ewt-row-headers ewt-material-row"><div>Description</div><div>Qty</div><div>Unit</div><div></div></div>';
   const rows = ewtMaterials.map((r, i) =>
     '<div class="ewt-row ewt-material-row">' +
       '<input type="text" placeholder="Material / Sub / Misc" value="' + escAttr(r.desc) + '" data-ewt-material-idx="' + i + '" data-ewt-material-field="desc">' +
-      '<input type="text" placeholder="0" value="' + escAttr(r.qty) + '" data-ewt-material-idx="' + i + '" data-ewt-material-field="qty">' +
+      '<input type="number" min="0" step="0.5" placeholder="0" value="' + escAttr(r.qty) + '" data-ewt-material-idx="' + i + '" data-ewt-material-field="qty" inputmode="decimal">' +
+      '<select data-ewt-material-idx="' + i + '" data-ewt-material-field="unit">' +
+        EWT_UNITS.map(u => '<option value="' + escAttr(u) + '"' + ((r.unit || '') === u ? ' selected' : '') + '>' + (u || 'Unit…') + '</option>').join('') +
+      '</select>' +
       '<button class="remove-btn" data-ewt-material-remove="' + i + '" title="Remove">&times;</button>' +
     '</div>'
   ).join('');
   list.innerHTML = header + rows;
+  ewtUpdateTotals();
+}
+
+// ---- Section totals (Reg/OT/SB kept separate; materials totaled per unit) ----
+function ewtNum(v) { const n = parseFloat(v); return isFinite(n) ? n : 0; }
+function ewtFmtNum(n) { return (Math.round(n * 100) / 100).toLocaleString(); }
+function ewtComputeTotals() {
+  const labor = { reg: 0, ot: 0, sb: 0 };
+  ewtLabor.forEach(r => { labor.reg += ewtNum(r.reg); labor.ot += ewtNum(r.ot); labor.sb += ewtNum(r.sb); });
+  const equip = { hours: 0, sb: 0 };
+  ewtEquipment.forEach(r => { equip.hours += ewtNum(r.hours); equip.sb += ewtNum(r.sb); });
+  const materials = {};
+  ewtMaterials.forEach(r => {
+    const q = parseFloat(r.qty);
+    if (!isFinite(q) || q === 0) return;
+    const u = (r.unit || '').trim() || 'units';
+    materials[u] = (materials[u] || 0) + q;
+  });
+  return { labor, equip, materials };
+}
+function ewtUpdateTotals() {
+  const t = ewtComputeTotals();
+  const lt = [];
+  if (t.labor.reg) lt.push('<span>Reg</span> <b>' + ewtFmtNum(t.labor.reg) + '</b> hrs');
+  if (t.labor.ot)  lt.push('<span>OT</span> <b>' + ewtFmtNum(t.labor.ot) + '</b> hrs');
+  if (t.labor.sb)  lt.push('<span>SB</span> <b>' + ewtFmtNum(t.labor.sb) + '</b> hrs');
+  const le = document.getElementById('ewt-labor-totals');
+  if (le) le.innerHTML = lt.length ? '<span>Total labor —</span> ' + lt.join(' &middot; ') : '';
+  const et = [];
+  if (t.equip.hours) et.push('<span>Hours</span> <b>' + ewtFmtNum(t.equip.hours) + '</b>');
+  if (t.equip.sb)    et.push('<span>SB</span> <b>' + ewtFmtNum(t.equip.sb) + '</b>');
+  const ee = document.getElementById('ewt-equipment-totals');
+  if (ee) ee.innerHTML = et.length ? '<span>Total equipment —</span> ' + et.join(' &middot; ') : '';
+  const mt = Object.keys(t.materials).map(u => '<b>' + ewtFmtNum(t.materials[u]) + '</b> ' + escHTML(u));
+  const me = document.getElementById('ewt-materials-totals');
+  if (me) me.innerHTML = mt.length ? '<span>Total materials —</span> ' + mt.join(' &middot; ') : '';
 }
 
 function ewtRenderRecipients() {
@@ -3272,19 +3339,31 @@ document.addEventListener('input', (e) => {
   if (lIdx !== undefined) {
     const i = +lIdx, f = e.target.dataset.ewtLaborField;
     if (ewtLabor[i]) ewtLabor[i][f] = e.target.value;
+    ewtUpdateTotals();
     return;
   }
   const eIdx = e.target.dataset.ewtEquipmentIdx;
   if (eIdx !== undefined) {
     const i = +eIdx, f = e.target.dataset.ewtEquipmentField;
     if (ewtEquipment[i]) ewtEquipment[i][f] = e.target.value;
+    ewtUpdateTotals();
     return;
   }
   const mIdx = e.target.dataset.ewtMaterialIdx;
   if (mIdx !== undefined) {
     const i = +mIdx, f = e.target.dataset.ewtMaterialField;
     if (ewtMaterials[i]) ewtMaterials[i][f] = e.target.value;
+    ewtUpdateTotals();
     return;
+  }
+});
+// Unit dropdowns fire 'change'; store + retotal (some browsers also fire 'input')
+document.addEventListener('change', (e) => {
+  const mIdx = e.target.dataset.ewtMaterialIdx;
+  if (mIdx !== undefined && e.target.tagName === 'SELECT') {
+    const i = +mIdx, f = e.target.dataset.ewtMaterialField;
+    if (ewtMaterials[i]) ewtMaterials[i][f] = e.target.value;
+    ewtUpdateTotals();
   }
 });
 
@@ -3294,7 +3373,7 @@ document.addEventListener('click', (e) => {
   const eRm = e.target.dataset.ewtEquipmentRemove;
   if (eRm !== undefined) { ewtEquipment.splice(+eRm, 1); ewtRenderEquipment(); return; }
   const mRm = e.target.dataset.ewtMaterialRemove;
-  if (mRm !== undefined) { ewtMaterials.splice(+mRm, 1); if (!ewtMaterials.length) ewtMaterials.push({desc:'',qty:''}); ewtRenderMaterials(); return; }
+  if (mRm !== undefined) { ewtMaterials.splice(+mRm, 1); if (!ewtMaterials.length) ewtMaterials.push({desc:'',qty:'',unit:''}); ewtRenderMaterials(); return; }
 });
 
 document.getElementById('ewt-add-labor-btn').addEventListener('click', () => {
@@ -3302,7 +3381,7 @@ document.getElementById('ewt-add-labor-btn').addEventListener('click', () => {
   ewtRenderLabor();
 });
 document.getElementById('ewt-add-material-btn').addEventListener('click', () => {
-  ewtMaterials.push({ desc:'', qty:'' });
+  ewtMaterials.push({ desc:'', qty:'', unit:'' });
   ewtRenderMaterials();
 });
 
@@ -3352,7 +3431,7 @@ document.getElementById('ewt-reset-btn').addEventListener('click', () => {
   if (!confirm('Clear the whole ticket?')) return;
   ewtLabor = [{ desc:'', trade:'', reg:'', ot:'', sb:'' }];
   ewtEquipment = [];
-  ewtMaterials = [{ desc:'', qty:'' }];
+  ewtMaterials = [{ desc:'', qty:'', unit:'' }];
   document.querySelectorAll('#tab-ewt input[type="text"], #tab-ewt input[type="date"], #tab-ewt textarea').forEach(i => {
     if (i.id === 'ewt-state') i.value = 'CA';
     else if (i.id !== 'ewt-date') i.value = '';
@@ -3415,6 +3494,12 @@ function ewtFormatText(t) {
       ].filter(Boolean).join(', ');
       lines.push('  - ' + (desc || '(unspecified)') + (hours ? ' | ' + hours + ' hrs' : ''));
     });
+    const lt = ewtComputeTotals().labor;
+    const ltParts = [];
+    if (lt.reg) ltParts.push(ewtFmtNum(lt.reg) + ' reg');
+    if (lt.ot)  ltParts.push(ewtFmtNum(lt.ot) + ' OT');
+    if (lt.sb)  ltParts.push(ewtFmtNum(lt.sb) + ' SB');
+    if (ltParts.length) lines.push('  TOTAL LABOR: ' + ltParts.join(', ') + ' hrs');
   }
   if (t.equipment.length) {
     lines.push('', 'EQUIPMENT');
@@ -3425,12 +3510,21 @@ function ewtFormatText(t) {
       ].filter(Boolean).join(', ');
       lines.push('  - ' + r.name + (hours ? ' | ' + hours : ''));
     });
+    const et = ewtComputeTotals().equip;
+    const etParts = [];
+    if (et.hours) etParts.push(ewtFmtNum(et.hours) + ' hrs');
+    if (et.sb)    etParts.push(ewtFmtNum(et.sb) + ' SB hrs');
+    if (etParts.length) lines.push('  TOTAL EQUIPMENT: ' + etParts.join(', '));
   }
   if (t.materials.length) {
     lines.push('', 'MATERIALS, SUBCONTRACTOR, MISCELLANEOUS');
     t.materials.forEach(r => {
-      lines.push('  - ' + (r.desc || '(unspecified)') + (r.qty ? ' | qty ' + r.qty : ''));
+      const q = [r.qty, r.unit].filter(Boolean).join(' ');
+      lines.push('  - ' + (r.desc || '(unspecified)') + (q ? ' | ' + q : ''));
     });
+    const mt = ewtComputeTotals().materials;
+    const mtParts = Object.keys(mt).map(u => ewtFmtNum(mt[u]) + ' ' + u);
+    if (mtParts.length) lines.push('  TOTAL MATERIALS: ' + mtParts.join(', '));
   }
   if (t.description) {
     lines.push('', 'DESCRIPTION OF WORK');
@@ -3621,7 +3715,7 @@ function ewtBuildPDF(t) {
     doc.setTextColor(0);
     y += ROW;
   }
-  function table(title, cols, rows, minRows, totalLabel) {
+  function table(title, cols, rows, minRows, totalLabel, totals) {
     pageBreak(ROW * 3);
     band(cols, title);
     const n = Math.max(rows.length, minRows);
@@ -3647,37 +3741,62 @@ function ewtBuildPDF(t) {
     }
     if (totalLabel) {
       if (pageBreak(ROW)) band(cols, title + ' (CONT.)');
-      const boxW = cols[cols.length - 1].w;
-      const labelW = 150;
       doc.setFillColor(PEACH[0], PEACH[1], PEACH[2]);
-      doc.rect(W - M - boxW - labelW, y, labelW, ROW, 'F');
-      doc.setDrawColor(0).setLineWidth(0.6);
-      doc.rect(W - M - boxW - labelW, y, labelW, ROW);
-      doc.rect(W - M - boxW, y, boxW, ROW);
+      doc.rect(M, y, CW, ROW, 'F');
+      doc.setDrawColor(0).setLineWidth(0.6).rect(M, y, CW, ROW);
       doc.setFont('helvetica', 'bold').setFontSize(8.5);
       doc.setTextColor(BAND_TEXT[0], BAND_TEXT[1], BAND_TEXT[2]);
-      doc.text(totalLabel, W - M - boxW - 8, y + ROW - 5.5, { align: 'right' });
+      doc.text(totalLabel, M + 5, y + ROW - 5.5);
+      // Per-column totals sit under their own columns, kept separate (Reg/OT/SB etc.)
+      let tx = M;
+      cols.forEach((c, i) => {
+        if (i > 0) doc.setDrawColor(0).setLineWidth(0.4).line(tx, y, tx, y + ROW);
+        const v = totals && totals[i] != null ? String(totals[i]) : '';
+        if (v) {
+          doc.setTextColor(0).setFont('helvetica', 'bold').setFontSize(9);
+          if (c.align === 'left' && i > 0) doc.text(clip(v, c.w - 10, 9), tx + 5, y + ROW - 5.5);
+          else if (i > 0) doc.text(clip(v, c.w - 10, 9), tx + c.w / 2, y + ROW - 5.5, { align: 'center' });
+          doc.setTextColor(BAND_TEXT[0], BAND_TEXT[1], BAND_TEXT[2]).setFontSize(8.5);
+        }
+        tx += c.w;
+      });
       doc.setTextColor(0);
       y += ROW;
     }
     y += 10;
   }
 
+  // Section totals, computed from the ticket itself (Reg/OT/SB kept separate;
+  // materials totaled per unit of measure).
+  const colSum = (arr, key) => arr.reduce((s, r) => { const n = parseFloat(r[key]); return s + (isFinite(n) ? n : 0); }, 0);
+  const fmtTot = (n) => n ? (Math.round(n * 100) / 100).toLocaleString() : '';
+  const matTotals = {};
+  t.materials.forEach(r => {
+    const q = parseFloat(r.qty);
+    if (!isFinite(q) || q === 0) return;
+    const u = (r.unit || '').trim() || 'units';
+    matTotals[u] = (matTotals[u] || 0) + q;
+  });
+  const matTotalStr = Object.keys(matTotals).map(u => fmtTot(matTotals[u]) + ' ' + u).join(' · ');
+
   table('LABOR',
     [{ label: 'LABOR', w: 232, align: 'left' }, { label: 'TRADE', w: 120, align: 'center' },
      { label: 'REG', w: 66, align: 'center' }, { label: 'OT', w: 66, align: 'center' }, { label: 'SB', w: 68, align: 'center' }],
     t.labor.map(r => [r.desc, r.trade, r.reg, r.ot, r.sb]),
-    Math.max(4, t.labor.length), 'TOTAL LABOR');
+    Math.max(4, t.labor.length), 'TOTAL LABOR',
+    [null, null, fmtTot(colSum(t.labor, 'reg')), fmtTot(colSum(t.labor, 'ot')), fmtTot(colSum(t.labor, 'sb'))]);
 
   table('EQUIPMENT',
     [{ label: 'EQUIPMENT', w: 352, align: 'left' }, { label: 'HOURS', w: 100, align: 'center' }, { label: 'SB', w: 100, align: 'center' }],
     t.equipment.map(r => [r.name, r.hours, r.sb]),
-    Math.max(4, t.equipment.length), 'TOTAL EQUIPMENT');
+    Math.max(4, t.equipment.length), 'TOTAL EQUIPMENT',
+    [null, fmtTot(colSum(t.equipment, 'hours')), fmtTot(colSum(t.equipment, 'sb'))]);
 
   table('MATERIALS / TRUCKING / SUBCONTRACTOR / MISC.',
     [{ label: 'DESCRIPTION', w: 352, align: 'left' }, { label: 'QUANTITY', w: 200, align: 'center' }],
-    t.materials.map(r => [r.desc, r.qty]),
-    Math.max(3, t.materials.length), 'TOTAL MATERIALS');
+    t.materials.map(r => [r.desc, [r.qty, r.unit].filter(Boolean).join(' ')]),
+    Math.max(3, t.materials.length), 'TOTAL MATERIALS',
+    [null, matTotalStr]);
 
   // ---------- Description of work: wrapped text on ruled lines ----------
   pageBreak(ROW * 3);
