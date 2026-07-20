@@ -78,6 +78,17 @@ Edit `staticwebapp.config.json` in this project — replace `REPLACE_WITH_TENANT
 4. Back as Travis → Manage Users lists everyone, their record counts, and last-active; open
    a user to review their records; set a user to **disabled** to block access.
 
+## Enable direct EWT emailing (one-time, IT)
+The app emails Extra Work Tickets (with the PDF attached) from the signed-in
+user's own EBCC mailbox via Microsoft Graph. To turn it on:
+1. Entra ID → App registrations → **EBCC Field Assistant** → **API permissions**
+2. **Add a permission** → **Microsoft Graph** → **Application permissions** → search
+   **Mail.Send** → add it
+3. Click **Grant admin consent for Earth Basics**
+Until consent is granted, the app automatically falls back to the device share
+sheet (PDF attached, recipients added by hand). Optional hardening: restrict
+which mailboxes the app can send as with an Exchange **ApplicationAccessPolicy**.
+
 ## Day-to-day admin (Travis, no Azure needed)
 Use the in-app **Manage Users** tab: change anyone between **admin / user / disabled** and
 review each person's Truck Tickets, Load Counts, and Extra Work Tickets. New employees

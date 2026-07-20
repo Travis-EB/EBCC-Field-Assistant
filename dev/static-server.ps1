@@ -52,6 +52,8 @@ while ($listener.IsListening) {
       if ($path -eq '/api/ticket-number') {
         $ticketCounter++
         $json = '{"number":' + $ticketCounter + '}'
+      } elseif ($path -eq '/api/send-ewt') {
+        $json = '{"ok":true,"sent":true}'
       } elseif ($path -eq '/api/me') {
         $json = '{"authenticated":true,"userId":"dev-admin","email":"travis@earthbasics.net","name":"Travis Pecoy","role":"admin","isAdmin":true}'
       } elseif ($path -like '/api/records*' -and $req.Url.Query -like '*userId=*') {

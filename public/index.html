@@ -3449,45 +3449,71 @@ function ewtFormatText(t) {
 document.getElementById('ewt-email-btn').addEventListener('click', async () => {
   const t = ewtCollect();
   const recipients = ewtGetRecipients();
-  const subjectParts = ['EBCC EWT'];
-  if (t.ticketNo) subjectParts.push('#' + t.ticketNo);
-  if (t.customer) subjectParts.push('- ' + t.customer);
-  if (t.date) subjectParts.push('(' + t.date + ')');
-  const subject = subjectParts.join(' ');
+  const subject = 'EWT-' + (t.date || new Date().toISOString().slice(0, 10));
   const body = ewtFormatText(t);
-  const mailto = 'mailto:' + encodeURIComponent(recipients.join(','))
-    + '?subject=' + encodeURIComponent(subject)
-    + '&body=' + encodeURIComponent(body);
+  const fname = 'EWT-' + (t.ticketNo || 'ticket') + '.pdf';
 
   // Build the actual PDF so it can travel WITH the email (mailto: can't attach files).
   let pdf = null;
+  let pdfUri = '';
   if (typeof window.jspdf !== 'undefined') {
     try {
       pdf = ewtBuildPDF(t);
+      pdfUri = pdf.output('datauristring');
       // Record the finalized ticket + PDF (app shell stores & syncs it for admin review)
       window.dispatchEvent(new CustomEvent('ebcc-ewt-finalized', {
-        detail: { ticket: t, pdf: pdf.output('datauristring') }
+        detail: { ticket: t, pdf: pdfUri }
       }));
     } catch (e) { pdf = null; }
   }
 
+  if (!recipients.length) {
+    alert('Check at least one recipient box (or add an email) before sending.');
+    return;
+  }
+
+  // 1) Best path: the server emails it from YOUR mailbox — recipients pre-filled,
+  //    subject EWT-<date>, PDF attached, and the ticket recorded for the admin.
   if (pdf) {
-    const fname = 'EWT-' + (t.ticketNo || 'ticket') + '.pdf';
+    try {
+      const res = await fetch('/api/send-ewt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: subject,
+          text: body,
+          recipients: recipients,
+          fileName: fname,
+          pdf: pdfUri,
+          ticket: {
+            ticketNo: t.ticketNo, date: t.date, customer: t.customer,
+            jobAddress: t.jobAddress, city: t.city, state: t.state,
+            po: t.po, jobNum: t.jobNum, phase: t.phase,
+            description: t.description, title: t.title,
+            labor: t.labor, equipment: t.equipment, materials: t.materials,
+            signed: !!t.acceptedBy,
+          },
+        }),
+      });
+      const out = await res.json().catch(() => null);
+      if (res.ok && out && out.ok) {
+        alert('Sent ' + fname + ' to:\n' + recipients.join('\n'));
+        return;
+      }
+    } catch (e) { /* offline or server unavailable — fall back below */ }
+  }
+
+  // 2) Fallback: device share sheet with the PDF attached (recipients added by hand).
+  if (pdf) {
     try {
       const blob = pdf.output('blob');
       const file = new File([blob], fname, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        // Phone/tablet: share sheet with the PDF attached — pick Mail, add recipients.
         try {
-          await navigator.share({
-            files: [file],
-            title: subject,
-            text: 'To: ' + recipients.join(', ') + '\n\n' + body,
-          });
+          await navigator.share({ files: [file], title: subject, text: subject + '\n\n' + body });
         } catch (_) { /* user canceled the share — don't also open a blank email */ }
         return;
       }
-      // Desktop: download the PDF, then open the email draft so it can be attached.
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = fname;
@@ -3495,7 +3521,9 @@ document.getElementById('ewt-email-btn').addEventListener('click', async () => {
       alert('PDF downloaded (' + fname + '). Attach it to the email that opens next.');
     } catch (e) { /* fall through to plain email */ }
   }
-  window.location.href = mailto;
+  window.location.href = 'mailto:' + encodeURIComponent(recipients.join(','))
+    + '?subject=' + encodeURIComponent(subject)
+    + '&body=' + encodeURIComponent(body);
 });
 
 // Renders the EWT as a replica of the EBCC paper Extra Work Ticket:
@@ -3710,12 +3738,7 @@ document.getElementById('ewt-preview-btn').addEventListener('click', () => {
   }
   const t = ewtCollect();
   const doc = ewtBuildPDF(t);
-  // Record the finalized ticket + PDF (app shell stores & syncs it for admin review)
-  try {
-    window.dispatchEvent(new CustomEvent('ebcc-ewt-finalized', {
-      detail: { ticket: t, pdf: doc.output('datauristring') }
-    }));
-  } catch (e) {}
+  // (Preview is just a look — only the Email button records the ticket.)
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
   document.getElementById('ewt-pdf-frame').src = url;
