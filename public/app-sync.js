@@ -278,7 +278,7 @@
         customer: t.customer || '', jobAddress: t.jobAddress || '',
         city: t.city || '', state: t.state || '',
         po: t.po || '', jobNum: t.jobNum || '', phase: t.phase || '',
-        description: t.description || '', title: t.title || '',
+        description: t.description || '', printName: t.printName || '', title: t.title || '',
         labor: t.labor || [], equipment: t.equipment || [], materials: t.materials || [],
         signed: !!t.acceptedBy,   // the signature image itself is inside the PDF
         pdf: d.pdf || ''
@@ -439,7 +439,7 @@
     if (!ADMIN_EWT_CACHE.length) return '<em style="color:var(--gray)">None</em>';
     return ADMIN_EWT_CACHE.map(function (x, i) {
       return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">Ticket ' + esc(x.ticketNo || '—') + ' · ' + esc(x.date || '') +
-        ' · ' + esc(x.customer || '') + (x.signed ? ' · signed' : '') +
+        ' · ' + esc(x.customer || '') + (x.signed ? ' · signed' + (x.printName ? ' (' + esc(x.printName) + ')' : '') : (x.printName ? ' · ' + esc(x.printName) : '')) +
         (x.pdf ? ' <button type="button" data-ewt-pdf="' + i + '" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:none;background:#f4f5f7;color:#23272e;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Open PDF</button>' : '') +
         '<br><span style="color:var(--gray)">' + esc((x.description || '').slice(0, 140)) + '</span></div>';
     }).join('');

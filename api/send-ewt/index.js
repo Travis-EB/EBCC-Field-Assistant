@@ -52,7 +52,7 @@ module.exports = async function (context, req) {
       customer: String(t.customer || ''), jobAddress: String(t.jobAddress || ''),
       city: String(t.city || ''), state: String(t.state || ''),
       po: String(t.po || ''), jobNum: String(t.jobNum || ''), phase: String(t.phase || ''),
-      description: String(t.description || ''), title: String(t.title || ''),
+      description: String(t.description || ''), printName: String(t.printName || ''), title: String(t.title || ''),
       labor: Array.isArray(t.labor) ? t.labor : [],
       equipment: Array.isArray(t.equipment) ? t.equipment : [],
       materials: Array.isArray(t.materials) ? t.materials : [],

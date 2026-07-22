@@ -1940,6 +1940,7 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
       </div>
       <button type="button" class="btn ewt-signature-clear-btn" id="ewt-signature-clear">Clear signature</button>
     </label>
+    <label>Print name <input type="text" id="ewt-print-name" placeholder="Type your full name" autocomplete="name"></label>
     <label>Title <input type="text" id="ewt-title"></label>
   </div>
 </div>
@@ -3459,6 +3460,7 @@ function ewtCollect() {
     materials: ewtMaterials.filter(r => r.desc || r.qty),
     description: document.getElementById('ewt-description').value.trim(),
     acceptedBy: (window.ewtSignaturePad && window.ewtSignaturePad.isEmpty && window.ewtSignaturePad.isEmpty()) ? '' : (window.ewtSignaturePad ? window.ewtSignaturePad.getDataURL() : ''),
+    printName: document.getElementById('ewt-print-name').value.trim(),
     title: document.getElementById('ewt-title').value.trim(),
   };
 }
@@ -3530,10 +3532,11 @@ function ewtFormatText(t) {
     lines.push('', 'DESCRIPTION OF WORK');
     lines.push(t.description);
   }
-  if (t.acceptedBy || t.title) {
+  if (t.acceptedBy || t.printName || t.title) {
     lines.push('');
     if (t.acceptedBy && t.acceptedBy.startsWith('data:image')) lines.push('ACCEPTED BY: [signature on attached PDF]');
     else if (t.acceptedBy) lines.push('ACCEPTED BY: ' + t.acceptedBy);
+    if (t.printName) lines.push('PRINT NAME: ' + t.printName);
     if (t.title) lines.push('TITLE: ' + t.title);
   }
   lines.push('', '— Submitted via EBCC Field Assistant');
@@ -3583,7 +3586,7 @@ document.getElementById('ewt-email-btn').addEventListener('click', async () => {
             ticketNo: t.ticketNo, date: t.date, customer: t.customer,
             jobAddress: t.jobAddress, city: t.city, state: t.state,
             po: t.po, jobNum: t.jobNum, phase: t.phase,
-            description: t.description, title: t.title,
+            description: t.description, printName: t.printName, title: t.title,
             labor: t.labor, equipment: t.equipment, materials: t.materials,
             signed: !!t.acceptedBy,
           },
@@ -3825,7 +3828,7 @@ function ewtBuildPDF(t) {
   // ---------- Signature block ----------
   // Labels, values, and underlines all share one baseline: label to the left,
   // value sitting on its line, the line drawn just beneath the text.
-  pageBreak(64);
+  pageBreak(92);
   const sigY = y + 34;
   const sigX = M + 66;
   const sigW = 216;
@@ -3844,7 +3847,14 @@ function ewtBuildPDF(t) {
   doc.setFont('helvetica', 'normal').setTextColor(0).setFontSize(10);
   doc.text(clip(t.title, 140, 10), sigX + sigW + 44, sigY);
   doc.setLineWidth(0.6).line(sigX + sigW + 40, sigY + 3, W - M, sigY + 3);
-  y = sigY + 22;
+  // Print-name row beneath the signature (same baseline treatment)
+  const prnY = sigY + 26;
+  doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(60);
+  doc.text('Print Name', M, prnY);
+  doc.setFont('helvetica', 'normal').setTextColor(0).setFontSize(10);
+  doc.text(clip(t.printName, sigW - 8, 10), sigX + 4, prnY);
+  doc.setDrawColor(0).setLineWidth(0.6).line(sigX, prnY + 3, sigX + sigW, prnY + 3);
+  y = prnY + 22;
 
   // Footer
   doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(150);
