@@ -183,6 +183,9 @@
     window.addEventListener('pagehide', flushNow);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'hidden') flushNow();
+      // Coming BACK from the share sheet / mail app: retry anything the
+      // phone killed while the app was backgrounded.
+      if (document.visibilityState === 'visible') flushPending();
     });
   }
 
@@ -256,7 +259,7 @@
   }
 
   // ---------- EWT capture (store finalized Extra Work Tickets + their PDFs) ----------
-  var EWT_PDF_KEEP = 8;   // newest N tickets keep their full PDF (keeps the synced doc small)
+  var EWT_PDF_KEEP = 5;   // newest N tickets keep their full PDF (stays well under Cosmos' 2MB doc cap)
   var EWT_MAX = 100;
 
   function installEwtCapture() {
@@ -291,6 +294,10 @@
         if (arr[i] && arr[i].pdf) arr[i].pdf = '';
       }
       localStorage.setItem(EWT_KEY, JSON.stringify(arr)); // synced via the setItem hook
+      // Push NOW — the share sheet is about to background the app, and a
+      // debounced upload would be killed by the phone. Boot + foreground
+      // flushes retry anything that still doesn't make it.
+      try { flushNow(); } catch (err) {}
     } catch (err) {}
   });
 

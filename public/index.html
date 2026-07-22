@@ -3823,23 +3823,27 @@ function ewtBuildPDF(t) {
   y += 16;
 
   // ---------- Signature block ----------
+  // Labels, values, and underlines all share one baseline: label to the left,
+  // value sitting on its line, the line drawn just beneath the text.
   pageBreak(64);
-  const sigY = y + 30;
+  const sigY = y + 34;
+  const sigX = M + 66;
+  const sigW = 216;
   doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(60);
-  doc.text('Accepted By', M, sigY + 11);
-  const sigX = M + 62;
-  const sigW = 220;
+  doc.text('Accepted By', M, sigY);
   if (t.acceptedBy && typeof t.acceptedBy === 'string' && t.acceptedBy.indexOf('data:image') === 0) {
-    try { doc.addImage(t.acceptedBy, 'PNG', sigX + 6, sigY - 26, 200, 30); } catch (e) {}
+    // Signature image rests on the line (image bottom == underline)
+    try { doc.addImage(t.acceptedBy, 'PNG', sigX + 6, sigY - 27, 200, 30); } catch (e) {}
   } else if (t.acceptedBy) {
-    doc.setFont('helvetica', 'normal').setTextColor(0).text(clip(t.acceptedBy, sigW - 8, 10), sigX + 4, sigY);
+    doc.setFont('helvetica', 'normal').setTextColor(0).setFontSize(10);
+    doc.text(clip(t.acceptedBy, sigW - 8, 10), sigX + 4, sigY);
   }
-  doc.setDrawColor(0).setLineWidth(0.6).line(sigX, sigY + 2, sigX + sigW, sigY + 2);
-  doc.setFont('helvetica', 'bold').setTextColor(60);
-  doc.text('Title', sigX + sigW + 14, sigY + 11);
+  doc.setDrawColor(0).setLineWidth(0.6).line(sigX, sigY + 3, sigX + sigW, sigY + 3);
+  doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(60);
+  doc.text('Title', sigX + sigW + 16, sigY);
   doc.setFont('helvetica', 'normal').setTextColor(0).setFontSize(10);
-  doc.text(clip(t.title, 130, 10), sigX + sigW + 40, sigY);
-  doc.setLineWidth(0.6).line(sigX + sigW + 38, sigY + 2, W - M, sigY + 2);
+  doc.text(clip(t.title, 140, 10), sigX + sigW + 44, sigY);
+  doc.setLineWidth(0.6).line(sigX + sigW + 40, sigY + 3, W - M, sigY + 3);
   y = sigY + 22;
 
   // Footer

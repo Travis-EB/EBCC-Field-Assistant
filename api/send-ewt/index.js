@@ -10,7 +10,7 @@ const { getContainers, getPrincipal, ensureUser, json } = require('../shared/aut
 
 const TENANT_ID = process.env.AAD_TENANT_ID || 'f95ee318-b7d4-49aa-b795-b188b614caca';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const EWT_PDF_KEEP = 8;
+const EWT_PDF_KEEP = 5; // newest N tickets keep their full PDF (stays well under Cosmos' 2MB doc cap)
 const EWT_MAX = 100;
 
 module.exports = async function (context, req) {
