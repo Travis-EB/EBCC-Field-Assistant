@@ -3550,6 +3550,16 @@ document.getElementById('ewt-email-btn').addEventListener('click', async () => {
   const body = ewtFormatText(t);
   const fname = 'EWT-' + (t.ticketNo || 'ticket') + '.pdf';
 
+  if (!t.printName) {
+    alert('Type the printed name under the signature before sending.');
+    try { document.getElementById('ewt-print-name').focus(); } catch (e) {}
+    return;
+  }
+  if (!recipients.length) {
+    alert('Check at least one recipient box (or add an email) before sending.');
+    return;
+  }
+
   // Build the actual PDF so it can travel WITH the email (mailto: can't attach files).
   let pdf = null;
   let pdfUri = '';
@@ -3562,11 +3572,6 @@ document.getElementById('ewt-email-btn').addEventListener('click', async () => {
         detail: { ticket: t, pdf: pdfUri }
       }));
     } catch (e) { pdf = null; }
-  }
-
-  if (!recipients.length) {
-    alert('Check at least one recipient box (or add an email) before sending.');
-    return;
   }
 
   // 1) Best path: the server emails it from YOUR mailbox — recipients pre-filled,
