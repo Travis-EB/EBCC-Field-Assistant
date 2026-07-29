@@ -2179,11 +2179,10 @@ const EQUIPMENT_LIBRARY_CA = [
   { name: 'Scraper: CAT651',  rate: 344, roundTime: 3,    cyPerLoad: 28, prodRate: 0.90, producer: true },
   { name: 'Scraper: CAT657',  rate: 424, roundTime: 3,    cyPerLoad: 28, prodRate: 0.90, producer: true },
   // Material processors (Wirtgen) — don't move dirt; they break/size rock or cut water
-  // into fill at ydPerHr, run in shifts. TX sheet has real rates (SM220 $618, WR240
-  // $318.50); CA rates are those scaled by the A40 CA/TX ratio — estimates, adjust when
-  // priced. ydPerHr defaults are starting points; editable per card.
-  { name: 'Material Processor: Wirtgen SM220', rate: 930, ydPerHr: 600, processor: true, producer: false },
-  { name: 'Material Processor: Wirtgen WR240', rate: 465, ydPerHr: 400, processor: true, producer: false },
+  // into fill at ydPerHr, run in shifts. CA sheet doesn't price them; per Travis these
+  // match the TX 2026 rates. ydPerHr defaults are starting points; editable per card.
+  { name: 'Material Processor: Wirtgen SM220', rate: 591, ydPerHr: 600, processor: true, producer: false },
+  { name: 'Material Processor: Wirtgen WR240', rate: 296, ydPerHr: 400, processor: true, producer: false },
   // Rock trucks (articulated haulers) — fixed body capacity, so the global Yd/Load
   // override does NOT apply (fixedLoad). Volvo A40 rate is from the CA rate sheet
   // ("Rock Truck: VolvoA40 Articulating", 30cys/43tons); other rock-truck rates are
@@ -2196,9 +2195,8 @@ const EQUIPMENT_LIBRARY_CA = [
   { name: 'Rock Truck: JD 410E (29.7 cy)',      rate: 305, roundTime: 4, cyPerLoad: 29.7, prodRate: 1, producer: true, fixedLoad: true },
   { name: 'Rock Truck: Volvo A30G (22.9 cy)',   rate: 235, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
   { name: 'Rock Truck: Volvo A40 (30 cy)',      rate: 310, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
-  // CAT 777 has a real rate only in the TX sheet ($502.50); CA rate is that figure
-  // scaled by the A40's CA/TX ratio (319/224) — estimate, adjust when priced.
-  { name: 'Rock Truck: CAT 777 (60 cy)',        rate: 685, roundTime: 5, cyPerLoad: 60,   prodRate: 1, producer: true, fixedLoad: true },
+  // CAT 777 isn't priced in the CA sheet; per Travis it matches the TX 2026 rate.
+  { name: 'Rock Truck: CAT 777 (60 cy)',        rate: 435, roundTime: 5, cyPerLoad: 60,   prodRate: 1, producer: true, fixedLoad: true },
   // Backhoes
   { name: 'Backhoe: JD410/CAT424',                rate: 186, producer: false },
   { name: 'Backhoe: JD710/CAT446',                rate: 221, producer: false },
@@ -2221,6 +2219,7 @@ const EQUIPMENT_LIBRARY_CA = [
   // Disk
   { name: "Disk: 14' Disk", rate: 50, producer: false },
   // Excavators
+  { name: 'Excavator: CAT304 (mini)',              rate: 22.38, producer: false },
   { name: 'Excavator: CAT308 (mini)',              rate: 68.13, producer: false },
   { name: 'Excavator: CAT330',                     rate: 230, producer: false },
   { name: 'Excavator: CAT336',                     rate: 265, producer: false },
@@ -2349,6 +2348,8 @@ const EQUIPMENT_LIBRARY_TX = [
   { name: 'Compactor: 66" Smooth/Padfoot Drum Roller',rate: 81.25, producer: false },
   { name: 'Compactor: 84" Smooth/Padfoot Drum Roller',rate: 100, producer: false },
   { name: 'Compactor: 5x5 Towable',                   rate: 118,  producer: false },
+  // Disc
+  { name: "Disk: 14' Disk", rate: 112.50, producer: false },
   // Dump Trucks
   { name: 'Dumptruck: Tandem (10 wheeler)', rate: 85,  producer: false },
   { name: 'Dumptruck: Semi End Dump',       rate: 80, producer: false },
@@ -2416,6 +2417,7 @@ const EQUIPMENT_LIBRARY_TX = [
   // Sweeping
   { name: 'Sweeper: Street Sweeper', rate: 37.5, producer: false },
   // Track Loaders
+  { name: 'Track Loader: Cat 953', rate: 243, producer: false },
   { name: 'Track Loader: Cat 963 w/Rippers & 4n1', rate: 243, producer: false },
   { name: 'Track Loader: Cat 973 w/Rippers & 4n1', rate: 265, producer: false },
   // Water Pulls
@@ -5518,6 +5520,9 @@ const TRK_DEFAULT_CUSTOMER = 'Earth Basics Contracting';
     // Material processors (same names in both libraries; rates swap to the state's rate)
     { ca: 'Material Processor: Wirtgen SM220', tx: 'Material Processor: Wirtgen SM220' },
     { ca: 'Material Processor: Wirtgen WR240', tx: 'Material Processor: Wirtgen WR240' },
+
+    // Disc (same name both libraries; rate swaps CA $50 <-> TX $112.50)
+    { ca: "Disk: 14' Disk", tx: "Disk: 14' Disk" },
 
     // Bulldozers
     { ca: 'Bulldozer: CAT D10T',  tx: 'Bulldozer: Cat D10T' },
