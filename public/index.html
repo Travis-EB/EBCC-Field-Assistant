@@ -1765,6 +1765,7 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
     <span>Sq ft of job</span>
     <input type="number" id="flat-job-sqft-input" value="" min="0" step="1000" inputmode="numeric" placeholder="0">
   </label>
+  <button class="btn btn-primary" id="flat-post-btn">Post spread</button>
   <button class="btn btn-primary" id="flat-reset-btn">Reset day</button>
   <button class="btn" id="flat-add-custom-btn">+ Custom equipment</button>
 </div>
@@ -3176,6 +3177,35 @@ document.getElementById('flat-custom-add-btn').addEventListener('click', () => {
   document.getElementById('flat-custom-rate').value = '';
   flatCustomForm.classList.remove('open');
   renderFlat();
+});
+
+// Post the current Flat Work spread as a reviewable snapshot for the admin.
+document.getElementById('flat-post-btn').addEventListener('click', () => {
+  if (!flatJob.length) { alert('Add at least one piece of equipment before posting the spread.'); return; }
+  let totalCost = 0, equipQty = 0;
+  const items = [];
+  flatJob.forEach(item => {
+    const costPerDay = computeFlatRow(item);
+    totalCost += costPerDay;
+    equipQty += (+item.quantity || 0);
+    items.push({ name: item.name, qty: +item.quantity || 0, costPerDay: Math.round(costPerDay) });
+  });
+  const cpsf = flatSqftPerDay > 0 ? totalCost / flatSqftPerDay : 0;
+  const days = (flatJobSqft > 0 && flatSqftPerDay > 0) ? flatJobSqft / flatSqftPerDay : 0;
+  const snap = {
+    ts: new Date().toISOString(),
+    state: activeState,
+    hoursPerDay: flatHoursPerDay,
+    sqftPerDay: flatSqftPerDay,
+    jobSqft: flatJobSqft,
+    equipQty: equipQty,
+    items: items,
+    totalCost: Math.round(totalCost),
+    costPerSqFt: cpsf ? Math.round(cpsf * 1000) / 1000 : 0,
+    daysToComplete: days ? Math.round(days * 10) / 10 : 0,
+  };
+  window.dispatchEvent(new CustomEvent('ebcc-flat-posted', { detail: snap }));
+  alert('Flat Work spread posted for review.');
 });
 
 document.getElementById('flat-reset-btn').addEventListener('click', () => {

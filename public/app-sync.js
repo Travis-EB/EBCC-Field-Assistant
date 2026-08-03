@@ -11,8 +11,9 @@
     'ebcc_trucking_tickets_v1': 'trucking_tickets',
     'ebcc_load_count_v1': 'load_count',
     'ebcc_ewt_records_v1': 'ewt_records',
-    // Posted Cost Per Yard spreads (explicit snapshots for admin review)
+    // Posted spreads (explicit snapshots for admin review)
     'ebcc_cpy_posts_v1': 'cpy_posts',
+    'ebcc_flat_posts_v1': 'flat_posts',
     // Calculator tabs — synced so the admin can review them per user
     'ebcc_cpy_state_v1': 'cpy_state',
     'ebcc_flat_state_v1': 'flat_state',
@@ -272,17 +273,20 @@
   // computed snapshot (producers, dirt/rock yards, CPY, days). Stored + synced
   // immediately so the admin sees it the moment Post spread is pressed.
   var SPREADS_KEY = 'ebcc_cpy_posts_v1';
+  var FLAT_POSTS_KEY = 'ebcc_flat_posts_v1';
+  function storePost(key, snap) {
+    var arr;
+    try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (err) { arr = []; }
+    arr.push(snap);
+    if (arr.length > 20) arr = arr.slice(arr.length - 20);
+    localStorage.setItem(key, JSON.stringify(arr)); // synced via the setItem hook
+    try { flushNow(); } catch (err) {}
+  }
   window.addEventListener('ebcc-spread-posted', function (e) {
-    try {
-      var snap = e.detail;
-      if (!snap || !snap.producers) return;
-      var arr;
-      try { arr = JSON.parse(localStorage.getItem(SPREADS_KEY) || '[]'); } catch (err) { arr = []; }
-      arr.push(snap);
-      if (arr.length > 20) arr = arr.slice(arr.length - 20);
-      localStorage.setItem(SPREADS_KEY, JSON.stringify(arr)); // synced via the setItem hook
-      try { flushNow(); } catch (err) {}
-    } catch (err) {}
+    try { if (e.detail && e.detail.producers) storePost(SPREADS_KEY, e.detail); } catch (err) {}
+  });
+  window.addEventListener('ebcc-flat-posted', function (e) {
+    try { if (e.detail && e.detail.items) storePost(FLAT_POSTS_KEY, e.detail); } catch (err) {}
   });
 
   // The app dispatches 'ebcc-ewt-finalized' (with the collected ticket + PDF data URI)
@@ -376,7 +380,7 @@
           '<div style="min-width:0">' +
             '<div style="font-weight:600;font-size:14px">' + esc(u.name || u.email) + '</div>' +
             '<div style="font-size:12px;color:var(--gray)">' + esc(u.email) + '</div>' +
-            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts ' + (c.load_count || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · Spreads ' + (c.cpy_posts || 0) + ' · Last active ' + esc(last) + '</div>' +
+            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts ' + (c.load_count || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · Spreads ' + ((c.cpy_posts || 0) + (c.flat_posts || 0)) + ' · Last active ' + esc(last) + '</div>' +
           '</div>' +
           '<div style="display:flex;gap:6px;align-items:center">' +
             '<select data-role-for="' + esc(u.id) + '" style="font-family:inherit;padding:6px;border:1px solid var(--border);border-radius:8px">' + sel + '</select>' +
@@ -422,10 +426,14 @@
         section('Extra Work Tickets (' + (Array.isArray(ewt) ? ewt.length : 0) + ')', ewtHtml(ewt)) +
         (function () {
           var posts = (rec.cpy_posts && rec.cpy_posts.data) || [];
-          return section('Posted Spreads (' + posts.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(posts));
+          return section('Posted Spreads — Cost Per Yard (' + posts.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(posts));
+        })() +
+        (function () {
+          var posts = (rec.flat_posts && rec.flat_posts.data) || [];
+          return section('Posted Spreads — Flat Work (' + posts.length + ')' + updatedTag(rec.flat_posts), flatPostsHtml(posts));
         })() +
         section('Cost Per Yard — current setup' + updatedTag(rec.cpy_state), cpyHtml(rec.cpy_state && rec.cpy_state.data)) +
-        section('Flat Work' + updatedTag(rec.flat_state), flatHtml(rec.flat_state && rec.flat_state.data)) +
+        section('Flat Work — current setup' + updatedTag(rec.flat_state), flatHtml(rec.flat_state && rec.flat_state.data)) +
         section('Lime Trucks' + updatedTag(rec.lime_state), limeHtml(rec.lime_state && rec.lime_state.data)) +
         section('Flex Base' + updatedTag(rec.flexbase_state), fbHtml(rec.flexbase_state && rec.flexbase_state.data)) +
       '</div>';
@@ -482,26 +490,54 @@
       window.open(URL.createObjectURL(blob), '_blank');
     } catch (e) { alert('Could not open this PDF.'); }
   });
+  // ---- Tight spreadsheet-style tables for the admin drill-down ----
+  function fmtNum(n) { var v = +n; return isFinite(v) ? v.toLocaleString() : '0'; }
+  function tbl(headers, rows) {
+    var th = headers.map(function (h) {
+      return '<th style="text-align:' + (h.num ? 'right' : 'left') + ';padding:3px 8px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#8b919b;background:#fafbfc;border:1px solid #eef0f3;font-weight:600;white-space:nowrap">' + esc(h.label) + '</th>';
+    }).join('');
+    var body = rows.map(function (r) {
+      return '<tr>' + r.map(function (v, i) {
+        return '<td style="text-align:' + (headers[i].num ? 'right' : 'left') + ';padding:3px 8px;font-size:11px;border:1px solid #eef0f3;white-space:nowrap;font-variant-numeric:tabular-nums">' + v + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    return '<div style="overflow-x:auto;margin:3px 0 6px"><table style="border-collapse:collapse;min-width:100%">' +
+      '<tr>' + th + '</tr>' + body + '</table></div>';
+  }
+  function postCaption(s, extra) {
+    var when = s.ts ? new Date(s.ts).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' }) : '';
+    return '<div style="font-size:10.5px;color:var(--gray);margin-top:8px"><b style="color:var(--dark)">' + esc(when) + '</b> · ' + esc(s.state || '') + extra + '</div>';
+  }
+
   function spreadsHtml(arr) {
     if (!Array.isArray(arr) || !arr.length) return none();
-    function fmtN(n) { var v = +n; return isFinite(v) ? v.toLocaleString() : '0'; }
     return arr.slice().reverse().map(function (s) {
-      var when = s.ts ? new Date(s.ts).toLocaleString() : '';
-      var head = '<b>' + esc(when) + '</b> · ' + esc(s.state || '') +
-        ' · <b>' + fmtN(s.producerQty) + '</b> yard producer' + (s.producerQty === 1 ? '' : 's') +
-        ' · Dirt <b>' + fmtN(s.dirtYards) + '</b> cy · Rock <b>' + fmtN(s.rockYards) + '</b> cy' +
-        ' · CPY <b>$' + esc(s.costPerYard != null ? s.costPerYard : '—') + '</b>' +
-        (s.daysToComplete ? ' · <b>' + esc(s.daysToComplete) + '</b> days to complete' : '') +
-        '<br><span style="color:var(--gray)">Hours/day ' + esc(s.hoursPerDay != null ? s.hoursPerDay : '—') +
-        ' · Yd/load ' + esc(s.ydPerLoad != null ? s.ydPerLoad : '—') +
-        (s.yardsToMove ? ' · Yards to move ' + fmtN(s.yardsToMove) : '') +
-        ' · Total $' + fmtN(s.totalCost) + '/day · ' + fmtN(s.totalYards) + ' cy/day</span>';
-      var lines = (s.producers || []).map(function (p) {
-        return '· ' + esc(p.name) + '  ×' + esc(p.qty) +
-          (p.roundTime ? ' — round ' + esc(p.roundTime) + ' min' : '') +
-          ' — ' + fmtN(p.yardsPerDay) + ' cy/day';
-      }).join('<br>');
-      return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">' + head + '<br>' + lines + '</div>';
+      var cap = postCaption(s, ' · ' + esc(s.hoursPerDay != null ? s.hoursPerDay : '—') + ' hrs/day · yd/load ' + esc(s.ydPerLoad != null ? s.ydPerLoad : '—'));
+      var stats = tbl(
+        [{label:'Producers',num:1},{label:'Dirt cy',num:1},{label:'Rock cy',num:1},{label:'Cy/day',num:1},{label:'$/day',num:1},{label:'CPY',num:1},{label:'To move',num:1},{label:'Days',num:1}],
+        [[fmtNum(s.producerQty), fmtNum(s.dirtYards), fmtNum(s.rockYards), fmtNum(s.totalYards), '$' + fmtNum(s.totalCost), '$' + esc(s.costPerYard != null ? s.costPerYard : '—'),
+          s.yardsToMove ? fmtNum(s.yardsToMove) : '—', s.daysToComplete ? esc(s.daysToComplete) : '—']]);
+      var machines = tbl(
+        [{label:'Machine'},{label:'Qty',num:1},{label:'Rnd min',num:1},{label:'Cy/day',num:1}],
+        (s.producers || []).map(function (p) {
+          return [esc(p.name), esc(p.qty), p.roundTime ? esc(p.roundTime) : '—', fmtNum(p.yardsPerDay)];
+        }));
+      return cap + stats + machines;
+    }).join('');
+  }
+
+  function flatPostsHtml(arr) {
+    if (!Array.isArray(arr) || !arr.length) return none();
+    return arr.slice().reverse().map(function (s) {
+      var cap = postCaption(s, ' · ' + esc(s.hoursPerDay != null ? s.hoursPerDay : '—') + ' hrs/day');
+      var stats = tbl(
+        [{label:'Equip',num:1},{label:'SqFt/day',num:1},{label:'Job SqFt',num:1},{label:'$/day',num:1},{label:'$/SqFt',num:1},{label:'Days',num:1}],
+        [[fmtNum(s.equipQty), fmtNum(s.sqftPerDay), fmtNum(s.jobSqft), '$' + fmtNum(s.totalCost),
+          s.costPerSqFt ? '$' + esc(s.costPerSqFt) : '—', s.daysToComplete ? esc(s.daysToComplete) : '—']]);
+      var items = tbl(
+        [{label:'Equipment'},{label:'Qty',num:1},{label:'$/day',num:1}],
+        (s.items || []).map(function (p) { return [esc(p.name), esc(p.qty), '$' + fmtNum(p.costPerDay)]; }));
+      return cap + stats + items;
     }).join('');
   }
   function updatedTag(entry) {
@@ -509,31 +545,33 @@
     try { return ' — as of ' + new Date(entry.updatedAt).toLocaleDateString(); } catch (e) { return ''; }
   }
   function none() { return '<em style="color:var(--gray)">None</em>'; }
-  function equipList(items) {
-    return items.map(function (it) {
-      return '· ' + esc(it.name || '?') + '  ×' + esc(it.quantity != null ? it.quantity : 1) + '  ($' + esc(it.rate || 0) + '/hr)' +
-        (it.producer && it.roundTime ? '  — round ' + esc(it.roundTime) + ' min' : '');
-    }).join('<br>');
+  function equipTable(items) {
+    return tbl(
+      [{label:'Equipment'},{label:'Qty',num:1},{label:'Rate',num:1},{label:'Rnd min',num:1}],
+      items.map(function (it) {
+        return [esc(it.name || '?'), esc(it.quantity != null ? it.quantity : 1), '$' + esc(it.rate || 0),
+          (it.producer && it.roundTime) ? esc(it.roundTime) : '—'];
+      }));
   }
   function cpyHtml(st) {
     // Synced state uses `job`; keep `items` as a fallback for older snapshots.
     var items = st && (st.job || st.items);
     if (!st || !Array.isArray(items) || !items.length) return none();
-    var head = 'Hours/day ' + esc(st.hoursPerDay != null ? st.hoursPerDay : '—') +
-      ' · Yd/load ' + esc(st.ydPerLoad != null ? st.ydPerLoad : '—') +
-      ' · Yards to move ' + esc(st.yardsToMove || 0) +
-      (st.procShifts ? ' · Processor shifts ' + esc(st.procShifts) + ' × ' + esc(st.procShiftHours != null ? st.procShiftHours : '—') + 'h' : '') + '<br>';
-    return head + equipList(items);
+    var head = '<div style="font-size:10.5px;color:var(--gray);margin-top:4px">' +
+      esc(st.hoursPerDay != null ? st.hoursPerDay : '—') + ' hrs/day · yd/load ' + esc(st.ydPerLoad != null ? st.ydPerLoad : '—') +
+      ' · to move ' + esc(st.yardsToMove || 0) +
+      (st.procShifts ? ' · shifts ' + esc(st.procShifts) + '×' + esc(st.procShiftHours != null ? st.procShiftHours : '—') + 'h' : '') + '</div>';
+    return head + equipTable(items);
   }
   function flatHtml(st) {
     // Synced state uses `flatJob`/`flat*` keys; keep old names as fallback.
     var items = st && (st.flatJob || st.items);
     if (!st || !Array.isArray(items) || !items.length) return none();
     var hours = st.flatHoursPerDay != null ? st.flatHoursPerDay : st.hoursPerDay;
-    var head = 'Hours/day ' + esc(hours != null ? hours : '—') +
-      ' · SqFt/day ' + esc(st.flatSqftPerDay || st.sqftPerDay || 0) +
-      ' · Job size ' + esc(st.flatJobSqft || st.jobSqft || 0) + ' sqft<br>';
-    return head + equipList(items);
+    var head = '<div style="font-size:10.5px;color:var(--gray);margin-top:4px">' +
+      esc(hours != null ? hours : '—') + ' hrs/day · sqft/day ' + esc(st.flatSqftPerDay || st.sqftPerDay || 0) +
+      ' · job ' + esc(st.flatJobSqft || st.jobSqft || 0) + ' sqft</div>';
+    return head + equipTable(items);
   }
   function limeHtml(st) {
     if (!st || (!st['lime-rate'] && !st['lime-area'])) return none();
