@@ -240,13 +240,27 @@
     var raw = localStorage.getItem(lsKey);
     var data;
     try { data = raw ? JSON.parse(raw) : null; } catch (e) { return; }
+    // Enforce EWT retention caps at push time too — bundles saved under older,
+    // looser caps can exceed the database's 2MB doc limit and fail every sync.
+    if (lsKey === EWT_KEY && Array.isArray(data)) {
+      for (var i = 0; i < data.length - EWT_PDF_KEEP; i++) { if (data[i] && data[i].pdf) data[i].pdf = ''; }
+      if (data.length > EWT_MAX) data = data.slice(data.length - EWT_MAX);
+      var trimmed = JSON.stringify(data);
+      if (trimmed !== raw) { try { localStorage.setItem(lsKey, trimmed); } catch (e) {} }
+    }
     return apiFetch('/api/records', { method: 'POST', body: { type: type, data: data } })
       .then(function (r) {
         if (r.ok) {
           var p = getPending(); delete p[lsKey]; setPending(p);
           if (Object.keys(getPending()).length === 0) setSyncStatus('All changes saved', '#059669');
         } else {
-          setSyncStatus('Will retry when online', '#6b7280');
+          // Surface the server's actual complaint so failures are diagnosable.
+          r.text().then(function (t) {
+            var msg = 'Sync error ' + r.status + ' (' + type + ')';
+            try { var j = JSON.parse(t); if (j && j.error) msg += ': ' + j.error; } catch (e2) {}
+            try { console.warn('[sync] ' + msg, t.slice(0, 300)); } catch (e3) {}
+            setSyncStatus(msg, '#dc2626');
+          }).catch(function () { setSyncStatus('Sync error ' + r.status + ' (' + type + ')', '#dc2626'); });
         }
       })
       .catch(function () { setSyncStatus('Offline — saved locally', '#6b7280'); });
