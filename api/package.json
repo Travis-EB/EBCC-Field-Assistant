@@ -4,6 +4,7 @@
   "description": "Azure Functions backend for EBCC Field Assistant (auth-aware records, user management, OCR).",
   "engines": { "node": "20.x" },
   "dependencies": {
-    "@azure/cosmos": "^4.1.1"
+    "@azure/cosmos": "^4.1.1",
+    "@azure/storage-blob": "^12.17.0"
   }
 }

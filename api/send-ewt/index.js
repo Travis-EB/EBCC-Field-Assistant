@@ -7,6 +7,7 @@
 // returns 403 and this responds { ok:false, reason:'mail-permission' } —
 // the app falls back to the device share sheet.
 const { getContainers, getPrincipal, ensureUser, json } = require('../shared/auth');
+const { getEwtContainer, safeName } = require('../shared/blob');
 
 const TENANT_ID = process.env.AAD_TENANT_ID || 'f95ee318-b7d4-49aa-b795-b188b614caca';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -43,6 +44,21 @@ module.exports = async function (context, req) {
   if (!pdfB64 || pdfB64.length < 100) return json(context, 400, { ok: false, error: 'Missing PDF.' });
   if (pdfB64.length > 6 * 1024 * 1024) return json(context, 400, { ok: false, error: 'PDF too large.' });
 
+  // ---- Park the PDF in Blob Storage (kept forever; DB stores just the path) ----
+  let pdfBlobPath = '';
+  try {
+    const t0 = body.ticket && typeof body.ticket === 'object' ? body.ticket : {};
+    const container = await getEwtContainer();
+    const name = safeName((t0.ticketNo || 'ticket') + '-' + (t0.date || 'nodate')) + '-' + Date.now() + '.pdf';
+    pdfBlobPath = me.id + '/' + name;
+    await container.getBlockBlobClient(pdfBlobPath).uploadData(Buffer.from(pdfB64, 'base64'), {
+      blobHTTPHeaders: { blobContentType: 'application/pdf' },
+    });
+  } catch (e) {
+    context.log.warn('send-ewt blob upload failed: ' + (e.message || e));
+    pdfBlobPath = ''; // fall back to inline storage below
+  }
+
   // ---- Record the ticket under this user FIRST (admin visibility never depends on mail) ----
   try {
     const t = body.ticket && typeof body.ticket === 'object' ? body.ticket : {};
@@ -58,7 +74,8 @@ module.exports = async function (context, req) {
       materials: Array.isArray(t.materials) ? t.materials : [],
       signed: !!t.signed,
       emailedTo: recipients,
-      pdf: 'data:application/pdf;base64,' + pdfB64,
+      pdfBlob: pdfBlobPath,
+      pdf: pdfBlobPath ? '' : 'data:application/pdf;base64,' + pdfB64,
     };
     const { records, users } = await getContainers();
     const docId = me.id + ':ewt_records';

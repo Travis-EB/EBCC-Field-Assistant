@@ -182,6 +182,7 @@
     // Reconcile: an EWT finalized before this hook was installed (fast user, slow
     // network) sits in localStorage without a pending flag — push it now.
     if (localStorage.getItem(EWT_KEY)) queuePush(EWT_KEY);
+    offloadPendingEwtPdfs();
     window.addEventListener('online', flushPending);
     window.addEventListener('pagehide', flushNow);
     document.addEventListener('visibilitychange', function () {
@@ -351,8 +352,38 @@
       // debounced upload would be killed by the phone. Boot + foreground
       // flushes retry anything that still doesn't make it.
       try { flushNow(); } catch (err) {}
+      // Park the PDF in Blob Storage; the record then carries a tiny reference
+      // instead of the file, so PDFs are kept forever with no size budgets.
+      uploadEwtPdf(rec);
     } catch (err) {}
   });
+
+  function uploadEwtPdf(rec) {
+    if (!rec || !rec.pdf || rec.pdfBlob) return;
+    apiFetch('/api/ewt-pdf', { method: 'POST', body: { ticketNo: rec.ticketNo, date: rec.date, pdf: rec.pdf } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) {
+        if (!res || !res.ok || !res.path) return; // blob not configured / failed — inline copy stays
+        var arr;
+        try { arr = JSON.parse(localStorage.getItem(EWT_KEY) || '[]'); } catch (e) { arr = []; }
+        var idx = arr.findIndex(function (x) { return x && x.ticketNo === rec.ticketNo && x.date === rec.date; });
+        if (idx >= 0) {
+          arr[idx].pdfBlob = res.path;
+          arr[idx].pdf = '';
+          localStorage.setItem(EWT_KEY, JSON.stringify(arr));
+          try { flushNow(); } catch (e) {}
+        }
+      })
+      .catch(function () {}); // offline — boot retry will pick it up
+  }
+
+  // Boot retry: any ticket still carrying an inline PDF gets offloaded to Blob.
+  function offloadPendingEwtPdfs() {
+    var arr;
+    try { arr = JSON.parse(localStorage.getItem(EWT_KEY) || '[]'); } catch (e) { return; }
+    if (!Array.isArray(arr)) return;
+    arr.forEach(function (rec) { if (rec && rec.pdf && !rec.pdfBlob) uploadEwtPdf(rec); });
+  }
 
   // Auto-generate the EWT ticket number (company-wide sequence from the server,
   // starting at 21100). Reserved the moment someone starts filling a new ticket,
@@ -437,6 +468,7 @@
   }
 
   function viewUserRecords(userId, name) {
+    ADMIN_EWT_OWNER = userId;
     var box = document.getElementById('adm-user-detail');
     box.style.display = '';
     box.innerHTML = '<p style="color:var(--gray);font-size:13px;padding:8px 0">Loading ' + esc(name) + '’s records…</p>';
@@ -495,29 +527,43 @@
     return head + trucks;
   }
   var ADMIN_EWT_CACHE = [];
+  var ADMIN_EWT_OWNER = '';
   function ewtHtml(e) {
     ADMIN_EWT_CACHE = Array.isArray(e) ? e : [];
     if (!ADMIN_EWT_CACHE.length) return '<em style="color:var(--gray)">None</em>';
     return ADMIN_EWT_CACHE.map(function (x, i) {
       return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">Ticket ' + esc(x.ticketNo || '—') + ' · ' + esc(x.date || '') +
         ' · ' + esc(x.customer || '') + (x.signed ? ' · signed' + (x.printName ? ' (' + esc(x.printName) + ')' : '') : (x.printName ? ' · ' + esc(x.printName) : '')) +
-        (x.pdf ? ' <button type="button" data-ewt-pdf="' + i + '" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:none;background:#f4f5f7;color:#23272e;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Open PDF</button>' : '') +
+        ((x.pdf || x.pdfBlob) ? ' <button type="button" data-ewt-pdf="' + i + '" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:none;background:#f4f5f7;color:#23272e;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Open PDF</button>' : '') +
         '<br><span style="color:var(--gray)">' + esc((x.description || '').slice(0, 140)) + '</span></div>';
     }).join('');
+  }
+  function openPdfBytes(bytes) {
+    var blob = new Blob([bytes], { type: 'application/pdf' });
+    window.open(URL.createObjectURL(blob), '_blank');
   }
   // Open a stored EWT PDF in a new tab (admin drill-down)
   document.addEventListener('click', function (ev) {
     var b = ev.target && ev.target.closest ? ev.target.closest('[data-ewt-pdf]') : null;
     if (!b) return;
     var rec = ADMIN_EWT_CACHE[+b.getAttribute('data-ewt-pdf')];
-    if (!rec || !rec.pdf) return;
+    if (!rec) return;
+    if (rec.pdfBlob) {
+      // Blob-backed: stream it through the authenticated API
+      var name = String(rec.pdfBlob).split('/').slice(1).join('/');
+      apiFetch('/api/ewt-pdf?user=' + encodeURIComponent(ADMIN_EWT_OWNER) + '&name=' + encodeURIComponent(name))
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        .then(function (buf) { openPdfBytes(buf); })
+        .catch(function () { alert('Could not load this PDF.'); });
+      return;
+    }
+    if (!rec.pdf) return;
     try {
       var base64 = rec.pdf.slice(rec.pdf.indexOf(',') + 1);
       var bin = atob(base64);
       var bytes = new Uint8Array(bin.length);
       for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      var blob = new Blob([bytes], { type: 'application/pdf' });
-      window.open(URL.createObjectURL(blob), '_blank');
+      openPdfBytes(bytes);
     } catch (e) { alert('Could not open this PDF.'); }
   });
   // ---- Tight spreadsheet-style tables for the admin drill-down ----
