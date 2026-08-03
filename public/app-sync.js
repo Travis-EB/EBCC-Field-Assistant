@@ -104,9 +104,19 @@
   function showDebug(status, txt) {
     var box = document.createElement('div');
     box.style.cssText = 'position:fixed;left:10px;right:10px;bottom:10px;z-index:99999;background:#111827;color:#e5e7eb;border-radius:12px;padding:14px;font:12px/1.5 monospace;box-shadow:0 8px 30px rgba(0,0,0,.4);word-break:break-all;max-height:45vh;overflow:auto';
+    function localCount(key) {
+      try { var v = JSON.parse(localStorage.getItem(key) || 'null'); return Array.isArray(v) ? v.length : (v ? 1 : 0); }
+      catch (e) { return '?'; }
+    }
+    var syncLine = 'pending: ' + JSON.stringify(getPending()) +
+      ' | local — spreads: ' + localCount('ebcc_cpy_posts_v1') +
+      ', flat posts: ' + localCount('ebcc_flat_posts_v1') +
+      ', ewt: ' + localCount('ebcc_ewt_records_v1') +
+      ' | status: ' + ((document.getElementById('sync-status') || {}).textContent || '(menu closed)');
     box.innerHTML = '<div style="color:#fbbf24;font-weight:700;margin-bottom:6px">DIAGNOSTIC — /api/me (tap to close)</div>' +
       '<div>HTTP status: <b>' + status + '</b></div>' +
-      '<div style="margin-top:6px">' + esc(String(txt).slice(0, 1200)) + '</div>';
+      '<div style="margin-top:6px">' + esc(String(txt).slice(0, 1200)) + '</div>' +
+      '<div style="margin-top:6px;color:#93c5fd">SYNC — ' + esc(syncLine) + '</div>';
     box.addEventListener('click', function () { box.remove(); });
     document.body.appendChild(box);
   }
@@ -179,9 +189,12 @@
     };
     installEwtCapture();
     installSimpleCalcPersistence();
-    // Reconcile: an EWT finalized before this hook was installed (fast user, slow
-    // network) sits in localStorage without a pending flag — push it now.
-    if (localStorage.getItem(EWT_KEY)) queuePush(EWT_KEY);
+    // Reconcile EVERY synced type at boot: anything written before this hook was
+    // installed (fast user, slow network) has no pending flag and would otherwise
+    // sit on the device forever. One small push per type guarantees consistency.
+    Object.keys(SYNC_MAP).forEach(function (k) {
+      if (localStorage.getItem(k)) queuePush(k);
+    });
     offloadPendingEwtPdfs();
     window.addEventListener('online', flushPending);
     window.addEventListener('pagehide', flushNow);
@@ -314,7 +327,10 @@
     try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (err) { arr = []; }
     arr.push(snap);
     if (arr.length > 20) arr = arr.slice(arr.length - 20);
-    localStorage.setItem(key, JSON.stringify(arr)); // synced via the setItem hook
+    localStorage.setItem(key, JSON.stringify(arr));
+    // Mark pending explicitly — the setItem hook may not be installed yet if the
+    // user posted within seconds of opening the app. Pending survives restarts.
+    try { var p = getPending(); p[key] = 1; setPending(p); } catch (err) {}
     try { flushNow(); } catch (err) {}
   }
   window.addEventListener('ebcc-spread-posted', function (e) {
@@ -347,10 +363,11 @@
       var idx = arr.findIndex(function (x) { return x.ticketNo === rec.ticketNo && x.date === rec.date; });
       if (idx >= 0) arr[idx] = rec; else arr.push(rec);
       arr = trimEwtArray(arr);
-      localStorage.setItem(EWT_KEY, JSON.stringify(arr)); // synced via the setItem hook
-      // Push NOW — the share sheet is about to background the app, and a
-      // debounced upload would be killed by the phone. Boot + foreground
-      // flushes retry anything that still doesn't make it.
+      localStorage.setItem(EWT_KEY, JSON.stringify(arr));
+      // Mark pending explicitly (hook may not be installed yet), then push NOW —
+      // the share sheet is about to background the app, and a debounced upload
+      // would be killed by the phone. Boot + foreground flushes retry the rest.
+      try { var pp = getPending(); pp[EWT_KEY] = 1; setPending(pp); } catch (err) {}
       try { flushNow(); } catch (err) {}
       // Park the PDF in Blob Storage; the record then carries a tiny reference
       // instead of the file, so PDFs are kept forever with no size budgets.
