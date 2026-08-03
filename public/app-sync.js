@@ -11,6 +11,8 @@
     'ebcc_trucking_tickets_v1': 'trucking_tickets',
     'ebcc_load_count_v1': 'load_count',
     'ebcc_ewt_records_v1': 'ewt_records',
+    // Posted Cost Per Yard spreads (explicit snapshots for admin review)
+    'ebcc_cpy_posts_v1': 'cpy_posts',
     // Calculator tabs — synced so the admin can review them per user
     'ebcc_cpy_state_v1': 'cpy_state',
     'ebcc_flat_state_v1': 'flat_state',
@@ -266,6 +268,23 @@
     installEwtAutoNumber();
   }
 
+  // Posted Cost Per Yard spreads: the app dispatches 'ebcc-spread-posted' with a
+  // computed snapshot (producers, dirt/rock yards, CPY, days). Stored + synced
+  // immediately so the admin sees it the moment Post spread is pressed.
+  var SPREADS_KEY = 'ebcc_cpy_posts_v1';
+  window.addEventListener('ebcc-spread-posted', function (e) {
+    try {
+      var snap = e.detail;
+      if (!snap || !snap.producers) return;
+      var arr;
+      try { arr = JSON.parse(localStorage.getItem(SPREADS_KEY) || '[]'); } catch (err) { arr = []; }
+      arr.push(snap);
+      if (arr.length > 20) arr = arr.slice(arr.length - 20);
+      localStorage.setItem(SPREADS_KEY, JSON.stringify(arr)); // synced via the setItem hook
+      try { flushNow(); } catch (err) {}
+    } catch (err) {}
+  });
+
   // The app dispatches 'ebcc-ewt-finalized' (with the collected ticket + PDF data URI)
   // whenever a ticket is previewed or emailed. Attached at load — never misses one.
   window.addEventListener('ebcc-ewt-finalized', function (e) {
@@ -357,7 +376,7 @@
           '<div style="min-width:0">' +
             '<div style="font-weight:600;font-size:14px">' + esc(u.name || u.email) + '</div>' +
             '<div style="font-size:12px;color:var(--gray)">' + esc(u.email) + '</div>' +
-            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts ' + (c.load_count || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · Last active ' + esc(last) + '</div>' +
+            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts ' + (c.load_count || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · Spreads ' + (c.cpy_posts || 0) + ' · Last active ' + esc(last) + '</div>' +
           '</div>' +
           '<div style="display:flex;gap:6px;align-items:center">' +
             '<select data-role-for="' + esc(u.id) + '" style="font-family:inherit;padding:6px;border:1px solid var(--border);border-radius:8px">' + sel + '</select>' +
@@ -401,7 +420,11 @@
         section('Truck Tickets (' + (Array.isArray(tickets) ? tickets.length : 0) + ')', ticketsHtml(tickets)) +
         section('Load Count', loadCountHtml(loadCount)) +
         section('Extra Work Tickets (' + (Array.isArray(ewt) ? ewt.length : 0) + ')', ewtHtml(ewt)) +
-        section('Cost Per Yard' + updatedTag(rec.cpy_state), cpyHtml(rec.cpy_state && rec.cpy_state.data)) +
+        (function () {
+          var posts = (rec.cpy_posts && rec.cpy_posts.data) || [];
+          return section('Posted Spreads (' + posts.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(posts));
+        })() +
+        section('Cost Per Yard — current setup' + updatedTag(rec.cpy_state), cpyHtml(rec.cpy_state && rec.cpy_state.data)) +
         section('Flat Work' + updatedTag(rec.flat_state), flatHtml(rec.flat_state && rec.flat_state.data)) +
         section('Lime Trucks' + updatedTag(rec.lime_state), limeHtml(rec.lime_state && rec.lime_state.data)) +
         section('Flex Base' + updatedTag(rec.flexbase_state), fbHtml(rec.flexbase_state && rec.flexbase_state.data)) +
@@ -459,6 +482,28 @@
       window.open(URL.createObjectURL(blob), '_blank');
     } catch (e) { alert('Could not open this PDF.'); }
   });
+  function spreadsHtml(arr) {
+    if (!Array.isArray(arr) || !arr.length) return none();
+    function fmtN(n) { var v = +n; return isFinite(v) ? v.toLocaleString() : '0'; }
+    return arr.slice().reverse().map(function (s) {
+      var when = s.ts ? new Date(s.ts).toLocaleString() : '';
+      var head = '<b>' + esc(when) + '</b> · ' + esc(s.state || '') +
+        ' · <b>' + fmtN(s.producerQty) + '</b> yard producer' + (s.producerQty === 1 ? '' : 's') +
+        ' · Dirt <b>' + fmtN(s.dirtYards) + '</b> cy · Rock <b>' + fmtN(s.rockYards) + '</b> cy' +
+        ' · CPY <b>$' + esc(s.costPerYard != null ? s.costPerYard : '—') + '</b>' +
+        (s.daysToComplete ? ' · <b>' + esc(s.daysToComplete) + '</b> days to complete' : '') +
+        '<br><span style="color:var(--gray)">Hours/day ' + esc(s.hoursPerDay != null ? s.hoursPerDay : '—') +
+        ' · Yd/load ' + esc(s.ydPerLoad != null ? s.ydPerLoad : '—') +
+        (s.yardsToMove ? ' · Yards to move ' + fmtN(s.yardsToMove) : '') +
+        ' · Total $' + fmtN(s.totalCost) + '/day · ' + fmtN(s.totalYards) + ' cy/day</span>';
+      var lines = (s.producers || []).map(function (p) {
+        return '· ' + esc(p.name) + '  ×' + esc(p.qty) +
+          (p.roundTime ? ' — round ' + esc(p.roundTime) + ' min' : '') +
+          ' — ' + fmtN(p.yardsPerDay) + ' cy/day';
+      }).join('<br>');
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">' + head + '<br>' + lines + '</div>';
+    }).join('');
+  }
   function updatedTag(entry) {
     if (!entry || !entry.updatedAt) return '';
     try { return ' — as of ' + new Date(entry.updatedAt).toLocaleDateString(); } catch (e) { return ''; }

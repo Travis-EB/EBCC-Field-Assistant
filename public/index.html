@@ -1619,18 +1619,11 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
     <span>Hours/day</span>
     <input type="number" id="hours-input" value="8" min="0" step="0.5" inputmode="decimal">
   </label>
-  <label class="hours-control">
-    <span>Yd / load</span>
-    <div class="stepper">
-      <button type="button" class="stepper-btn" id="ypl-minus" aria-label="Decrease yd/load">&minus;</button>
-      <input type="text" inputmode="numeric" pattern="[0-9]*" id="yd-per-load-input" value="28">
-      <button type="button" class="stepper-btn" id="ypl-plus" aria-label="Increase yd/load">+</button>
-    </div>
-  </label>
   <label class="hours-control yards-control">
     <span>Yards to move</span>
     <input type="number" id="yards-to-move-input" value="" min="0" step="1000" inputmode="numeric" placeholder="0">
   </label>
+  <button class="btn btn-primary" id="post-spread-btn">Post spread</button>
   <button class="btn btn-primary" id="reset-btn">Reset day</button>
   <button class="btn" id="add-custom-btn">+ Custom equipment</button>
   <button class="btn" id="admin-toggle">Edit rates</button>
@@ -1680,6 +1673,16 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 </div>
 
 <div class="section-header">Yard producers (scrapers &amp; rock trucks)</div>
+<div class="controls">
+  <label class="hours-control">
+    <span>Yd / load (scrapers)</span>
+    <div class="stepper">
+      <button type="button" class="stepper-btn" id="ypl-minus" aria-label="Decrease yd/load">&minus;</button>
+      <input type="text" inputmode="numeric" pattern="[0-9]*" id="yd-per-load-input" value="28">
+      <button type="button" class="stepper-btn" id="ypl-plus" aria-label="Increase yd/load">+</button>
+    </div>
+  </label>
+</div>
 <div class="col-headers">
   <div></div>
   <div class="qty-h">Qty</div>
@@ -2881,6 +2884,48 @@ document.querySelectorAll('.tab').forEach(btn => {
 })();
 
 // Reset
+// Post the current spread as a reviewable snapshot for the admin (Manage Users).
+document.getElementById('post-spread-btn').addEventListener('click', () => {
+  let totalCost = 0, totalYards = 0, dirtYards = 0, rockYards = 0, producerQty = 0;
+  const producers = [];
+  job.forEach(item => {
+    const r = computeRow(item);
+    totalCost += r.costPerDay;
+    totalYards += r.yardsPerDay;
+    if (item.producer) {
+      producerQty += (+item.quantity || 0);
+      if (item.fixedLoad) rockYards += r.yardsPerDay; else dirtYards += r.yardsPerDay;
+      producers.push({
+        name: item.name,
+        qty: +item.quantity || 0,
+        roundTime: +item.roundTime || 0,
+        yardsPerDay: Math.round(r.yardsPerDay),
+        type: item.fixedLoad ? 'rock' : 'scraper',
+      });
+    }
+  });
+  if (!producers.length) { alert('Add at least one yard producer before posting the spread.'); return; }
+  const cpy = totalYards > 0 ? totalCost / totalYards : 0;
+  const days = (yardsToMove > 0 && totalYards > 0) ? yardsToMove / totalYards : 0;
+  const snap = {
+    ts: new Date().toISOString(),
+    state: activeState,
+    hoursPerDay: hoursPerDay,
+    ydPerLoad: ydPerLoad,
+    yardsToMove: yardsToMove,
+    producerQty: producerQty,
+    producers: producers,
+    totalCost: Math.round(totalCost),
+    totalYards: Math.round(totalYards),
+    dirtYards: Math.round(dirtYards),
+    rockYards: Math.round(rockYards),
+    costPerYard: Math.round(cpy * 100) / 100,
+    daysToComplete: days ? Math.round(days * 10) / 10 : 0,
+  };
+  window.dispatchEvent(new CustomEvent('ebcc-spread-posted', { detail: snap }));
+  alert('Spread posted for review.');
+});
+
 document.getElementById('reset-btn').addEventListener('click', () => {
   if (confirm('Clear all equipment from this job?')) {
     job = getStarterJob();

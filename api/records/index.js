@@ -10,6 +10,8 @@ const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../s
 
 const ALLOWED_TYPES = new Set([
   'trucking_tickets', 'load_count', 'ewt_records',
+  // Posted Cost Per Yard spreads (explicit snapshots for admin review)
+  'cpy_posts',
   // Calculator tabs — synced so admins can review what's being priced out
   'cpy_state', 'flat_state', 'lime_state', 'flexbase_state',
 ]);
