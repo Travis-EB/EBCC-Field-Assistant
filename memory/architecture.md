@@ -19,6 +19,15 @@
 - `api/users` is admin-only (GET list, PATCH role). An admin can't remove their own admin
   (anti-lockout).
 
+## Blob storage (added 2026-08-03)
+- Storage account (BLOB_CONN app setting), private container `ewt-pdfs`, blobs pathed
+  `<userId>/<ticket>-<date>-<ts>.pdf`. EWT PDFs live here (no size caps); Cosmos records
+  carry `pdfBlob` path refs. `/api/ewt-pdf` POST uploads for the caller, GET streams with
+  records-style isolation (own files; admins any via ?user=). Client uploads at finalize,
+  swaps its local record to the ref, retries offline ones at boot; legacy inline-base64
+  records still render. Cosmos' 2MB doc cap motivated this (byte-budget trim remains as
+  fallback when blob is unreachable).
+
 ## Endpoints
 | Route | Method | Who | Purpose |
 |---|---|---|---|
