@@ -99,6 +99,9 @@ module.exports = async function (context, req) {
     return json(context, 405, { error: 'Method not allowed.' });
   } catch (e) {
     context.log.error('records error', e);
+    if (e && (e.code === 413 || /too large/i.test(e.message || ''))) {
+      return json(context, 400, { error: 'Record too large — reopen the app so it can auto-trim old PDFs.' });
+    }
     return json(context, 500, { error: 'Server error.' });
   }
 };

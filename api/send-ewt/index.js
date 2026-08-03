@@ -68,7 +68,15 @@ module.exports = async function (context, req) {
     const idx = arr.findIndex((x) => x && x.ticketNo === rec.ticketNo && x.date === rec.date);
     if (idx >= 0) arr[idx] = rec; else arr.push(rec);
     if (arr.length > EWT_MAX) arr = arr.slice(arr.length - EWT_MAX);
-    for (let i = 0; i < arr.length - EWT_PDF_KEEP; i++) { if (arr[i] && arr[i].pdf) arr[i].pdf = ''; }
+    // Size-aware PDF retention: newest first, within a byte budget (Cosmos 2MB doc cap)
+    let pdfBudget = 1200 * 1024, pdfKept = 0;
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const r = arr[i];
+      if (!r || !r.pdf) continue;
+      const len = r.pdf.length;
+      if (pdfKept >= EWT_PDF_KEEP || len > 400 * 1024 || len > pdfBudget) { r.pdf = ''; }
+      else { pdfBudget -= len; pdfKept++; }
+    }
     await records.items.upsert({
       id: docId, ownerId: me.id, ownerEmail: me.email, type: 'ewt_records',
       data: arr, updatedAt: new Date().toISOString(),

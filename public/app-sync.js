@@ -243,8 +243,7 @@
     // Enforce EWT retention caps at push time too — bundles saved under older,
     // looser caps can exceed the database's 2MB doc limit and fail every sync.
     if (lsKey === EWT_KEY && Array.isArray(data)) {
-      for (var i = 0; i < data.length - EWT_PDF_KEEP; i++) { if (data[i] && data[i].pdf) data[i].pdf = ''; }
-      if (data.length > EWT_MAX) data = data.slice(data.length - EWT_MAX);
+      data = trimEwtArray(data);
       var trimmed = JSON.stringify(data);
       if (trimmed !== raw) { try { localStorage.setItem(lsKey, trimmed); } catch (e) {} }
     }
@@ -278,6 +277,27 @@
   // ---------- EWT capture (store finalized Extra Work Tickets + their PDFs) ----------
   var EWT_PDF_KEEP = 5;   // newest N tickets keep their full PDF (stays well under Cosmos' 2MB doc cap)
   var EWT_MAX = 100;
+  var EWT_PDF_SINGLE_MAX = 400 * 1024;  // any single PDF bigger than this gets dropped (broken-era monsters)
+  var EWT_PDF_BUDGET = 1200 * 1024;     // total PDF bytes kept across the whole bundle
+
+  // Size-aware retention: keep newest PDFs while they fit the byte budget; the
+  // record's data fields always survive even when its PDF is dropped.
+  function trimEwtArray(data) {
+    if (!Array.isArray(data)) return data;
+    if (data.length > EWT_MAX) data = data.slice(data.length - EWT_MAX);
+    var budget = EWT_PDF_BUDGET, kept = 0;
+    for (var i = data.length - 1; i >= 0; i--) {
+      var rec = data[i];
+      if (!rec || !rec.pdf) continue;
+      var len = rec.pdf.length;
+      if (kept >= EWT_PDF_KEEP || len > EWT_PDF_SINGLE_MAX || len > budget) {
+        rec.pdf = '';
+      } else {
+        budget -= len; kept++;
+      }
+    }
+    return data;
+  }
 
   function installEwtCapture() {
     installEwtAutoNumber();
@@ -325,11 +345,7 @@
       try { arr = JSON.parse(localStorage.getItem(EWT_KEY) || '[]'); } catch (err) { arr = []; }
       var idx = arr.findIndex(function (x) { return x.ticketNo === rec.ticketNo && x.date === rec.date; });
       if (idx >= 0) arr[idx] = rec; else arr.push(rec);
-      if (arr.length > EWT_MAX) arr = arr.slice(arr.length - EWT_MAX);
-      // Only the newest few keep their PDFs — older entries keep the data fields.
-      for (var i = 0; i < arr.length - EWT_PDF_KEEP; i++) {
-        if (arr[i] && arr[i].pdf) arr[i].pdf = '';
-      }
+      arr = trimEwtArray(arr);
       localStorage.setItem(EWT_KEY, JSON.stringify(arr)); // synced via the setItem hook
       // Push NOW — the share sheet is about to background the app, and a
       // debounced upload would be killed by the phone. Boot + foreground
