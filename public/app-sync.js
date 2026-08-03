@@ -599,7 +599,8 @@
   }
   function postCaption(s, extra) {
     var when = s.ts ? new Date(s.ts).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' }) : '';
-    return '<div style="font-size:10.5px;color:var(--gray);margin-top:8px"><b style="color:var(--dark)">' + esc(when) + '</b> · ' + esc(s.state || '') + extra + '</div>';
+    var proj = s.projectCode ? ' · <b style="color:var(--dark)">' + esc(s.projectCode) + '</b> ' + esc(s.projectName || '') : '';
+    return '<div style="font-size:10.5px;color:var(--gray);margin-top:8px"><b style="color:var(--dark)">' + esc(when) + '</b> · ' + esc(s.state || '') + proj + extra + '</div>';
   }
 
   function spreadsHtml(arr) {

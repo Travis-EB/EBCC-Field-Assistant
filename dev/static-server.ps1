@@ -56,6 +56,14 @@ while ($listener.IsListening) {
         $json = '{"ok":true,"sent":true}'
       } elseif ($path -eq '/api/ewt-pdf' -and $req.HttpMethod -eq 'POST') {
         $json = '{"ok":true,"path":"dev-admin/mock-' + [DateTime]::Now.Ticks + '.pdf"}'
+      } elseif ($path -eq '/api/projects' -and $req.HttpMethod -eq 'POST') {
+        $json = '{"ok":true,"project":{"code":"NEW","name":"NEW"}}'
+      } elseif ($path -eq '/api/projects') {
+        $json = '{"projects":[{"code":"26-292-03","name":"PROSPER RETAIL"},{"code":"26-100-03","name":"NL35 III PH 1 - SITE & BUILDING 7"},{"code":"25-079-02","name":"FOX FIELD WEST BUILDING 1"}]}'
+      } elseif ($path -eq '/api/project-files' -and $req.HttpMethod -eq 'POST') {
+        $json = '{"ok":true,"name":"uploaded.pdf"}'
+      } elseif ($path -eq '/api/project-files') {
+        $json = '{"files":[{"name":"Grading Plan Rev3.pdf","size":2400000,"lastModified":"2026-08-01T10:00:00Z","contentType":"application/pdf"},{"name":"Soils Report.pdf","size":900000,"lastModified":"2026-07-20T10:00:00Z","contentType":"application/pdf"}]}'
       } elseif ($path -eq '/api/me') {
         $json = '{"authenticated":true,"userId":"dev-admin","email":"travis@earthbasics.net","name":"Travis Pecoy","role":"admin","isAdmin":true}'
       } elseif ($path -like '/api/records*' -and $req.Url.Query -like '*userId=*') {

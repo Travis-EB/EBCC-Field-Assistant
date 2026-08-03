@@ -1567,6 +1567,7 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   <button class="tab" data-tab="ewt" role="tab" aria-selected="false">Extra Work Ticket</button>
   <button class="tab" data-tab="trucking" role="tab" aria-selected="false">Truck Tickets</button>
   <button class="tab" data-tab="loadcount" role="tab" aria-selected="false">Load Count</button>
+  <button class="tab" data-tab="jobbooks" role="tab" aria-selected="false">Job Books</button>
   <button class="tab admin-only" data-tab="admin" role="tab" aria-selected="false" style="display:none">Manage Users</button>
 </nav>
 
@@ -1893,7 +1894,8 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
     <label>City <input type="text" id="ewt-city"></label>
     <label>State <input type="text" id="ewt-state" value="CA"></label>
     <label>PO# <input type="text" id="ewt-po"></label>
-    <label>Job# <input type="text" id="ewt-job-num"></label>
+    <label>Job# <input type="text" id="ewt-job-num" list="ewt-job-list" autocomplete="off"></label>
+    <datalist id="ewt-job-list"></datalist>
     <label class="ewt-grid-wide">Phase Code(s) <input type="text" id="ewt-phase"></label>
   </div>
 </div>
@@ -2154,6 +2156,23 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   </div>
 </div>
 
+</section>
+
+<section class="tab-content" id="tab-jobbooks">
+  <div class="section-header">New project</div>
+  <div class="controls">
+    <label class="hours-control"><span>Project code</span>
+      <input type="text" id="jb-new-code" placeholder="e.g. 26-300-03" autocomplete="off">
+    </label>
+    <label class="hours-control" style="flex:1;min-width:180px"><span>Project name</span>
+      <input type="text" id="jb-new-name" placeholder="e.g. PROSPER RETAIL" autocomplete="off">
+    </label>
+    <button class="btn btn-primary" id="jb-create-btn">Create project</button>
+  </div>
+
+  <div class="section-header">Projects <span id="jb-count" style="text-transform:none;letter-spacing:0"></span></div>
+  <div id="jb-list"><div class="empty">Loading projects…</div></div>
+  <div id="jb-detail" style="display:none"></div>
 </section>
 
 <section class="tab-content" id="tab-admin">
@@ -2923,8 +2942,11 @@ document.getElementById('post-spread-btn').addEventListener('click', () => {
     costPerYard: Math.round(cpy * 100) / 100,
     daysToComplete: days ? Math.round(days * 10) / 10 : 0,
   };
-  window.dispatchEvent(new CustomEvent('ebcc-spread-posted', { detail: snap }));
-  alert('Spread posted for review.');
+  pickProject((proj) => {
+    if (proj) { snap.projectCode = proj.code; snap.projectName = proj.name; }
+    window.dispatchEvent(new CustomEvent('ebcc-spread-posted', { detail: snap }));
+    alert('Spread posted for review.');
+  });
 });
 
 document.getElementById('reset-btn').addEventListener('click', () => {
@@ -3204,8 +3226,11 @@ document.getElementById('flat-post-btn').addEventListener('click', () => {
     costPerSqFt: cpsf ? Math.round(cpsf * 1000) / 1000 : 0,
     daysToComplete: days ? Math.round(days * 10) / 10 : 0,
   };
-  window.dispatchEvent(new CustomEvent('ebcc-flat-posted', { detail: snap }));
-  alert('Flat Work spread posted for review.');
+  pickProject((proj) => {
+    if (proj) { snap.projectCode = proj.code; snap.projectName = proj.name; }
+    window.dispatchEvent(new CustomEvent('ebcc-flat-posted', { detail: snap }));
+    alert('Flat Work spread posted for review.');
+  });
 });
 
 document.getElementById('flat-reset-btn').addEventListener('click', () => {
@@ -6500,6 +6525,158 @@ if (!lcState.meta.date) {
     if (typeof renderFlat === 'function') renderFlat();
   }
 })();
+
+// === Job Books: shared projects + files (visible to every signed-in user) ===
+window.EBCC_PROJECTS = [];
+
+function jbLoadProjects() {
+  return fetch('/api/projects').then(r => r.ok ? r.json() : null).then(res => {
+    if (!res || !res.projects) return;
+    window.EBCC_PROJECTS = res.projects;
+    jbRenderList();
+    const dl = document.getElementById('ewt-job-list');
+    if (dl) dl.innerHTML = res.projects.map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.name) + '</option>').join('');
+  }).catch(() => {});
+}
+
+function jbRenderList() {
+  const list = document.getElementById('jb-list');
+  const count = document.getElementById('jb-count');
+  const projs = window.EBCC_PROJECTS || [];
+  if (count) count.textContent = '(' + projs.length + ')';
+  if (!projs.length) { list.innerHTML = '<div class="empty">No projects yet — create the first one above.</div>'; return; }
+  list.innerHTML = projs.map(p =>
+    '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jb-open="' + escAttr(p.code) + '">' +
+      '<div><div class="name">' + escHTML(p.code) + '</div><div class="rate">' + escHTML(p.name) + '</div></div>' +
+      '<button class="btn" data-jb-open="' + escAttr(p.code) + '">Open</button>' +
+    '</div>').join('');
+}
+
+function jbFmtSize(n) {
+  if (!n) return '';
+  if (n > 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+  if (n > 1024) return Math.round(n / 1024) + ' KB';
+  return n + ' B';
+}
+
+function jbOpenProject(code) {
+  const p = (window.EBCC_PROJECTS || []).find(x => x.code === code);
+  if (!p) return;
+  const box = document.getElementById('jb-detail');
+  box.style.display = '';
+  box.innerHTML =
+    '<div class="section-header">' + escHTML(p.code) + ' — ' + escHTML(p.name) + '</div>' +
+    '<div class="controls">' +
+      '<label class="btn btn-primary" style="cursor:pointer">Upload file<input type="file" id="jb-file-input" multiple style="display:none"></label>' +
+      '<button class="btn" id="jb-close-btn">Close</button>' +
+    '</div>' +
+    '<div id="jb-files"><div class="empty">Loading files…</div></div>';
+  try { box.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+  document.getElementById('jb-close-btn').onclick = () => { box.style.display = 'none'; box.innerHTML = ''; };
+  document.getElementById('jb-file-input').addEventListener('change', (e) => jbUploadFiles(code, e.target.files));
+  jbLoadFiles(code);
+}
+
+function jbLoadFiles(code) {
+  fetch('/api/project-files?project=' + encodeURIComponent(code)).then(r => r.ok ? r.json() : null).then(res => {
+    const wrap = document.getElementById('jb-files');
+    if (!wrap) return;
+    const files = (res && res.files) || [];
+    if (!files.length) { wrap.innerHTML = '<div class="empty">No files yet. Use Upload file to add plans, PDFs, photos, etc.</div>'; return; }
+    wrap.innerHTML = files.map(f =>
+      '<div class="equipment-card" style="grid-template-columns:1fr auto">' +
+        '<div><div class="name">' + escHTML(f.name) + '</div><div class="rate">' + jbFmtSize(f.size) + (f.lastModified ? ' · ' + new Date(f.lastModified).toLocaleDateString() : '') + '</div></div>' +
+        '<button class="btn" data-jb-file="' + escAttr(f.name) + '" data-jb-proj="' + escAttr(code) + '">Open</button>' +
+      '</div>').join('');
+  }).catch(() => {});
+}
+
+function jbUploadFiles(code, fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  let done = 0;
+  files.forEach(file => {
+    if (file.size > 30 * 1024 * 1024) { alert(file.name + ' is over the 30MB limit.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      fetch('/api/project-files', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project: code, name: file.name, contentType: file.type || 'application/octet-stream', data: reader.result }),
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(res => {
+          done++;
+          if (!res || !res.ok) alert('Upload failed for ' + file.name);
+          if (done === files.length) jbLoadFiles(code);
+        })
+        .catch(() => alert('Upload failed for ' + file.name + ' — check your connection.'));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+document.addEventListener('click', (e) => {
+  const fileBtn = e.target.closest ? e.target.closest('[data-jb-file]') : null;
+  if (fileBtn) {
+    const code = fileBtn.getAttribute('data-jb-proj');
+    const name = fileBtn.getAttribute('data-jb-file');
+    fetch('/api/project-files?project=' + encodeURIComponent(code) + '&name=' + encodeURIComponent(name))
+      .then(r => { if (!r.ok) throw 0; return r.blob(); })
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        if (/pdf|image|text/.test(blob.type || '')) { window.open(url, '_blank'); }
+        else { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+      })
+      .catch(() => alert('Could not open ' + name));
+    return;
+  }
+  const openBtn = e.target.closest ? e.target.closest('[data-jb-open]') : null;
+  if (openBtn) jbOpenProject(openBtn.getAttribute('data-jb-open'));
+});
+
+document.getElementById('jb-create-btn').addEventListener('click', () => {
+  const code = document.getElementById('jb-new-code').value.trim();
+  const name = document.getElementById('jb-new-name').value.trim();
+  if (!code) { alert('Enter the project code (e.g. 26-300-03).'); return; }
+  if (!name) { alert('Enter the project name.'); return; }
+  fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code, name: name }) })
+    .then(r => r.json().then(j => ({ ok: r.ok, j: j })))
+    .then(out => {
+      if (!out.ok || !out.j.ok) { alert((out.j && out.j.error) || 'Could not create the project.'); return; }
+      document.getElementById('jb-new-code').value = '';
+      document.getElementById('jb-new-name').value = '';
+      jbLoadProjects();
+    })
+    .catch(() => alert('Could not create the project — check your connection.'));
+});
+
+// Project picker used by Post Spread on both calculator tabs
+function pickProject(cb) {
+  const projs = window.EBCC_PROJECTS || [];
+  if (!projs.length) { cb(null); return; }   // projects unknown (offline) — post without
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:18px;max-width:360px;width:100%">' +
+    '<div style="font-weight:650;margin-bottom:10px;font-size:15px">What project is this spread for?</div>' +
+    '<select id="proj-pick" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px">' +
+      '<option value="">— No project —</option>' +
+      projs.map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.code + ' — ' + p.name) + '</option>').join('') +
+    '</select>' +
+    '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">' +
+      '<button class="btn" id="proj-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" id="proj-ok">Post</button>' +
+    '</div></div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#proj-cancel').onclick = () => ov.remove();
+  ov.querySelector('#proj-ok').onclick = () => {
+    const code = ov.querySelector('#proj-pick').value;
+    ov.remove();
+    cb(projs.find(x => x.code === code) || null);
+  };
+}
+
+document.querySelector('.tab[data-tab="jobbooks"]').addEventListener('click', jbLoadProjects);
+jbLoadProjects();
 
 </script>
 
