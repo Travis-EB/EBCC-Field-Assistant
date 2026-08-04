@@ -6627,10 +6627,99 @@ function jbFmtSize(n) {
   return n + ' B';
 }
 
+// Standard color-coded folders — the same set on every project.
+const JB_FOLDERS = [
+  { id: 'Plans',               color: '#2563eb' },
+  { id: 'Geotech',             color: '#92400e' },
+  { id: 'Job Costing',         color: '#059669' },
+  { id: 'Sub Quotes',          color: '#7c3aed' },
+  { id: 'Takeoffs',            color: '#d97706' },
+  { id: 'Project Information', color: '#0891b2' },
+  { id: 'Contract',            color: '#dc2626' },
+];
+let jbCurrentCode = '';
+let jbCurrentFiles = [];
+let jbActiveFolder = 'ALL';
+
+function jbFolderColor(id) {
+  const f = JB_FOLDERS.find(x => x.id === id);
+  return f ? f.color : '#8b919b';
+}
+function jbFolderLabel(id) { return id || 'Unsorted'; }
+
+function jbRenderFolders() {
+  const bar = document.getElementById('jb-folderbar');
+  if (!bar) return;
+  const counts = {};
+  jbCurrentFiles.forEach(f => { const k = f.folder || ''; counts[k] = (counts[k] || 0) + 1; });
+  const chip = (id, label, color, count) => {
+    const active = jbActiveFolder === id;
+    return '<span data-jb-chip="' + escAttr(id) + '" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;border:1px solid ' + (active ? 'var(--dark)' : 'var(--border)') + ';background:' + (active ? 'var(--dark)' : '#fff') + ';color:' + (active ? '#fff' : 'var(--dark)') + ';font-size:12px;font-weight:600;cursor:pointer;user-select:none">' +
+      (color ? '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';flex-shrink:0"></span>' : '') +
+      escHTML(label) + (count != null ? ' <span style="opacity:.6">' + count + '</span>' : '') +
+    '</span>';
+  };
+  let html = chip('ALL', 'All', '', jbCurrentFiles.length);
+  JB_FOLDERS.forEach(f => { html += chip(f.id, f.id, f.color, counts[f.id] || 0); });
+  html += chip('', 'Unsorted', '#8b919b', counts[''] || 0);
+  bar.innerHTML = html;
+}
+
+function jbRenderFiles() {
+  const wrap = document.getElementById('jb-files');
+  if (!wrap) return;
+  const files = jbActiveFolder === 'ALL'
+    ? jbCurrentFiles
+    : jbCurrentFiles.filter(f => (f.folder || '') === jbActiveFolder);
+  if (!files.length) {
+    wrap.innerHTML = '<div class="empty">' + (jbCurrentFiles.length ? 'No files in ' + escHTML(jbFolderLabel(jbActiveFolder === 'ALL' ? '' : jbActiveFolder)) + '.' : 'No files yet. Drop files above — they land in Unsorted, then drag them onto a folder.') + '</div>';
+    return;
+  }
+  wrap.innerHTML = files.map(f => {
+    const folder = f.folder || '';
+    const moveOpts = ['<option value="" disabled selected>Move to…</option>'];
+    JB_FOLDERS.forEach(x => { if (x.id !== folder) moveOpts.push('<option value="' + escAttr(x.id) + '">' + escHTML(x.id) + '</option>'); });
+    if (folder !== '') moveOpts.push('<option value="__unsorted__">Unsorted</option>');
+    return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" style="grid-template-columns:1fr auto auto;cursor:grab">' +
+      '<div style="min-width:0"><div class="name" style="display:flex;align-items:center;gap:7px;min-width:0">' +
+        '<span title="' + escAttr(jbFolderLabel(folder)) + '" style="width:9px;height:9px;border-radius:50%;background:' + jbFolderColor(folder) + ';flex-shrink:0"></span>' +
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHTML(f.name) + '</span></div>' +
+        '<div class="rate">' + escHTML(jbFolderLabel(folder)) + ' · ' + jbFmtSize(f.size) + (f.lastModified ? ' · ' + new Date(f.lastModified).toLocaleDateString() : '') + '</div></div>' +
+      '<select class="jb-move" data-jb-move-name="' + escAttr(f.name) + '" data-jb-move-from="' + escAttr(folder) + '" style="font-family:inherit;font-size:12px;padding:6px;border:1px solid var(--border);border-radius:8px;max-width:110px">' + moveOpts.join('') + '</select>' +
+      '<button class="btn" data-jb-file="' + escAttr(f.name) + '" data-jb-proj="' + escAttr(jbCurrentCode) + '" data-jb-folder="' + escAttr(folder) + '">Open</button>' +
+    '</div>';
+  }).join('');
+}
+
+function jbMoveFile(name, from, to) {
+  if (from === to) return;
+  fetch('/api/project-files', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: jbCurrentCode, name: name, mode: 'move', from: from, to: to }),
+  })
+    .then(r => r.json().then(j => ({ ok: r.ok, j: j })))
+    .then(out => {
+      if (!out.ok || !out.j.ok) { alert((out.j && out.j.error) || 'Could not move ' + name); return; }
+      jbLoadFiles(jbCurrentCode);
+    })
+    .catch(() => alert('Could not move ' + name + ' — check your connection.'));
+}
+
+// Move dropdowns (works on phones where drag-and-drop doesn't)
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.classList && e.target.classList.contains('jb-move')) {
+    const to = e.target.value === '__unsorted__' ? '' : e.target.value;
+    jbMoveFile(e.target.getAttribute('data-jb-move-name'), e.target.getAttribute('data-jb-move-from'), to);
+  }
+});
+
 function jbOpenProject(code) {
   const p = (window.EBCC_PROJECTS || []).find(x => x.code === code);
   if (!p) return;
   // The job opens as its own page: home view hides, Back returns to the list.
+  jbCurrentCode = code;
+  jbCurrentFiles = [];
+  jbActiveFolder = 'ALL';
   document.getElementById('jb-home').style.display = 'none';
   const box = document.getElementById('jb-detail');
   box.style.display = '';
@@ -6640,12 +6729,13 @@ function jbOpenProject(code) {
       '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.code) + '</div>' +
       '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.name) + '</div></div>' +
     '</div>' +
-    '<div id="jb-dropzone" style="margin:12px 0;padding:22px 16px;border:2px dashed var(--border);border-radius:12px;text-align:center;color:var(--gray);font-size:13px;background:#fafbfc">' +
-      'Drag files here — they save automatically<br>' +
+    '<div id="jb-dropzone" style="margin:12px 0;padding:18px 16px;border:2px dashed var(--border);border-radius:12px;text-align:center;color:var(--gray);font-size:13px;background:#fafbfc">' +
+      '<span id="jb-drophint">Drag files here — they save automatically</span><br>' +
       '<label class="btn btn-primary" style="cursor:pointer;margin-top:10px;display:inline-block">Upload files' +
         '<input type="file" id="jb-file-input" multiple style="display:none"></label>' +
       '<div id="jb-upstatus" style="margin-top:8px;font-weight:600;color:var(--dark)"></div>' +
     '</div>' +
+    '<div id="jb-folderbar" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0"></div>' +
     '<div class="section-header">Files</div>' +
     '<div id="jb-files"><div class="empty">Loading files…</div></div>';
   window.scrollTo(0, 0);
@@ -6659,7 +6749,7 @@ function jbOpenProject(code) {
     jbUploadFiles(code, e.target.files);
     e.target.value = '';
   });
-  // Drag & drop -> auto-save
+  // Drag & drop files -> auto-save into the active folder
   const dz = document.getElementById('jb-dropzone');
   ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -6674,6 +6764,50 @@ function jbOpenProject(code) {
       jbUploadFiles(code, e.dataTransfer.files);
     }
   });
+  // Folder chips: click filters; dropping a file row onto a chip moves it there
+  const bar = document.getElementById('jb-folderbar');
+  bar.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-jb-chip]');
+    if (!c) return;
+    jbActiveFolder = c.getAttribute('data-jb-chip');
+    const hint = document.getElementById('jb-drophint');
+    if (hint) hint.textContent = 'Drag files here — they save into ' + (jbActiveFolder === 'ALL' ? 'Unsorted' : jbFolderLabel(jbActiveFolder));
+    jbRenderFolders(); jbRenderFiles();
+  });
+  bar.addEventListener('dragover', (e) => {
+    const c = e.target.closest('[data-jb-chip]');
+    if (c && c.getAttribute('data-jb-chip') !== 'ALL' && !(e.dataTransfer.types || []).includes('Files')) {
+      e.preventDefault();
+      c.style.outline = '2px solid var(--blue)';
+    }
+  });
+  bar.addEventListener('dragleave', (e) => {
+    const c = e.target.closest('[data-jb-chip]');
+    if (c) c.style.outline = '';
+  });
+  bar.addEventListener('drop', (e) => {
+    const c = e.target.closest('[data-jb-chip]');
+    if (!c) return;
+    c.style.outline = '';
+    const chipId = c.getAttribute('data-jb-chip');
+    if (chipId === 'ALL') return;
+    e.preventDefault();
+    try {
+      const d = JSON.parse(e.dataTransfer.getData('text/plain') || 'null');
+      if (d && d.jbFile) jbMoveFile(d.name, d.from, chipId);
+    } catch (err) {}
+  });
+  // File rows are draggable onto the chips
+  document.getElementById('jb-files').addEventListener('dragstart', (e) => {
+    const row = e.target.closest ? e.target.closest('[data-jb-drag-name]') : null;
+    if (!row) return;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      jbFile: true,
+      name: row.getAttribute('data-jb-drag-name'),
+      from: row.getAttribute('data-jb-drag-from'),
+    }));
+  });
   jbLoadFiles(code);
 }
 
@@ -6684,15 +6818,10 @@ function jbOpenProject(code) {
 
 function jbLoadFiles(code) {
   fetch('/api/project-files?project=' + encodeURIComponent(code)).then(r => r.ok ? r.json() : null).then(res => {
-    const wrap = document.getElementById('jb-files');
-    if (!wrap) return;
-    const files = (res && res.files) || [];
-    if (!files.length) { wrap.innerHTML = '<div class="empty">No files yet. Use Upload file to add plans, PDFs, photos, etc.</div>'; return; }
-    wrap.innerHTML = files.map(f =>
-      '<div class="equipment-card" style="grid-template-columns:1fr auto">' +
-        '<div><div class="name">' + escHTML(f.name) + '</div><div class="rate">' + jbFmtSize(f.size) + (f.lastModified ? ' · ' + new Date(f.lastModified).toLocaleDateString() : '') + '</div></div>' +
-        '<button class="btn" data-jb-file="' + escAttr(f.name) + '" data-jb-proj="' + escAttr(code) + '">Open</button>' +
-      '</div>').join('');
+    if (!res) return;
+    jbCurrentFiles = res.files || [];
+    jbRenderFolders();
+    jbRenderFiles();
   }).catch(() => {});
 }
 
@@ -6712,11 +6841,19 @@ async function jbUploadFiles(code, fileList) {
   const CHUNK = 4 * 1024 * 1024;         // big files go up in 4MB blocks
   const SINGLE_MAX = 6 * 1024 * 1024;    // below this, one-shot upload
   const FILE_MAX = 200 * 1024 * 1024;
-  let failed = 0, idx = 0;
+  // New drops land in the active folder (Unsorted when viewing All) — organize after.
+  const targetFolder = (jbActiveFolder === 'ALL') ? '' : jbActiveFolder;
+  const existing = new Set(jbCurrentFiles.map(f => String(f.name).toLowerCase()));
+  let failed = 0, skipped = 0, idx = 0;
   for (const file of files) {
     idx++;
     const label = files.length > 1 ? '(' + idx + '/' + files.length + ') ' : '';
     try {
+      if (existing.has(String(file.name).toLowerCase())) {
+        skipped++;
+        alert('Duplicate detected — "' + file.name + '" is already in this project. Not added.');
+        continue;
+      }
       if (file.size > FILE_MAX) { alert(file.name + ' is over the 200MB limit.'); failed++; continue; }
       const contentType = file.type || 'application/octet-stream';
       if (file.size <= SINGLE_MAX) {
@@ -6724,7 +6861,7 @@ async function jbUploadFiles(code, fileList) {
         const b64 = await jbReadB64(file);
         const r = await fetch('/api/project-files', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project: code, name: file.name, contentType: contentType, data: b64 }),
+          body: JSON.stringify({ project: code, name: file.name, folder: targetFolder, contentType: contentType, data: b64 }),
         });
         const j = await r.json().catch(() => null);
         if (!r.ok || !j || !j.ok) throw 0;
@@ -6736,7 +6873,7 @@ async function jbUploadFiles(code, fileList) {
           const blockId = btoa('ebccblk' + String(i).padStart(8, '0'));
           const r = await fetch('/api/project-files', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project: code, name: file.name, mode: 'stage', blockId: blockId, data: b64 }),
+            body: JSON.stringify({ project: code, name: file.name, folder: targetFolder, mode: 'stage', blockId: blockId, data: b64 }),
           });
           const j = await r.json().catch(() => null);
           if (!r.ok || !j || !j.ok) throw 0;
@@ -6745,18 +6882,22 @@ async function jbUploadFiles(code, fileList) {
         }
         const c = await fetch('/api/project-files', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project: code, name: file.name, mode: 'commit', contentType: contentType, blockIds: blockIds }),
+          body: JSON.stringify({ project: code, name: file.name, folder: targetFolder, mode: 'commit', contentType: contentType, blockIds: blockIds }),
         });
         const cj = await c.json().catch(() => null);
         if (!c.ok || !cj || !cj.ok) throw 0;
       }
+      existing.add(String(file.name).toLowerCase());
     } catch (e) {
       failed++;
       alert('Upload failed for ' + file.name + (navigator.onLine ? '.' : ' — check your connection.'));
     }
   }
   if (status) {
-    status.textContent = failed ? (files.length - failed) + ' saved, ' + failed + ' failed' : 'Saved ✓';
+    const saved = files.length - failed - skipped;
+    status.textContent = (failed || skipped)
+      ? saved + ' saved' + (skipped ? ', ' + skipped + ' duplicate' + (skipped === 1 ? '' : 's') : '') + (failed ? ', ' + failed + ' failed' : '')
+      : 'Saved ✓';
     setTimeout(() => { if (status.textContent === 'Saved ✓') status.textContent = ''; }, 2500);
   }
   jbLoadFiles(code);
@@ -6767,7 +6908,8 @@ document.addEventListener('click', (e) => {
   if (fileBtn) {
     const code = fileBtn.getAttribute('data-jb-proj');
     const name = fileBtn.getAttribute('data-jb-file');
-    const base = '/api/project-files?project=' + encodeURIComponent(code) + '&name=' + encodeURIComponent(name);
+    const folder = fileBtn.getAttribute('data-jb-folder') || '';
+    const base = '/api/project-files?project=' + encodeURIComponent(code) + '&name=' + encodeURIComponent(name) + (folder ? '&folder=' + encodeURIComponent(folder) : '');
     // Ask for a short-lived direct storage link (no size limits), fall back to streaming.
     fetch(base + '&sas=1')
       .then(r => r.ok ? r.json() : null)

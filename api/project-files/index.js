@@ -34,12 +34,17 @@ module.exports = async function (context, req) {
       const project = safeName((req.query && req.query.project) || '');
       if (!project) return json(context, 400, { error: 'project required.' });
       const name = safeFileName((req.query && req.query.name) || '');
+      const folder = safeFileName((req.query && req.query.folder) || '');
 
       if (!name) {
+        // List: files may live at the project root ('' = Unsorted) or one folder deep.
         const files = [];
         for await (const blob of container.listBlobsFlat({ prefix: project + '/' })) {
+          const rest = blob.name.slice(project.length + 1);
+          const slash = rest.indexOf('/');
           files.push({
-            name: blob.name.slice(project.length + 1),
+            name: slash >= 0 ? rest.slice(slash + 1) : rest,
+            folder: slash >= 0 ? rest.slice(0, slash) : '',
             size: blob.properties.contentLength || 0,
             lastModified: blob.properties.lastModified || null,
             contentType: blob.properties.contentType || 'application/octet-stream',
@@ -49,7 +54,7 @@ module.exports = async function (context, req) {
         return json(context, 200, { files: files });
       }
 
-      const bc = container.getBlockBlobClient(project + '/' + name);
+      const bc = container.getBlockBlobClient(project + '/' + (folder ? folder + '/' : '') + name);
       if (!(await bc.exists())) return json(context, 404, { error: 'Not found.' });
 
       // Preferred: hand back a short-lived read link so the browser pulls the
@@ -88,9 +93,28 @@ module.exports = async function (context, req) {
       const project = safeName(body.project || '');
       const name = safeFileName(body.name || '');
       if (!project || !name) return json(context, 400, { error: 'project and name required.' });
-      const bc = container.getBlockBlobClient(project + '/' + name);
+      const folder = safeFileName(body.folder || '');
       const mode = String(body.mode || 'single');
       const contentType = String(body.contentType || 'application/octet-stream').slice(0, 100);
+
+      // Move a file between folders: server-side copy, then delete the source.
+      if (mode === 'move') {
+        const from = safeFileName(body.from || '');
+        const to = safeFileName(body.to || '');
+        const src = container.getBlockBlobClient(project + '/' + (from ? from + '/' : '') + name);
+        const dst = container.getBlockBlobClient(project + '/' + (to ? to + '/' : '') + name);
+        if (!(await src.exists())) return json(context, 404, { error: 'File not found.' });
+        if (await dst.exists()) return json(context, 409, { error: 'A file with that name is already there.' });
+        const srcUrl = await src.generateSasUrl({
+          permissions: BlobSASPermissions.parse('r'),
+          expiresOn: new Date(Date.now() + 10 * 60 * 1000),
+        });
+        await dst.syncCopyFromURL(srcUrl);
+        await src.delete();
+        return json(context, 200, { ok: true });
+      }
+
+      const bc = container.getBlockBlobClient(project + '/' + (folder ? folder + '/' : '') + name);
 
       // Large files arrive as staged blocks, then a commit assembles them.
       if (mode === 'stage') {
@@ -126,8 +150,9 @@ module.exports = async function (context, req) {
       if (!isAdmin(me)) return json(context, 403, { error: 'Admin only.' });
       const project = safeName((req.query && req.query.project) || '');
       const name = safeFileName((req.query && req.query.name) || '');
+      const folder = safeFileName((req.query && req.query.folder) || '');
       if (!project || !name) return json(context, 400, { error: 'project and name required.' });
-      try { await container.getBlockBlobClient(project + '/' + name).delete(); } catch (e) { if (e.statusCode !== 404) throw e; }
+      try { await container.getBlockBlobClient(project + '/' + (folder ? folder + '/' : '') + name).delete(); } catch (e) { if (e.statusCode !== 404) throw e; }
       return json(context, 200, { ok: true });
     }
 
