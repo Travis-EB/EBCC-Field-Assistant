@@ -8,8 +8,10 @@
 // DELETE ?project=<code>&name=<file>  -> admin only
 const { getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
 const { getJobBooksContainer, safeName, safeFileName } = require('../shared/blob');
+const { BlobSASPermissions } = require('@azure/storage-blob');
 
-const MAX_FILE_B64 = 40 * 1024 * 1024; // ~30MB real file
+const MAX_SINGLE_B64 = 12 * 1024 * 1024; // small files come up in one shot (~9MB real)
+const MAX_CHUNK_B64 = 8 * 1024 * 1024;   // large files arrive as staged 4MB blocks
 
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
@@ -49,6 +51,22 @@ module.exports = async function (context, req) {
 
       const bc = container.getBlockBlobClient(project + '/' + name);
       if (!(await bc.exists())) return json(context, 404, { error: 'Not found.' });
+
+      // Preferred: hand back a short-lived read link so the browser pulls the
+      // file straight from storage — no size ceiling, no function bandwidth.
+      if (req.query && req.query.sas) {
+        try {
+          const url = await bc.generateSasUrl({
+            permissions: BlobSASPermissions.parse('r'),
+            expiresOn: new Date(Date.now() + 15 * 60 * 1000),
+          });
+          return json(context, 200, { ok: true, url: url });
+        } catch (e) {
+          context.log.warn('sas generation failed: ' + (e.message || e));
+          // fall through to streaming below
+        }
+      }
+
       const props = await bc.getProperties();
       const buf = await bc.downloadToBuffer();
       context.res = {
@@ -70,12 +88,35 @@ module.exports = async function (context, req) {
       const project = safeName(body.project || '');
       const name = safeFileName(body.name || '');
       if (!project || !name) return json(context, 400, { error: 'project and name required.' });
+      const bc = container.getBlockBlobClient(project + '/' + name);
+      const mode = String(body.mode || 'single');
+      const contentType = String(body.contentType || 'application/octet-stream').slice(0, 100);
+
+      // Large files arrive as staged blocks, then a commit assembles them.
+      if (mode === 'stage') {
+        const blockId = String(body.blockId || '');
+        if (!/^[A-Za-z0-9+/=]{8,128}$/.test(blockId)) return json(context, 400, { error: 'Bad blockId.' });
+        let b64 = String(body.data || '');
+        if (b64.startsWith('data:')) b64 = b64.slice(b64.indexOf(',') + 1);
+        if (b64.length < 4) return json(context, 400, { error: 'Empty block.' });
+        if (b64.length > MAX_CHUNK_B64) return json(context, 400, { error: 'Block too large.' });
+        const buf = Buffer.from(b64, 'base64');
+        await bc.stageBlock(blockId, buf, buf.length);
+        return json(context, 200, { ok: true });
+      }
+      if (mode === 'commit') {
+        const blockIds = Array.isArray(body.blockIds) ? body.blockIds.map(String) : [];
+        if (!blockIds.length || blockIds.length > 200) return json(context, 400, { error: 'Bad block list.' });
+        await bc.commitBlockList(blockIds, { blobHTTPHeaders: { blobContentType: contentType } });
+        return json(context, 200, { ok: true, name: name });
+      }
+
+      // Small files: single shot
       let b64 = String(body.data || '');
       if (b64.startsWith('data:')) b64 = b64.slice(b64.indexOf(',') + 1);
       if (b64.length < 4) return json(context, 400, { error: 'Empty file.' });
-      if (b64.length > MAX_FILE_B64) return json(context, 400, { error: 'File too large (30MB max).' });
-      const contentType = String(body.contentType || 'application/octet-stream').slice(0, 100);
-      await container.getBlockBlobClient(project + '/' + name).uploadData(Buffer.from(b64, 'base64'), {
+      if (b64.length > MAX_SINGLE_B64) return json(context, 400, { error: 'Too large for single upload — use staged blocks.' });
+      await bc.uploadData(Buffer.from(b64, 'base64'), {
         blobHTTPHeaders: { blobContentType: contentType },
       });
       return json(context, 200, { ok: true, name: name });

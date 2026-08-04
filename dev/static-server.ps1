@@ -62,6 +62,8 @@ while ($listener.IsListening) {
         $json = '{"projects":[{"code":"26-292-03","name":"PROSPER RETAIL","fileCount":2,"totalSize":3300000},{"code":"26-100-03","name":"NL35 III PH 1 - SITE & BUILDING 7","fileCount":5,"totalSize":12000000},{"code":"25-079-02","name":"FOX FIELD WEST BUILDING 1","fileCount":0,"totalSize":0}]}'
       } elseif ($path -eq '/api/project-files' -and $req.HttpMethod -eq 'POST') {
         $json = '{"ok":true,"name":"uploaded.pdf"}'
+      } elseif ($path -eq '/api/project-files' -and $req.Url.Query -like '*sas=1*') {
+        $json = '{"ok":true,"url":"/icons/logo.png"}'
       } elseif ($path -eq '/api/project-files') {
         $json = '{"files":[{"name":"Grading Plan Rev3.pdf","size":2400000,"lastModified":"2026-08-01T10:00:00Z","contentType":"application/pdf"},{"name":"Soils Report.pdf","size":900000,"lastModified":"2026-07-20T10:00:00Z","contentType":"application/pdf"}]}'
       } elseif ($path -eq '/api/me') {
