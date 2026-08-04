@@ -2172,6 +2172,12 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
     </div>
 
     <div class="section-header">Projects <span id="jb-count" style="text-transform:none;letter-spacing:0"></span></div>
+    <div class="controls" id="jb-sort-row" style="gap:6px">
+      <span style="font-size:11px;color:var(--gray);align-self:center;text-transform:uppercase;letter-spacing:.08em;font-weight:600">Sort</span>
+      <button class="btn btn-primary" data-jb-sort="code">Job #</button>
+      <button class="btn" data-jb-sort="name">A&ndash;Z</button>
+      <button class="btn" data-jb-sort="size">File size</button>
+    </div>
     <div id="jb-list"><div class="empty">Loading projects…</div></div>
   </div>
   <div id="jb-detail" style="display:none"></div>
@@ -6541,18 +6547,35 @@ function jbLoadProjects() {
   }).catch(() => {});
 }
 
+let jbSort = 'code';
+
 function jbRenderList() {
   const list = document.getElementById('jb-list');
   const count = document.getElementById('jb-count');
-  const projs = window.EBCC_PROJECTS || [];
+  const projs = (window.EBCC_PROJECTS || []).slice();
   if (count) count.textContent = '(' + projs.length + ')';
   if (!projs.length) { list.innerHTML = '<div class="empty">No projects yet — create the first one above.</div>'; return; }
-  list.innerHTML = projs.map(p =>
-    '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jb-open="' + escAttr(p.code) + '">' +
-      '<div><div class="name">' + escHTML(p.code) + '</div><div class="rate">' + escHTML(p.name) + '</div></div>' +
+  if (jbSort === 'name') projs.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  else if (jbSort === 'size') projs.sort((a, b) => (b.totalSize || 0) - (a.totalSize || 0));
+  else projs.sort((a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
+  list.innerHTML = projs.map(p => {
+    const meta = p.fileCount
+      ? ' · ' + p.fileCount + ' file' + (p.fileCount === 1 ? '' : 's') + ' · ' + jbFmtSize(p.totalSize)
+      : ' · no files';
+    return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jb-open="' + escAttr(p.code) + '">' +
+      '<div><div class="name">' + escHTML(p.code) + '</div><div class="rate">' + escHTML(p.name) + escHTML(meta) + '</div></div>' +
       '<button class="btn" data-jb-open="' + escAttr(p.code) + '">Open</button>' +
-    '</div>').join('');
+    '</div>';
+  }).join('');
 }
+
+document.getElementById('jb-sort-row').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-jb-sort]');
+  if (!btn) return;
+  jbSort = btn.getAttribute('data-jb-sort');
+  document.querySelectorAll('#jb-sort-row [data-jb-sort]').forEach(b => b.classList.toggle('btn-primary', b === btn));
+  jbRenderList();
+});
 
 function jbFmtSize(n) {
   if (!n) return '';

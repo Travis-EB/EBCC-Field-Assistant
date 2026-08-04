@@ -8,6 +8,7 @@
 // never collides with per-user record queries. Writes use etag-checked replace
 // with retries (same pattern as the ticket-number counter).
 const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
+const { getJobBooksContainer, safeName } = require('../shared/blob');
 
 const DOC_ID = 'projects';
 const DOC_PK = '__shared__';
@@ -80,7 +81,21 @@ module.exports = async function (context, req) {
         };
         try { await records.items.create(doc); } catch (e) { if (e.code !== 409) throw e; doc = await readDoc(records); }
       }
-      const list = (doc.data || []).slice().sort((a, b) => String(b.code).localeCompare(String(a.code)));
+      // Per-book file totals (one container listing, grouped by project prefix)
+      const sizes = {};
+      try {
+        const container = await getJobBooksContainer();
+        for await (const blob of container.listBlobsFlat()) {
+          const seg = blob.name.split('/')[0];
+          if (!sizes[seg]) sizes[seg] = { n: 0, b: 0 };
+          sizes[seg].n++;
+          sizes[seg].b += blob.properties.contentLength || 0;
+        }
+      } catch (e) { /* blob not configured — totals stay zero */ }
+      const list = (doc.data || []).map((p) => {
+        const s = sizes[safeName(p.code)] || { n: 0, b: 0 };
+        return Object.assign({}, p, { fileCount: s.n, totalSize: s.b });
+      }).sort((a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
       return json(context, 200, { projects: list });
     }
 
