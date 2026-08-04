@@ -2159,19 +2159,21 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 </section>
 
 <section class="tab-content" id="tab-jobbooks">
-  <div class="section-header">New project</div>
-  <div class="controls">
-    <label class="hours-control"><span>Project code</span>
-      <input type="text" id="jb-new-code" placeholder="e.g. 26-300-03" autocomplete="off">
-    </label>
-    <label class="hours-control" style="flex:1;min-width:180px"><span>Project name</span>
-      <input type="text" id="jb-new-name" placeholder="e.g. PROSPER RETAIL" autocomplete="off">
-    </label>
-    <button class="btn btn-primary" id="jb-create-btn">Create project</button>
-  </div>
+  <div id="jb-home">
+    <div class="section-header">New project</div>
+    <div class="controls">
+      <label class="hours-control"><span>Project code</span>
+        <input type="text" id="jb-new-code" placeholder="e.g. 26-300-03" autocomplete="off">
+      </label>
+      <label class="hours-control" style="flex:1;min-width:180px"><span>Project name</span>
+        <input type="text" id="jb-new-name" placeholder="e.g. PROSPER RETAIL" autocomplete="off">
+      </label>
+      <button class="btn btn-primary" id="jb-create-btn">Create project</button>
+    </div>
 
-  <div class="section-header">Projects <span id="jb-count" style="text-transform:none;letter-spacing:0"></span></div>
-  <div id="jb-list"><div class="empty">Loading projects…</div></div>
+    <div class="section-header">Projects <span id="jb-count" style="text-transform:none;letter-spacing:0"></span></div>
+    <div id="jb-list"><div class="empty">Loading projects…</div></div>
+  </div>
   <div id="jb-detail" style="display:none"></div>
 </section>
 
@@ -6562,20 +6564,57 @@ function jbFmtSize(n) {
 function jbOpenProject(code) {
   const p = (window.EBCC_PROJECTS || []).find(x => x.code === code);
   if (!p) return;
+  // The job opens as its own page: home view hides, Back returns to the list.
+  document.getElementById('jb-home').style.display = 'none';
   const box = document.getElementById('jb-detail');
   box.style.display = '';
   box.innerHTML =
-    '<div class="section-header">' + escHTML(p.code) + ' — ' + escHTML(p.name) + '</div>' +
-    '<div class="controls">' +
-      '<label class="btn btn-primary" style="cursor:pointer">Upload file<input type="file" id="jb-file-input" multiple style="display:none"></label>' +
-      '<button class="btn" id="jb-close-btn">Close</button>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">' +
+      '<button class="btn" id="jb-back-btn">&larr; Back</button>' +
+      '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.code) + '</div>' +
+      '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.name) + '</div></div>' +
     '</div>' +
+    '<div id="jb-dropzone" style="margin:12px 0;padding:22px 16px;border:2px dashed var(--border);border-radius:12px;text-align:center;color:var(--gray);font-size:13px;background:#fafbfc">' +
+      'Drag files here — they save automatically<br>' +
+      '<label class="btn btn-primary" style="cursor:pointer;margin-top:10px;display:inline-block">Upload files' +
+        '<input type="file" id="jb-file-input" multiple style="display:none"></label>' +
+      '<div id="jb-upstatus" style="margin-top:8px;font-weight:600;color:var(--dark)"></div>' +
+    '</div>' +
+    '<div class="section-header">Files</div>' +
     '<div id="jb-files"><div class="empty">Loading files…</div></div>';
-  try { box.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
-  document.getElementById('jb-close-btn').onclick = () => { box.style.display = 'none'; box.innerHTML = ''; };
-  document.getElementById('jb-file-input').addEventListener('change', (e) => jbUploadFiles(code, e.target.files));
+  window.scrollTo(0, 0);
+  document.getElementById('jb-back-btn').onclick = () => {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    document.getElementById('jb-home').style.display = '';
+    jbLoadProjects();
+  };
+  document.getElementById('jb-file-input').addEventListener('change', (e) => {
+    jbUploadFiles(code, e.target.files);
+    e.target.value = '';
+  });
+  // Drag & drop -> auto-save
+  const dz = document.getElementById('jb-dropzone');
+  ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dz.style.borderColor = 'var(--blue)'; dz.style.background = '#eef3fa';
+  }));
+  ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dz.style.borderColor = 'var(--border)'; dz.style.background = '#fafbfc';
+  }));
+  dz.addEventListener('drop', (e) => {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+      jbUploadFiles(code, e.dataTransfer.files);
+    }
+  });
   jbLoadFiles(code);
 }
+
+// Stop the browser from navigating away when a file misses the drop zone
+['dragover', 'drop'].forEach(ev => document.addEventListener(ev, (e) => {
+  if (e.target && e.target.closest && !e.target.closest('#jb-dropzone')) e.preventDefault();
+}));
 
 function jbLoadFiles(code) {
   fetch('/api/project-files?project=' + encodeURIComponent(code)).then(r => r.ok ? r.json() : null).then(res => {
@@ -6592,11 +6631,15 @@ function jbLoadFiles(code) {
 }
 
 function jbUploadFiles(code, fileList) {
-  const files = Array.from(fileList || []);
+  const files = Array.from(fileList || []).filter(f => {
+    if (f.size > 30 * 1024 * 1024) { alert(f.name + ' is over the 30MB limit.'); return false; }
+    return true;
+  });
   if (!files.length) return;
-  let done = 0;
+  const status = document.getElementById('jb-upstatus');
+  let done = 0, failed = 0;
+  if (status) status.textContent = 'Saving ' + files.length + ' file' + (files.length === 1 ? '' : 's') + '…';
   files.forEach(file => {
-    if (file.size > 30 * 1024 * 1024) { alert(file.name + ' is over the 30MB limit.'); return; }
     const reader = new FileReader();
     reader.onload = () => {
       fetch('/api/project-files', {
@@ -6606,10 +6649,20 @@ function jbUploadFiles(code, fileList) {
         .then(r => r.ok ? r.json() : null)
         .then(res => {
           done++;
-          if (!res || !res.ok) alert('Upload failed for ' + file.name);
-          if (done === files.length) jbLoadFiles(code);
+          if (!res || !res.ok) { failed++; alert('Upload failed for ' + file.name); }
+          if (done === files.length) {
+            if (status) {
+              status.textContent = failed ? (files.length - failed) + ' saved, ' + failed + ' failed' : 'Saved ✓';
+              setTimeout(() => { if (status.textContent === 'Saved ✓') status.textContent = ''; }, 2500);
+            }
+            jbLoadFiles(code);
+          }
         })
-        .catch(() => alert('Upload failed for ' + file.name + ' — check your connection.'));
+        .catch(() => {
+          done++; failed++;
+          if (status) status.textContent = 'Upload failed — check your connection';
+          alert('Upload failed for ' + file.name + ' — check your connection.');
+        });
     };
     reader.readAsDataURL(file);
   });
