@@ -6733,9 +6733,10 @@ function jbRenderList() {
   else if (jbSort === 'size') projs.sort((a, b) => (b.totalSize || 0) - (a.totalSize || 0));
   else projs.sort((a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
   list.innerHTML = projs.map(p => {
-    const meta = p.fileCount
+    const linkN = (p.links || []).length;
+    const meta = (p.fileCount
       ? ' · ' + p.fileCount + ' file' + (p.fileCount === 1 ? '' : 's') + ' · ' + jbFmtSize(p.totalSize)
-      : ' · no files';
+      : ' · no files') + (linkN ? ' · ' + linkN + ' link' + (linkN === 1 ? '' : 's') : '');
     return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jb-open="' + escAttr(p.code) + '">' +
       '<div><div class="name">' + escHTML(p.code) + '</div><div class="rate">' + escHTML(p.name) + escHTML(meta) + '</div></div>' +
       '<button class="btn" data-jb-open="' + escAttr(p.code) + '">Open</button>' +
@@ -6768,9 +6769,18 @@ const JB_FOLDERS = [
   { id: 'Project Information', color: '#0891b2' },
   { id: 'Contract',            color: '#dc2626' },
 ];
+// Links (Procore / Autodesk / etc.) — a color-coded category of their own,
+// stored on the shared project record rather than in blob storage.
+const JB_LINKS_ID = 'Links';
+const JB_LINKS_COLOR = '#db2777';
 let jbCurrentCode = '';
 let jbCurrentFiles = [];
+let jbCurrentLinks = [];
 let jbActiveFolder = 'ALL';
+
+function jbLinkHost(u) {
+  try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; }
+}
 
 function jbFolderColor(id) {
   const f = JB_FOLDERS.find(x => x.id === id);
@@ -6790,8 +6800,9 @@ function jbRenderFolders() {
       escHTML(label) + (count != null ? ' <span style="opacity:.6">' + count + '</span>' : '') +
     '</span>';
   };
-  let html = chip('ALL', 'All', '', jbCurrentFiles.length);
+  let html = chip('ALL', 'All', '', jbCurrentFiles.length + jbCurrentLinks.length);
   JB_FOLDERS.forEach(f => { html += chip(f.id, f.id, f.color, counts[f.id] || 0); });
+  html += chip(JB_LINKS_ID, 'Links', JB_LINKS_COLOR, jbCurrentLinks.length);
   html += chip('', 'Unsorted', '#8b919b', counts[''] || 0);
   bar.innerHTML = html;
 }
@@ -6799,15 +6810,31 @@ function jbRenderFolders() {
 function jbRenderFiles() {
   const wrap = document.getElementById('jb-files');
   if (!wrap) return;
+  const showLinks = (jbActiveFolder === 'ALL' || jbActiveFolder === JB_LINKS_ID) ? jbCurrentLinks : [];
   const files = jbActiveFolder === 'ALL'
     ? jbCurrentFiles
-    : jbCurrentFiles.filter(f => (f.folder || '') === jbActiveFolder);
-  if (!files.length) {
-    wrap.innerHTML = '<div class="empty">' + (jbCurrentFiles.length ? 'No files in ' + escHTML(jbFolderLabel(jbActiveFolder === 'ALL' ? '' : jbActiveFolder)) + '.' : 'No files yet. Drop files above — they land in Unsorted, then drag them onto a folder.') + '</div>';
+    : (jbActiveFolder === JB_LINKS_ID ? [] : jbCurrentFiles.filter(f => (f.folder || '') === jbActiveFolder));
+  if (!files.length && !showLinks.length) {
+    wrap.innerHTML = '<div class="empty">' + (jbActiveFolder === JB_LINKS_ID
+      ? 'No links yet — add a Procore or Autodesk link above.'
+      : (jbCurrentFiles.length ? 'No files in ' + escHTML(jbFolderLabel(jbActiveFolder === 'ALL' ? '' : jbActiveFolder)) + '.' : 'No files yet. Drop files above — they land in Unsorted, then drag them onto a folder.')) + '</div>';
     return;
   }
   const isAdmin = !!window.EBCC_IS_ADMIN;
-  wrap.innerHTML = files.map(f => {
+  const linkRows = showLinks.map(l => {
+    return '<div class="equipment-card" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:start">' +
+      '<div style="min-width:0;grid-area:auto">' +
+        '<div class="name" style="display:flex;align-items:flex-start;gap:7px;min-width:0">' +
+          '<span title="Link" style="width:9px;height:9px;border-radius:50%;background:' + JB_LINKS_COLOR + ';flex-shrink:0;margin-top:4px"></span>' +
+          '<span style="word-break:break-word;line-height:1.35">' + escHTML(l.name || l.url) + '</span></div>' +
+        '<div class="rate" style="margin-top:2px">Link · ' + escHTML(jbLinkHost(l.url)) + '</div></div>' +
+      '<div style="display:flex;gap:6px;align-items:center">' +
+        '<button class="btn" data-jb-link="' + escAttr(l.url) + '">Open</button>' +
+        (isAdmin ? '<button class="remove-btn" title="Remove link (admin)" data-jb-linkdel="' + escAttr(l.url) + '">&times;</button>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+  wrap.innerHTML = linkRows + files.map(f => {
     const folder = f.folder || '';
     return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:start;cursor:grab">' +
       '<div style="min-width:0;grid-area:auto">' +
@@ -6839,6 +6866,29 @@ document.addEventListener('click', (e) => {
     .catch(() => alert('Could not delete ' + name + ' — check your connection.'));
 });
 
+// Open a project link in a new tab; admins can remove links (server enforces it too)
+document.addEventListener('click', (e) => {
+  const open = e.target.closest ? e.target.closest('[data-jb-link]') : null;
+  if (open) { window.open(open.getAttribute('data-jb-link'), '_blank', 'noopener'); return; }
+  const del = e.target.closest ? e.target.closest('[data-jb-linkdel]') : null;
+  if (!del) return;
+  const url = del.getAttribute('data-jb-linkdel');
+  if (!confirm('Remove this link from the job book?')) return;
+  fetch('/api/projects', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'removeLink', code: jbCurrentCode, url: url }),
+  })
+    .then(r => r.json().then(j => ({ ok: r.ok, j: j })))
+    .then(out => {
+      if (!out.ok || !out.j.ok) { alert((out.j && out.j.error) || 'Could not remove the link.'); return; }
+      jbCurrentLinks = out.j.links || jbCurrentLinks.filter(l => l.url !== url);
+      const proj = (window.EBCC_PROJECTS || []).find(x => x.code === jbCurrentCode);
+      if (proj) proj.links = jbCurrentLinks;
+      jbRenderFolders(); jbRenderFiles();
+    })
+    .catch(() => alert('Could not remove the link — check your connection.'));
+});
+
 function jbMoveFile(name, from, to) {
   if (from === to) return;
   fetch('/api/project-files', {
@@ -6860,6 +6910,7 @@ function jbOpenProject(code) {
   // The job opens as its own page: home view hides, Back returns to the list.
   jbCurrentCode = code;
   jbCurrentFiles = [];
+  jbCurrentLinks = Array.isArray(p.links) ? p.links.slice() : [];
   jbActiveFolder = 'ALL';
   document.getElementById('jb-home').style.display = 'none';
   const box = document.getElementById('jb-detail');
@@ -6876,6 +6927,12 @@ function jbOpenProject(code) {
         '<input type="file" id="jb-file-input" multiple style="display:none"></label>' +
       '<div id="jb-upstatus" style="margin-top:8px;font-weight:600;color:var(--dark)"></div>' +
     '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;align-items:center">' +
+      '<span style="font-size:12px;font-weight:600;color:var(--gray);display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:' + JB_LINKS_COLOR + ';flex-shrink:0"></span>Links</span>' +
+      '<input type="text" id="jb-link-name" placeholder="Name (e.g. Procore)" autocomplete="off" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;width:150px;background:var(--card);color:var(--dark)">' +
+      '<input type="url" id="jb-link-url" placeholder="Paste Procore / Autodesk link — https://…" autocomplete="off" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;flex:1;min-width:200px;background:var(--card);color:var(--dark)">' +
+      '<button class="btn" id="jb-link-add">Add link</button>' +
+    '</div>' +
     '<div id="jb-folderbar" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0"></div>' +
     '<div class="section-header">Files</div>' +
     '<div id="jb-files"><div class="empty">Loading files…</div></div>';
@@ -6889,6 +6946,33 @@ function jbOpenProject(code) {
   document.getElementById('jb-file-input').addEventListener('change', (e) => {
     jbUploadFiles(code, e.target.files);
     e.target.value = '';
+  });
+  // Add a Procore / Autodesk link — saved on the shared project, visible to everyone
+  const linkBtn = document.getElementById('jb-link-add');
+  linkBtn.addEventListener('click', () => {
+    const nameEl = document.getElementById('jb-link-name');
+    const urlEl = document.getElementById('jb-link-url');
+    let url = (urlEl.value || '').trim();
+    if (!url) { alert('Paste the link URL first.'); return; }
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    try { new URL(url); } catch (err) { alert('That doesn\'t look like a valid link.'); return; }
+    linkBtn.disabled = true; linkBtn.textContent = 'Adding…';
+    fetch('/api/projects', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'addLink', code: code, name: (nameEl.value || '').trim(), url: url }),
+    })
+      .then(r => r.json().then(j => ({ ok: r.ok, j: j })))
+      .then(out => {
+        if (!out.ok || !out.j.ok) { alert((out.j && out.j.error) || 'Could not add the link.'); return; }
+        jbCurrentLinks = out.j.links || jbCurrentLinks.concat([{ name: (nameEl.value || '').trim() || jbLinkHost(url), url: url }]);
+        const proj = (window.EBCC_PROJECTS || []).find(x => x.code === code);
+        if (proj) proj.links = jbCurrentLinks;
+        nameEl.value = ''; urlEl.value = '';
+        jbActiveFolder = JB_LINKS_ID;
+        jbRenderFolders(); jbRenderFiles();
+      })
+      .catch(() => alert('Could not add the link — check your connection.'))
+      .then(() => { linkBtn.disabled = false; linkBtn.textContent = 'Add link'; });
   });
   // Drag & drop files -> auto-save into the active folder
   const dz = document.getElementById('jb-dropzone');
@@ -6917,7 +7001,7 @@ function jbOpenProject(code) {
   });
   bar.addEventListener('dragover', (e) => {
     const c = e.target.closest('[data-jb-chip]');
-    if (c && c.getAttribute('data-jb-chip') !== 'ALL' && !(e.dataTransfer.types || []).includes('Files')) {
+    if (c && c.getAttribute('data-jb-chip') !== 'ALL' && c.getAttribute('data-jb-chip') !== JB_LINKS_ID && !(e.dataTransfer.types || []).includes('Files')) {
       e.preventDefault();
       c.style.outline = '2px solid var(--blue)';
     }
@@ -6931,7 +7015,7 @@ function jbOpenProject(code) {
     if (!c) return;
     c.style.outline = '';
     const chipId = c.getAttribute('data-jb-chip');
-    if (chipId === 'ALL') return;
+    if (chipId === 'ALL' || chipId === JB_LINKS_ID) return; // Links isn't a file folder
     e.preventDefault();
     try {
       const d = JSON.parse(e.dataTransfer.getData('text/plain') || 'null');

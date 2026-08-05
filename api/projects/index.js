@@ -1,7 +1,9 @@
 // /api/projects — shared Job Books project list (visible to every signed-in user).
 //
-// GET    -> { projects: [{ code, name, createdAt, createdBy }] } (seeds on first use)
+// GET    -> { projects: [{ code, name, createdAt, createdBy, links }] } (seeds on first use)
 // POST   -> { code, name } creates a project (any signed-in user)
+// POST   -> { mode:'addLink', code, name, url } adds a Procore/Autodesk-style
+//           link to a project (any signed-in user); mode:'removeLink' is admin only
 // DELETE -> ?code= removes a project (admin only; files in blob are left in place)
 //
 // Stored as ONE doc in the records container under ownerId '__shared__', so it
@@ -102,6 +104,45 @@ module.exports = async function (context, req) {
     if (method === 'POST') {
       let body = req.body;
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) { body = null; } }
+
+      // ---- project links (Procore / Autodesk / etc.) ----
+      const mode = String((body && body.mode) || '');
+      if (mode === 'addLink' || mode === 'removeLink') {
+        if (mode === 'removeLink' && !isAdmin(me)) return json(context, 403, { error: 'Admin only.' });
+        const code = String((body && body.code) || '').trim();
+        let url = String((body && body.url) || '').trim().slice(0, 500);
+        const name = String((body && body.name) || '').trim().slice(0, 80);
+        if (!code || !url) return json(context, 400, { error: 'code and url required.' });
+        if (mode === 'addLink') {
+          if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+          try { new URL(url); } catch (_) { return json(context, 400, { error: 'That is not a valid link.' }); }
+        }
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const doc = await readDoc(records);
+          if (!doc) return json(context, 404, { error: 'No projects.' });
+          const p = (doc.data || []).find((x) => x && String(x.code).toLowerCase() === code.toLowerCase());
+          if (!p) return json(context, 404, { error: 'Project not found.' });
+          p.links = Array.isArray(p.links) ? p.links : [];
+          if (mode === 'addLink') {
+            if (p.links.some((l) => l && l.url === url)) return json(context, 409, { error: 'That link is already on this project.' });
+            if (p.links.length >= 20) return json(context, 400, { error: 'Link limit reached (20 per project).' });
+            let label = name;
+            if (!label) { try { label = new URL(url).hostname.replace(/^www\./, ''); } catch (_) { label = url; } }
+            p.links.push({ name: label, url, addedBy: me.email, addedAt: new Date().toISOString() });
+          } else {
+            p.links = p.links.filter((l) => !(l && l.url === url));
+          }
+          try {
+            await records.item(DOC_ID, DOC_PK).replace(doc, { accessCondition: { type: 'IfMatch', condition: doc._etag } });
+            return json(context, 200, { ok: true, links: p.links });
+          } catch (e) {
+            if (e.code === 412) continue; // raced another writer — retry
+            throw e;
+          }
+        }
+        return json(context, 500, { error: 'Busy — try again.' });
+      }
+
       const code = String((body && body.code) || '').trim().slice(0, 40);
       const name = String((body && body.name) || '').trim().slice(0, 120);
       if (!code || !name) return json(context, 400, { error: 'Both project code and name are required.' });
