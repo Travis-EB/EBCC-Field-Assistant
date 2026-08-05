@@ -243,9 +243,7 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 .summary.has-processed {
   grid-template-columns: repeat(4, 1fr);
 }
-.summary .processed-stat .value { color: var(--orange);
-  text-align: center;
-}
+.summary .processed-stat .value { color: var(--orange); }
 .summary .stat { padding: 13px 14px; }
 .summary .label {
   font-size: 10px;
@@ -627,7 +625,11 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 }
 @media (min-width: 541px) {
   .equipment-card .input-label { display: none; }
-  .equipment-card .qty-wrap, .equipment-card .rt-wrap, .equipment-card .cost-wrap { display: contents; }
+  .equipment-card .qty-wrap, .equipment-card .rt-wrap { display: contents; }
+  /* cost-wrap stays a real block so cost + yards stack in one cell —
+     display:contents would push yards into the 32px remove column and
+     wrap the × onto its own row */
+  .equipment-card .cost-wrap { text-align: right; }
 }
 
 /* === Extra Work Ticket === */

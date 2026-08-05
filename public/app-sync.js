@@ -539,8 +539,10 @@
     });
   }
 
+  // Drill-down level 1: collapsed by default — the admin opens only what
+  // they need (user > section > date > spread).
   function section(title, inner) {
-    return '<details style="margin-top:8px" open><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--dark)">' + esc(title) + '</summary><div style="font-size:12px;color:var(--dark);margin-top:6px;overflow-x:auto">' + inner + '</div></details>';
+    return '<details style="margin-top:6px;border-bottom:1px solid var(--hairline);padding-bottom:6px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--dark);padding:4px 0">' + esc(title) + '</summary><div style="font-size:12px;color:var(--dark);margin-top:6px;overflow-x:auto">' + inner + '</div></details>';
   }
   function ticketsHtml(t) {
     if (!Array.isArray(t) || !t.length) return '<em style="color:var(--gray)">None</em>';
@@ -613,41 +615,83 @@
     return '<div style="overflow-x:auto;margin:3px 0 6px"><table style="border-collapse:collapse;min-width:100%">' +
       '<tr>' + th + '</tr>' + body + '</table></div>';
   }
-  function postCaption(s, extra) {
-    var when = s.ts ? new Date(s.ts).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' }) : '';
-    var proj = s.projectCode ? ' · <b style="color:var(--dark)">' + esc(s.projectCode) + '</b> ' + esc(s.projectName || '') : '';
-    return '<div style="font-size:10.5px;color:var(--gray);margin-top:8px"><b style="color:var(--dark)">' + esc(when) + '</b> · ' + esc(s.state || '') + proj + extra + '</div>';
+  // ---- Posted spreads, rendered in the calculator tabs' own visual
+  // language (.summary stats, .job-projection, .equipment-card rows) so
+  // they read the same as the CPY tab and follow light/dark automatically.
+  function postLabel(s) {
+    var when = s.ts ? new Date(s.ts).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' }) : '—';
+    return when + ' · ' + (s.state || '—') + (s.projectCode ? ' · ' + s.projectCode + (s.projectName ? ' ' + s.projectName : '') : '');
+  }
+  function statCell(label, value, cls, sub) {
+    return '<div class="stat' + (cls ? ' ' + cls : '') + '"><div class="label">' + label + '</div>' +
+      '<div class="value" style="font-size:20px">' + value + '</div>' +
+      (sub ? '<div class="label" style="margin-top:2px;text-transform:none;letter-spacing:0">' + sub + '</div>' : '') + '</div>';
+  }
+  function projCell(label, value, cls) {
+    return '<div class="stat' + (cls ? ' ' + cls : '') + '"><div class="label">' + label + '</div><div class="value" style="font-size:19px">' + value + '</div></div>';
+  }
+  function jobTotal(s) {
+    var days = parseFloat(s.daysToComplete);
+    if (!isFinite(days) || !s.totalCost) return null;
+    return '$' + fmtNum(Math.round(s.totalCost * days));
+  }
+  function machineRow(name, meta, right, rightSub) {
+    return '<div class="equipment-card" style="grid-template-columns:1fr auto;margin-bottom:6px;padding:8px 12px">' +
+      '<div style="min-width:0"><div class="name">' + name + '</div><div class="rate">' + meta + '</div></div>' +
+      '<div style="text-align:right"><div class="cost">' + right + '</div>' + (rightSub ? '<div class="yards">' + rightSub + '</div>' : '') + '</div>' +
+    '</div>';
+  }
+  // Drill-down level 2: one collapsed row per post, labelled by date.
+  function postDetails(label, inner) {
+    return '<details style="margin:4px 0 4px 10px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--dark);padding:3px 0">' + esc(label) + '</summary><div style="margin-top:6px">' + inner + '</div></details>';
   }
 
   function spreadsHtml(arr) {
     if (!Array.isArray(arr) || !arr.length) return none();
     return arr.slice().reverse().map(function (s) {
-      var cap = postCaption(s, ' · ' + esc(s.hoursPerDay != null ? s.hoursPerDay : '—') + ' hrs/day · yd/load ' + esc(s.ydPerLoad != null ? s.ydPerLoad : '—'));
-      var stats = tbl(
-        [{label:'Producers',num:1},{label:'Dirt cy',num:1},{label:'Rock cy',num:1},{label:'Cy/day',num:1},{label:'$/day',num:1},{label:'CPY',num:1},{label:'To move',num:1},{label:'Days',num:1}],
-        [[fmtNum(s.producerQty), fmtNum(s.dirtYards), fmtNum(s.rockYards), fmtNum(s.totalYards), '$' + fmtNum(s.totalCost), '$' + esc(s.costPerYard != null ? s.costPerYard : '—'),
-          s.yardsToMove ? fmtNum(s.yardsToMove) : '—', s.daysToComplete ? esc(s.daysToComplete) : '—']]);
-      var machines = tbl(
-        [{label:'Machine'},{label:'Qty',num:1},{label:'Rnd min',num:1},{label:'Cy/day',num:1}],
-        (s.producers || []).map(function (p) {
-          return [esc(p.name), esc(p.qty), p.roundTime ? esc(p.roundTime) : '—', fmtNum(p.yardsPerDay)];
-        }));
-      return cap + stats + machines;
+      var meta = '<div style="font-size:10.5px;color:var(--gray);margin:0 0 6px">' +
+        esc(s.hoursPerDay != null ? s.hoursPerDay : '—') + ' hrs/day · yd/load ' + esc(s.ydPerLoad != null ? s.ydPerLoad : '—') +
+        ' · ' + esc(s.producerQty || 0) + ' producer' + (s.producerQty === 1 ? '' : 's') + '</div>';
+      var stats = '<div class="summary" style="margin-bottom:8px">' +
+        statCell('Total Daily Cost', '$' + fmtNum(s.totalCost)) +
+        statCell('Total Yards', fmtNum(s.totalYards), '', 'dirt ' + fmtNum(s.dirtYards) + ' · rock ' + fmtNum(s.rockYards)) +
+        statCell('Cost Per Yard', s.costPerYard != null ? '$' + esc(s.costPerYard) : '—', 'cost-per-yard') +
+      '</div>';
+      var total = jobTotal(s);
+      var proj = s.yardsToMove ? '<div class="job-projection show" style="margin-bottom:8px">' +
+        projCell('Yards to move', fmtNum(s.yardsToMove)) +
+        projCell('Workdays', s.daysToComplete ? esc(s.daysToComplete) : '—') +
+        projCell('Total job cost', total || '—', 'total-cost') +
+      '</div>' : '';
+      var machines = (s.producers || []).map(function (p) {
+        return machineRow(esc(p.name),
+          'Qty ' + esc(p.qty) + (p.roundTime ? ' · round ' + esc(p.roundTime) + ' min' : ''),
+          fmtNum(p.yardsPerDay) + ' cy/day');
+      }).join('');
+      return postDetails(postLabel(s), meta + stats + proj + machines);
     }).join('');
   }
 
   function flatPostsHtml(arr) {
     if (!Array.isArray(arr) || !arr.length) return none();
     return arr.slice().reverse().map(function (s) {
-      var cap = postCaption(s, ' · ' + esc(s.hoursPerDay != null ? s.hoursPerDay : '—') + ' hrs/day');
-      var stats = tbl(
-        [{label:'Equip',num:1},{label:'SqFt/day',num:1},{label:'Job SqFt',num:1},{label:'$/day',num:1},{label:'$/SqFt',num:1},{label:'Days',num:1}],
-        [[fmtNum(s.equipQty), fmtNum(s.sqftPerDay), fmtNum(s.jobSqft), '$' + fmtNum(s.totalCost),
-          s.costPerSqFt ? '$' + esc(s.costPerSqFt) : '—', s.daysToComplete ? esc(s.daysToComplete) : '—']]);
-      var items = tbl(
-        [{label:'Equipment'},{label:'Qty',num:1},{label:'$/day',num:1}],
-        (s.items || []).map(function (p) { return [esc(p.name), esc(p.qty), '$' + fmtNum(p.costPerDay)]; }));
-      return cap + stats + items;
+      var meta = '<div style="font-size:10.5px;color:var(--gray);margin:0 0 6px">' +
+        esc(s.hoursPerDay != null ? s.hoursPerDay : '—') + ' hrs/day · ' + esc(s.equipQty || 0) + ' piece' + (s.equipQty === 1 ? '' : 's') + ' of equipment</div>';
+      var stats = '<div class="summary" style="margin-bottom:8px">' +
+        statCell('Total Daily Cost', '$' + fmtNum(s.totalCost)) +
+        statCell('Sq Ft Per Day', fmtNum(s.sqftPerDay)) +
+        statCell('Cost Per Sq Ft', s.costPerSqFt ? '$' + esc(s.costPerSqFt) : '—', 'cost-per-yard') +
+      '</div>';
+      var total = jobTotal(s);
+      var proj = s.jobSqft ? '<div class="job-projection show" style="margin-bottom:8px">' +
+        projCell('Sq Ft to cover', fmtNum(s.jobSqft)) +
+        projCell('Workdays', s.daysToComplete ? esc(s.daysToComplete) : '—') +
+        projCell('Total job cost', total || '—', 'total-cost') +
+      '</div>' : '';
+      var items = (s.items || []).map(function (p) {
+        return machineRow(esc(p.name), 'Qty ' + esc(p.qty), '$' + fmtNum(p.costPerDay) + '/day');
+      }).join('');
+      return postDetails(postLabel(s), meta + stats + proj + items);
     }).join('');
   }
   function updatedTag(entry) {
