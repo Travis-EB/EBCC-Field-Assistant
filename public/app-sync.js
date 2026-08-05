@@ -429,6 +429,7 @@
   }
   // ---------- admin console ----------
   function enableAdmin() {
+    window.EBCC_IS_ADMIN = true; // page features (e.g. Job Books delete) key off this
     document.querySelectorAll('.admin-only').forEach(function (el) { el.style.display = ''; });
     var tabBtn = document.querySelector('.tab[data-tab="admin"]');
     if (tabBtn) tabBtn.addEventListener('click', loadAdmin);

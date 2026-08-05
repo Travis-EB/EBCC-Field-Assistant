@@ -6675,21 +6675,39 @@ function jbRenderFiles() {
     wrap.innerHTML = '<div class="empty">' + (jbCurrentFiles.length ? 'No files in ' + escHTML(jbFolderLabel(jbActiveFolder === 'ALL' ? '' : jbActiveFolder)) + '.' : 'No files yet. Drop files above — they land in Unsorted, then drag them onto a folder.') + '</div>';
     return;
   }
+  const isAdmin = !!window.EBCC_IS_ADMIN;
   wrap.innerHTML = files.map(f => {
     const folder = f.folder || '';
     const moveOpts = ['<option value="" disabled selected>Move to…</option>'];
     JB_FOLDERS.forEach(x => { if (x.id !== folder) moveOpts.push('<option value="' + escAttr(x.id) + '">' + escHTML(x.id) + '</option>'); });
     if (folder !== '') moveOpts.push('<option value="__unsorted__">Unsorted</option>');
-    return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" style="grid-template-columns:1fr auto auto;cursor:grab">' +
+    return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" style="grid-template-columns:1fr auto auto' + (isAdmin ? ' 32px' : '') + ';cursor:grab">' +
       '<div style="min-width:0"><div class="name" style="display:flex;align-items:center;gap:7px;min-width:0">' +
         '<span title="' + escAttr(jbFolderLabel(folder)) + '" style="width:9px;height:9px;border-radius:50%;background:' + jbFolderColor(folder) + ';flex-shrink:0"></span>' +
         '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHTML(f.name) + '</span></div>' +
         '<div class="rate">' + escHTML(jbFolderLabel(folder)) + ' · ' + jbFmtSize(f.size) + (f.lastModified ? ' · ' + new Date(f.lastModified).toLocaleDateString() : '') + '</div></div>' +
       '<select class="jb-move" data-jb-move-name="' + escAttr(f.name) + '" data-jb-move-from="' + escAttr(folder) + '" style="font-family:inherit;font-size:12px;padding:6px;border:1px solid var(--border);border-radius:8px;max-width:110px">' + moveOpts.join('') + '</select>' +
       '<button class="btn" data-jb-file="' + escAttr(f.name) + '" data-jb-proj="' + escAttr(jbCurrentCode) + '" data-jb-folder="' + escAttr(folder) + '">Open</button>' +
+      (isAdmin ? '<button class="remove-btn" title="Delete file (admin)" data-jb-del="' + escAttr(f.name) + '" data-jb-del-folder="' + escAttr(folder) + '">&times;</button>' : '') +
     '</div>';
   }).join('');
 }
+
+// Admin-only: delete a file from the job book (server enforces the admin check too)
+document.addEventListener('click', (e) => {
+  const del = e.target.closest ? e.target.closest('[data-jb-del]') : null;
+  if (!del) return;
+  const name = del.getAttribute('data-jb-del');
+  const folder = del.getAttribute('data-jb-del-folder') || '';
+  if (!confirm('Delete "' + name + '" from this job book? This cannot be undone.')) return;
+  fetch('/api/project-files?project=' + encodeURIComponent(jbCurrentCode) + '&name=' + encodeURIComponent(name) + (folder ? '&folder=' + encodeURIComponent(folder) : ''), { method: 'DELETE' })
+    .then(r => r.json().then(j => ({ ok: r.ok, j: j })))
+    .then(out => {
+      if (!out.ok || !out.j.ok) { alert((out.j && out.j.error) || 'Could not delete ' + name); return; }
+      jbLoadFiles(jbCurrentCode);
+    })
+    .catch(() => alert('Could not delete ' + name + ' — check your connection.'));
+});
 
 function jbMoveFile(name, from, to) {
   if (from === to) return;
