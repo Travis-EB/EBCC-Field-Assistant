@@ -10,6 +10,16 @@
 <meta name="apple-mobile-web-app-title" content="EBCC Field Assistant">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#ffffff">
+<script>
+// Apply the saved theme before first paint (toggle lives in the profile menu)
+try {
+  if (localStorage.getItem('ebcc_theme') === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    var __tm = document.querySelector('meta[name="theme-color"]');
+    if (__tm) __tm.setAttribute('content', '#14181e');
+  }
+} catch (e) {}
+</script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 
@@ -31,6 +41,14 @@
   --green: #059669;
   --red: #dc2626;
   --blue: #2563eb;
+  /* Shared surface tokens so JS-rendered inline styles follow the theme too */
+  --card: #fff;
+  --soft: #f4f5f7;
+  --ink: #1f2937;
+  --chip-active: #23272e;
+  --dz-bg: #fafbfc;
+  --dz-hi: #eef3fa;
+  --tbl-border: #eef0f3;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -1569,6 +1587,7 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   height: 100%;
   touch-action: none;        /* essential — prevents page scroll while signing */
   background: linear-gradient(to bottom, white 0%, white calc(100% - 22px), #f3f4f6 calc(100% - 22px), #f3f4f6 calc(100% - 21px), white calc(100% - 21px));
+  /* stays white in dark mode on purpose — signatures are dark ink on paper */
   cursor: crosshair;
 }
 .ewt-signature-hint {
@@ -1588,6 +1607,73 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   font-size: 12px;
   padding: 5px 12px;
 }
+/* ===== Dark mode — toggled from the profile menu, saved per device ===== */
+[data-theme="dark"] {
+  --orange: #f5a623;
+  --dark: #e8ecf2;          /* primary text flips light */
+  --gray: #98a2b0;
+  --light-gray: #262d36;
+  --border: #313a45;
+  --hairline: #232a33;
+  --green: #34d399;
+  --red: #f87171;
+  --blue: #60a5fa;
+  --card: #1d232b;
+  --soft: #262d36;
+  --ink: #e8ecf2;
+  --chip-active: #2563eb;
+  --dz-bg: #181e26;
+  --dz-hi: #1e3050;
+  --tbl-border: #2a323c;
+  color-scheme: dark;
+}
+[data-theme="dark"] body { background: #14181e; }
+[data-theme="dark"] header,
+[data-theme="dark"] .summary .stat,
+[data-theme="dark"] .equipment-card,
+[data-theme="dark"] .hours-control,
+[data-theme="dark"] .job-projection,
+[data-theme="dark"] .lime-inputs,
+[data-theme="dark"] .lime-breakdown,
+[data-theme="dark"] .admin-panel,
+[data-theme="dark"] .add-custom-form,
+[data-theme="dark"] .jb-new-form,
+[data-theme="dark"] .search-results,
+[data-theme="dark"] .ewt-section,
+[data-theme="dark"] .ewt-modal-inner,
+[data-theme="dark"] .stepper,
+[data-theme="dark"] .trk-q-item,
+[data-theme="dark"] .lc-truck-card,
+[data-theme="dark"] .lc-edit-load-row,
+[data-theme="dark"] .trk-ticket-card .thumb,
+[data-theme="dark"] .trk-ticket-card .no-thumb,
+[data-theme="dark"] .trk-ticket-card .actions button { background: var(--card); }
+[data-theme="dark"] .empty { background: #181e26; }
+[data-theme="dark"] .lime-result { background: #10151c; }
+[data-theme="dark"] .btn { background: var(--soft); color: #c9d0da; }
+[data-theme="dark"] .btn:hover { background: #2f3844; }
+/* var(--dark) is now a light text color, so dark-background buttons switch to blue.
+   Must come after the .btn rules — same specificity, order decides. */
+[data-theme="dark"] .btn-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+[data-theme="dark"] .btn-primary:hover { background: #1d4ed8; }
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea { background: #151b22 !important; color: var(--dark) !important; border-color: var(--border) !important; }
+[data-theme="dark"] .stepper input { background: transparent !important; }
+[data-theme="dark"] .stepper input:focus { background: #2b2418 !important; }
+[data-theme="dark"] .stepper-btn { background: var(--soft); color: var(--dark); }
+[data-theme="dark"] .equipment-card .remove-btn:hover { background: #3b2226; }
+[data-theme="dark"] .ewt-section h3 { background: #3a2c1a; color: #f5c78a; }
+[data-theme="dark"] .ewt-modal iframe { background: #14181e; }
+[data-theme="dark"] .lime-hint { background: #2a2618; }
+[data-theme="dark"] .trk-upload-section { background: #262019; border-color: #4a3a22; }
+[data-theme="dark"] .trk-extra-row { background: #262019; }
+[data-theme="dark"] .trk-review-fields .trk-field.conf-medium { background: #2a2618; }
+[data-theme="dark"] .trk-review-fields .trk-field.conf-low { background: #262019; }
+[data-theme="dark"] .lc-truck-card.active { background: #262019; }
+[data-theme="dark"] .lc-truck-card.editing { background: #2a2618; }
+[data-theme="dark"] .trk-q-status.processing { background: #172a3a; color: #7dd3fc; }
+[data-theme="dark"] .trk-q-status.error { background: #3b2226; color: #fca5a5; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -6654,7 +6740,7 @@ function jbRenderFolders() {
   jbCurrentFiles.forEach(f => { const k = f.folder || ''; counts[k] = (counts[k] || 0) + 1; });
   const chip = (id, label, color, count) => {
     const active = jbActiveFolder === id;
-    return '<span data-jb-chip="' + escAttr(id) + '" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;border:1px solid ' + (active ? 'var(--dark)' : 'var(--border)') + ';background:' + (active ? 'var(--dark)' : '#fff') + ';color:' + (active ? '#fff' : 'var(--dark)') + ';font-size:12px;font-weight:600;cursor:pointer;user-select:none">' +
+    return '<span data-jb-chip="' + escAttr(id) + '" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;border:1px solid ' + (active ? 'var(--chip-active)' : 'var(--border)') + ';background:' + (active ? 'var(--chip-active)' : 'var(--card)') + ';color:' + (active ? '#fff' : 'var(--dark)') + ';font-size:12px;font-weight:600;cursor:pointer;user-select:none">' +
       (color ? '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';flex-shrink:0"></span>' : '') +
       escHTML(label) + (count != null ? ' <span style="opacity:.6">' + count + '</span>' : '') +
     '</span>';
@@ -6739,7 +6825,7 @@ function jbOpenProject(code) {
       '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.code) + '</div>' +
       '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.name) + '</div></div>' +
     '</div>' +
-    '<div id="jb-dropzone" style="margin:12px 0;padding:18px 16px;border:2px dashed var(--border);border-radius:12px;text-align:center;color:var(--gray);font-size:13px;background:#fafbfc">' +
+    '<div id="jb-dropzone" style="margin:12px 0;padding:18px 16px;border:2px dashed var(--border);border-radius:12px;text-align:center;color:var(--gray);font-size:13px;background:var(--dz-bg)">' +
       '<span id="jb-drophint">Drag files here — they save automatically</span><br>' +
       '<label class="btn btn-primary" style="cursor:pointer;margin-top:10px;display:inline-block">Upload files' +
         '<input type="file" id="jb-file-input" multiple style="display:none"></label>' +
@@ -6763,11 +6849,11 @@ function jbOpenProject(code) {
   const dz = document.getElementById('jb-dropzone');
   ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, (e) => {
     e.preventDefault(); e.stopPropagation();
-    dz.style.borderColor = 'var(--blue)'; dz.style.background = '#eef3fa';
+    dz.style.borderColor = 'var(--blue)'; dz.style.background = 'var(--dz-hi)';
   }));
   ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, (e) => {
     e.preventDefault(); e.stopPropagation();
-    dz.style.borderColor = 'var(--border)'; dz.style.background = '#fafbfc';
+    dz.style.borderColor = 'var(--border)'; dz.style.background = 'var(--dz-bg)';
   }));
   dz.addEventListener('drop', (e) => {
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
@@ -6962,7 +7048,7 @@ function pickProject(cb) {
   if (!projs.length) { cb(null); return; }   // projects unknown (offline) — post without
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
-  ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:18px;max-width:360px;width:100%">' +
+  ov.innerHTML = '<div style="background:var(--card);border-radius:14px;padding:18px;max-width:360px;width:100%">' +
     '<div style="font-weight:650;margin-bottom:10px;font-size:15px">What project is this spread for?</div>' +
     '<select id="proj-pick" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px">' +
       '<option value="">— No project —</option>' +

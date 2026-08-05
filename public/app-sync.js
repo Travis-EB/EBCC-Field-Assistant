@@ -130,17 +130,29 @@
     document.body.appendChild(o);
   }
 
+  function applyTheme(mode) {
+    if (mode === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+    try { localStorage.setItem('ebcc_theme', mode); } catch (e) {}
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', mode === 'dark' ? '#14181e' : '#ffffff');
+  }
+
   function renderAccountMenu(me) {
     var el = document.getElementById('account-menu');
     if (!el) return;
     var initials = (me.name || me.email || '?').trim().slice(0, 1).toUpperCase();
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     el.innerHTML =
       '<button id="acct-btn" title="' + esc(me.email) + '" style="width:34px;height:34px;border-radius:50%;border:none;background:#23272e;color:#fff;font-weight:600;cursor:pointer;font-family:inherit">' + esc(initials) + '</button>' +
-      '<div id="acct-pop" style="display:none;position:absolute;right:12px;margin-top:6px;background:#fff;color:#1f2937;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(16,24,40,.16);padding:10px;min-width:200px;z-index:50">' +
+      '<div id="acct-pop" style="display:none;position:absolute;right:12px;margin-top:6px;background:var(--card,#fff);color:var(--ink,#1f2937);border:1px solid var(--border,#e5e7eb);border-radius:12px;box-shadow:0 8px 24px rgba(16,24,40,.16);padding:10px;min-width:200px;z-index:50">' +
         '<div style="font-weight:600;font-size:14px">' + esc(me.name || '') + '</div>' +
-        '<div style="font-size:12px;color:#6b7280;margin-bottom:8px">' + esc(me.email) + (me.isAdmin ? ' · Admin' : '') + '</div>' +
+        '<div style="font-size:12px;color:var(--gray,#6b7280);margin-bottom:8px">' + esc(me.email) + (me.isAdmin ? ' · Admin' : '') + '</div>' +
         '<div id="sync-status" style="font-size:11px;color:#059669;margin-bottom:8px">All changes saved</div>' +
-        '<a href="/.auth/logout?post_logout_redirect_uri=/login.html" style="display:block;text-align:center;background:#f3f4f6;color:#1f2937;text-decoration:none;padding:8px;border-radius:8px;font-size:13px;font-weight:600">Sign out</a>' +
+        '<label style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:600;margin:0 0 10px;cursor:pointer">Dark mode' +
+          '<input type="checkbox" id="theme-toggle"' + (isDark ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:#2563eb;cursor:pointer">' +
+        '</label>' +
+        '<a href="/.auth/logout?post_logout_redirect_uri=/login.html" style="display:block;text-align:center;background:var(--soft,#f3f4f6);color:var(--ink,#1f2937);text-decoration:none;padding:8px;border-radius:8px;font-size:13px;font-weight:600">Sign out</a>' +
       '</div>';
     var btn = document.getElementById('acct-btn');
     var pop = document.getElementById('acct-pop');
@@ -148,7 +160,10 @@
       e.stopPropagation();
       pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
     });
+    pop.addEventListener('click', function (e) { e.stopPropagation(); });
     document.addEventListener('click', function () { if (pop) pop.style.display = 'none'; });
+    var tt = document.getElementById('theme-toggle');
+    if (tt) tt.addEventListener('change', function () { applyTheme(tt.checked ? 'dark' : 'light'); });
   }
 
   function setSyncStatus(text, color) {
@@ -463,7 +478,7 @@
           '</div>' +
           '<div style="display:flex;gap:6px;align-items:center">' +
             '<select data-role-for="' + esc(u.id) + '" style="font-family:inherit;padding:6px;border:1px solid var(--border);border-radius:8px">' + sel + '</select>' +
-            '<button data-view-for="' + esc(u.id) + '" data-name="' + esc(u.name || u.email) + '" style="font-family:inherit;padding:6px 10px;border:1px solid var(--border);background:#fff;border-radius:8px;cursor:pointer">View</button>' +
+            '<button data-view-for="' + esc(u.id) + '" data-name="' + esc(u.name || u.email) + '" style="font-family:inherit;padding:6px 10px;border:1px solid var(--border);background:var(--card,#fff);color:var(--ink,#1f2937);border-radius:8px;cursor:pointer">View</button>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -496,10 +511,10 @@
       var tickets = (rec.trucking_tickets && rec.trucking_tickets.data) || [];
       var loadCount = (rec.load_count && rec.load_count.data) || null;
       var ewt = (rec.ewt_records && rec.ewt_records.data) || [];
-      var html = '<div style="margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:12px;background:#fff">' +
+      var html = '<div style="margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card,#fff)">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
           '<strong style="font-size:15px">' + esc(name) + '</strong>' +
-          '<button id="admin-detail-close" style="border:none;background:#f3f4f6;border-radius:8px;padding:6px 10px;cursor:pointer;font-family:inherit">Close</button>' +
+          '<button id="admin-detail-close" style="border:none;background:var(--soft,#f3f4f6);color:var(--ink,#1f2937);border-radius:8px;padding:6px 10px;cursor:pointer;font-family:inherit">Close</button>' +
         '</div>' +
         section('Truck Tickets (' + (Array.isArray(tickets) ? tickets.length : 0) + ')', ticketsHtml(tickets)) +
         section('Load Count', loadCountHtml(loadCount)) +
@@ -552,7 +567,7 @@
     return ADMIN_EWT_CACHE.map(function (x, i) {
       return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">Ticket ' + esc(x.ticketNo || '—') + ' · ' + esc(x.date || '') +
         ' · ' + esc(x.customer || '') + (x.signed ? ' · signed' + (x.printName ? ' (' + esc(x.printName) + ')' : '') : (x.printName ? ' · ' + esc(x.printName) : '')) +
-        ((x.pdf || x.pdfBlob) ? ' <button type="button" data-ewt-pdf="' + i + '" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:none;background:#f4f5f7;color:#23272e;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Open PDF</button>' : '') +
+        ((x.pdf || x.pdfBlob) ? ' <button type="button" data-ewt-pdf="' + i + '" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Open PDF</button>' : '') +
         '<br><span style="color:var(--gray)">' + esc((x.description || '').slice(0, 140)) + '</span></div>';
     }).join('');
   }
@@ -588,11 +603,11 @@
   function fmtNum(n) { var v = +n; return isFinite(v) ? v.toLocaleString() : '0'; }
   function tbl(headers, rows) {
     var th = headers.map(function (h) {
-      return '<th style="text-align:' + (h.num ? 'right' : 'left') + ';padding:3px 8px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#8b919b;background:#fafbfc;border:1px solid #eef0f3;font-weight:600;white-space:nowrap">' + esc(h.label) + '</th>';
+      return '<th style="text-align:' + (h.num ? 'right' : 'left') + ';padding:3px 8px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--gray,#8b919b);background:var(--soft,#fafbfc);border:1px solid var(--tbl-border,#eef0f3);font-weight:600;white-space:nowrap">' + esc(h.label) + '</th>';
     }).join('');
     var body = rows.map(function (r) {
       return '<tr>' + r.map(function (v, i) {
-        return '<td style="text-align:' + (headers[i].num ? 'right' : 'left') + ';padding:3px 8px;font-size:11px;border:1px solid #eef0f3;white-space:nowrap;font-variant-numeric:tabular-nums">' + v + '</td>';
+        return '<td style="text-align:' + (headers[i].num ? 'right' : 'left') + ';padding:3px 8px;font-size:11px;border:1px solid var(--tbl-border,#eef0f3);white-space:nowrap;font-variant-numeric:tabular-nums">' + v + '</td>';
       }).join('') + '</tr>';
     }).join('');
     return '<div style="overflow-x:auto;margin:3px 0 6px"><table style="border-collapse:collapse;min-width:100%">' +
