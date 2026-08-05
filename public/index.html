@@ -6679,7 +6679,7 @@ function jbRenderFiles() {
   wrap.innerHTML = files.map(f => {
     const folder = f.folder || '';
     return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:start;cursor:grab">' +
-      '<div style="min-width:0">' +
+      '<div style="min-width:0;grid-area:auto">' +
         '<div class="name" style="display:flex;align-items:flex-start;gap:7px;min-width:0">' +
           '<span title="' + escAttr(jbFolderLabel(folder)) + '" style="width:9px;height:9px;border-radius:50%;background:' + jbFolderColor(folder) + ';flex-shrink:0;margin-top:4px"></span>' +
           '<span style="word-break:break-word;line-height:1.35">' + escHTML(f.name) + '</span></div>' +
