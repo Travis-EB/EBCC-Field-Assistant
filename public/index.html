@@ -1626,8 +1626,9 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   }
   .has-rail .desk-main { display: block; grid-column: 1; grid-row: 1; min-width: 0; }
   .has-rail .desk-rail { display: block; grid-column: 2; grid-row: 1; position: sticky; top: 16px; }
-  /* stat panels stack vertically in the narrow rail */
+  /* stat panels stack vertically in the narrow rail, contents right-aligned */
   .desk-rail .summary { grid-template-columns: 1fr; }
+  .desk-rail .summary .stat { text-align: right; }
   .desk-rail .job-projection.show { grid-template-columns: 1fr; }
   /* single-purpose calculators and forms read better at paper width */
   #tab-lime, #tab-flexbase { max-width: 640px; margin: 0 auto; }
