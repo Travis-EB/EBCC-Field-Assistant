@@ -1607,6 +1607,40 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   font-size: 12px;
   padding: 5px 12px;
 }
+/* ===== Desktop layout (≥1024px) — same app, wider shell =====
+   Phones keep the single-column design. On desktop the calculator tabs
+   split into a working column with a sticky results rail, simple
+   calculators center at a readable width, and Job Books goes multi-column.
+   .desk-rail/.desk-main are display:contents on mobile so the wrappers
+   are invisible to the existing mobile layout. */
+.desk-rail, .desk-main { display: contents; }
+@media (min-width: 1024px) {
+  body { max-width: 1200px; padding: 20px 28px; }
+  .tab-content.has-rail.active {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 0 26px;
+    align-items: start;
+  }
+  .has-rail .desk-main { display: block; grid-column: 1; grid-row: 1; min-width: 0; }
+  .has-rail .desk-rail { display: block; grid-column: 2; grid-row: 1; position: sticky; top: 16px; }
+  /* stat panels stack vertically in the narrow rail */
+  .desk-rail .summary { grid-template-columns: 1fr; }
+  .desk-rail .job-projection.show { grid-template-columns: 1fr; }
+  /* single-purpose calculators and forms read better at paper width */
+  #tab-lime, #tab-flexbase { max-width: 640px; margin: 0 auto; }
+  #tab-ewt, #tab-trucking, #tab-loadcount { max-width: 860px; margin: 0 auto; }
+  /* Job Books: projects and files become card grids */
+  #jb-list, #jb-files {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+  #jb-list .equipment-card, #jb-files .equipment-card { margin-bottom: 0; }
+  #jb-list .empty, #jb-files .empty { grid-column: 1 / -1; }
+}
+
 /* ===== Dark mode — toggled from the profile menu, saved per device ===== */
 [data-theme="dark"] {
   --orange: #f5a623;
@@ -1700,8 +1734,9 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   <button class="tab admin-only" data-tab="admin" role="tab" aria-selected="false" style="display:none">Manage Users</button>
 </nav>
 
-<section class="tab-content active" id="tab-calculator">
+<section class="tab-content active has-rail" id="tab-calculator">
 
+<div class="desk-rail">
 <div class="summary">
   <div class="stat">
     <div class="label">Total Daily Cost</div>
@@ -1736,7 +1771,9 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
     <div class="value" id="job-total-cost">—</div>
   </div>
 </div>
+</div>
 
+<div class="desk-main">
 <div class="controls">
   <label class="hours-control state-control">
     <span>State</span>
@@ -1840,11 +1877,13 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 <div class="footer">
   Fuel cost assumption: $3.50/gal &middot; Hours/day adjustable above &middot; Rates editable via Edit rates button.
 </div>
+</div>
 
 </section>
 
-<section class="tab-content" id="tab-flatwork">
+<section class="tab-content has-rail" id="tab-flatwork">
 
+<div class="desk-rail">
 <div class="summary">
   <div class="stat">
     <div class="label">Total Daily Cost</div>
@@ -1874,7 +1913,9 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
     <div class="value" id="flat-job-total-cost">—</div>
   </div>
 </div>
+</div>
 
+<div class="desk-main">
 <div class="controls">
   <label class="hours-control state-control">
     <span>State</span>
@@ -1927,6 +1968,7 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 
 <div class="footer">
   Enter your crew's expected sq ft / day to see cost per sq ft. Rates editable on Cost Per Yard tab.
+</div>
 </div>
 
 </section>
