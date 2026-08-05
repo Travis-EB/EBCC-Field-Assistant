@@ -150,7 +150,7 @@
         '<div style="font-size:12px;color:var(--gray,#6b7280);margin-bottom:8px">' + esc(me.email) + (me.isAdmin ? ' · Admin' : '') + '</div>' +
         '<div id="sync-status" style="font-size:11px;color:#059669;margin-bottom:8px">All changes saved</div>' +
         '<label style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;font-weight:600;margin:0 0 10px;cursor:pointer">Dark mode' +
-          '<input type="checkbox" id="theme-toggle"' + (isDark ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:#2563eb;cursor:pointer">' +
+          '<input type="checkbox" id="theme-toggle"' + (isDark ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:var(--orange,#2563eb);cursor:pointer">' +
         '</label>' +
         '<a href="/.auth/logout?post_logout_redirect_uri=/login.html" style="display:block;text-align:center;background:var(--soft,#f3f4f6);color:var(--ink,#1f2937);text-decoration:none;padding:8px;border-radius:8px;font-size:13px;font-weight:600">Sign out</a>' +
       '</div>';
