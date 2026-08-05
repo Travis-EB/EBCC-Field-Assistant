@@ -6678,17 +6678,16 @@ function jbRenderFiles() {
   const isAdmin = !!window.EBCC_IS_ADMIN;
   wrap.innerHTML = files.map(f => {
     const folder = f.folder || '';
-    const moveOpts = ['<option value="" disabled selected>Move to…</option>'];
-    JB_FOLDERS.forEach(x => { if (x.id !== folder) moveOpts.push('<option value="' + escAttr(x.id) + '">' + escHTML(x.id) + '</option>'); });
-    if (folder !== '') moveOpts.push('<option value="__unsorted__">Unsorted</option>');
-    return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" style="grid-template-columns:1fr auto auto' + (isAdmin ? ' 32px' : '') + ';cursor:grab">' +
-      '<div style="min-width:0"><div class="name" style="display:flex;align-items:center;gap:7px;min-width:0">' +
-        '<span title="' + escAttr(jbFolderLabel(folder)) + '" style="width:9px;height:9px;border-radius:50%;background:' + jbFolderColor(folder) + ';flex-shrink:0"></span>' +
-        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHTML(f.name) + '</span></div>' +
-        '<div class="rate">' + escHTML(jbFolderLabel(folder)) + ' · ' + jbFmtSize(f.size) + (f.lastModified ? ' · ' + new Date(f.lastModified).toLocaleDateString() : '') + '</div></div>' +
-      '<select class="jb-move" data-jb-move-name="' + escAttr(f.name) + '" data-jb-move-from="' + escAttr(folder) + '" style="font-family:inherit;font-size:12px;padding:6px;border:1px solid var(--border);border-radius:8px;max-width:110px">' + moveOpts.join('') + '</select>' +
-      '<button class="btn" data-jb-file="' + escAttr(f.name) + '" data-jb-proj="' + escAttr(jbCurrentCode) + '" data-jb-folder="' + escAttr(folder) + '">Open</button>' +
-      (isAdmin ? '<button class="remove-btn" title="Delete file (admin)" data-jb-del="' + escAttr(f.name) + '" data-jb-del-folder="' + escAttr(folder) + '">&times;</button>' : '') +
+    return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:start;cursor:grab">' +
+      '<div style="min-width:0">' +
+        '<div class="name" style="display:flex;align-items:flex-start;gap:7px;min-width:0">' +
+          '<span title="' + escAttr(jbFolderLabel(folder)) + '" style="width:9px;height:9px;border-radius:50%;background:' + jbFolderColor(folder) + ';flex-shrink:0;margin-top:4px"></span>' +
+          '<span style="word-break:break-word;line-height:1.35">' + escHTML(f.name) + '</span></div>' +
+        '<div class="rate" style="margin-top:2px">' + escHTML(jbFolderLabel(folder)) + ' · ' + jbFmtSize(f.size) + (f.lastModified ? ' · ' + new Date(f.lastModified).toLocaleDateString() : '') + '</div></div>' +
+      '<div style="display:flex;gap:6px;align-items:center">' +
+        '<button class="btn" data-jb-file="' + escAttr(f.name) + '" data-jb-proj="' + escAttr(jbCurrentCode) + '" data-jb-folder="' + escAttr(folder) + '">Open</button>' +
+        (isAdmin ? '<button class="remove-btn" title="Delete file (admin)" data-jb-del="' + escAttr(f.name) + '" data-jb-del-folder="' + escAttr(folder) + '">&times;</button>' : '') +
+      '</div>' +
     '</div>';
   }).join('');
 }
@@ -6723,13 +6722,6 @@ function jbMoveFile(name, from, to) {
     .catch(() => alert('Could not move ' + name + ' — check your connection.'));
 }
 
-// Move dropdowns (works on phones where drag-and-drop doesn't)
-document.addEventListener('change', (e) => {
-  if (e.target && e.target.classList && e.target.classList.contains('jb-move')) {
-    const to = e.target.value === '__unsorted__' ? '' : e.target.value;
-    jbMoveFile(e.target.getAttribute('data-jb-move-name'), e.target.getAttribute('data-jb-move-from'), to);
-  }
-});
 
 function jbOpenProject(code) {
   const p = (window.EBCC_PROJECTS || []).find(x => x.code === code);

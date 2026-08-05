@@ -67,7 +67,7 @@ while ($listener.IsListening) {
       } elseif ($path -eq '/api/project-files' -and $req.Url.Query -like '*sas=1*') {
         $json = '{"ok":true,"url":"/icons/logo.png"}'
       } elseif ($path -eq '/api/project-files') {
-        $json = '{"files":[{"name":"Grading Plan Rev3.pdf","folder":"Plans","size":2400000,"lastModified":"2026-08-01T10:00:00Z","contentType":"application/pdf"},{"name":"Soils Report.pdf","folder":"Geotech","size":900000,"lastModified":"2026-07-20T10:00:00Z","contentType":"application/pdf"},{"name":"Dropped New.pdf","folder":"","size":120000,"lastModified":"2026-08-04T10:00:00Z","contentType":"application/pdf"}]}'
+        $json = '{"files":[{"name":"Harmonson_Logistics_Center_Building_5_Fine_Grade_Takeoff_Rev4_FINAL_2026-08-04.pdf","folder":"Plans","size":2400000,"lastModified":"2026-08-01T10:00:00Z","contentType":"application/pdf"},{"name":"Soils Report.pdf","folder":"Geotech","size":900000,"lastModified":"2026-07-20T10:00:00Z","contentType":"application/pdf"},{"name":"Dropped New.pdf","folder":"","size":120000,"lastModified":"2026-08-04T10:00:00Z","contentType":"application/pdf"}]}'
       } elseif ($path -eq '/api/me') {
         $json = '{"authenticated":true,"userId":"dev-admin","email":"travis@earthbasics.net","name":"Travis Pecoy","role":"admin","isAdmin":true}'
       } elseif ($path -like '/api/records*' -and $req.Url.Query -like '*userId=*') {
