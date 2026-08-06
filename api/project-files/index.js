@@ -13,6 +13,31 @@ const { BlobSASPermissions } = require('@azure/storage-blob');
 const MAX_SINGLE_B64 = 12 * 1024 * 1024; // small files come up in one shot (~9MB real)
 const MAX_CHUNK_B64 = 8 * 1024 * 1024;   // large files arrive as staged 4MB blocks
 
+// Extension-first MIME lookup. iPhones/iPads can only QuickLook Office files
+// when they arrive with the real type — application/octet-stream shows a
+// blank page — and stored blob types are unreliable (some browsers upload
+// xlsx with an empty type).
+const EXT_TYPES = {
+  pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+  xls: 'application/vnd.ms-excel',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ppt: 'application/vnd.ms-powerpoint',
+  csv: 'text/csv',
+  txt: 'text/plain',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', heic: 'image/heic',
+  kmz: 'application/vnd.google-earth.kmz',
+  kml: 'application/vnd.google-earth.kml+xml',
+  zip: 'application/zip',
+};
+function typeFor(name, stored) {
+  const ext = String(name || '').toLowerCase().split('.').pop();
+  return EXT_TYPES[ext] || stored || 'application/octet-stream';
+}
+
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
   if (!principal) return json(context, 401, { error: 'Not authenticated.' });
@@ -64,6 +89,9 @@ module.exports = async function (context, req) {
           const url = await bc.generateSasUrl({
             permissions: BlobSASPermissions.parse('r'),
             expiresOn: new Date(Date.now() + 15 * 60 * 1000),
+            // Override response headers so iOS QuickLook gets the real type
+            contentType: typeFor(name),
+            contentDisposition: 'inline; filename="' + name.replace(/["\\]/g, '') + '"',
           });
           return json(context, 200, { ok: true, url: url });
         } catch (e) {
@@ -78,7 +106,8 @@ module.exports = async function (context, req) {
         status: 200,
         isRaw: true,
         headers: {
-          'Content-Type': props.contentType || 'application/octet-stream',
+          'Content-Type': typeFor(name, props.contentType),
+          'Content-Disposition': 'inline; filename="' + name.replace(/["\\]/g, '') + '"',
           'Cache-Control': 'private, max-age=300',
         },
         body: buf,

@@ -7046,6 +7046,27 @@ function jbLoadFiles(code) {
   }).catch(() => {});
 }
 
+// Some browsers report an empty type for Office files — store the real one
+// so downstream viewers (especially iPhone/iPad QuickLook) can open them.
+const JB_MIME = {
+  pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+  xls: 'application/vnd.ms-excel',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ppt: 'application/vnd.ms-powerpoint',
+  csv: 'text/csv', txt: 'text/plain',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', heic: 'image/heic',
+  kmz: 'application/vnd.google-earth.kmz', kml: 'application/vnd.google-earth.kml+xml',
+  zip: 'application/zip',
+};
+function jbMimeFor(name) {
+  const ext = String(name || '').toLowerCase().split('.').pop();
+  return JB_MIME[ext] || 'application/octet-stream';
+}
+
 function jbReadB64(part) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -7076,7 +7097,7 @@ async function jbUploadFiles(code, fileList) {
         continue;
       }
       if (file.size > FILE_MAX) { alert(file.name + ' is over the 200MB limit.'); failed++; continue; }
-      const contentType = file.type || 'application/octet-stream';
+      const contentType = file.type || jbMimeFor(file.name);
       if (file.size <= SINGLE_MAX) {
         if (status) status.textContent = 'Saving ' + label + file.name + '…';
         const b64 = await jbReadB64(file);
@@ -7131,20 +7152,27 @@ document.addEventListener('click', (e) => {
     const name = fileBtn.getAttribute('data-jb-file');
     const folder = fileBtn.getAttribute('data-jb-folder') || '';
     const base = '/api/project-files?project=' + encodeURIComponent(code) + '&name=' + encodeURIComponent(name) + (folder ? '&folder=' + encodeURIComponent(folder) : '');
+    // Open the tab NOW, inside the tap — iOS Safari blocks window.open from
+    // async callbacks, which silently ate non-PDF files on iPhone/iPad.
+    const win = window.open('about:blank', '_blank');
     // Ask for a short-lived direct storage link (no size limits), fall back to streaming.
     fetch(base + '&sas=1')
       .then(r => r.ok ? r.json() : null)
       .then(res => {
-        if (res && res.ok && res.url) { window.open(res.url, '_blank'); return; }
+        if (res && res.ok && res.url) {
+          if (win) { win.location = res.url; } else { window.open(res.url, '_blank'); }
+          return;
+        }
         return fetch(base)
           .then(r => { if (!r.ok) throw 0; return r.blob(); })
           .then(blob => {
             const url = URL.createObjectURL(blob);
-            if (/pdf|image|text/.test(blob.type || '')) { window.open(url, '_blank'); }
+            if (win) { win.location = url; }
+            else if (/pdf|image|text/.test(blob.type || '')) { window.open(url, '_blank'); }
             else { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
           });
       })
-      .catch(() => alert('Could not open ' + name));
+      .catch(() => { if (win) { try { win.close(); } catch (err) {} } alert('Could not open ' + name); });
     return;
   }
   const openBtn = e.target.closest ? e.target.closest('[data-jb-open]') : null;
