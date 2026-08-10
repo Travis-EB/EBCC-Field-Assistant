@@ -11,6 +11,7 @@
     'ebcc_trucking_tickets_v1': 'trucking_tickets',
     'ebcc_load_count_v1': 'load_count',
     'ebcc_ewt_records_v1': 'ewt_records',
+    'ebcc_ewt_drafts_v1': 'ewt_drafts',
     // Posted spreads (explicit snapshots for admin review)
     'ebcc_cpy_posts_v1': 'cpy_posts',
     'ebcc_flat_posts_v1': 'flat_posts',
@@ -216,8 +217,8 @@
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'hidden') flushNow();
       // Coming BACK from the share sheet / mail app: retry anything the
-      // phone killed while the app was backgrounded.
-      if (document.visibilityState === 'visible') flushPending();
+      // phone killed while the app was backgrounded — including PDF offloads.
+      if (document.visibilityState === 'visible') { flushPending(); offloadPendingEwtPdfs(); }
     });
   }
 
@@ -304,13 +305,17 @@
   }
 
   // ---------- EWT capture (store finalized Extra Work Tickets + their PDFs) ----------
-  var EWT_PDF_KEEP = 5;   // newest N tickets keep their full PDF (stays well under Cosmos' 2MB doc cap)
+  var EWT_PDF_KEEP = 10;  // newest N un-offloaded tickets keep their full PDF (stays under Cosmos' 2MB doc cap)
   var EWT_MAX = 100;
-  var EWT_PDF_SINGLE_MAX = 400 * 1024;  // any single PDF bigger than this gets dropped (broken-era monsters)
-  var EWT_PDF_BUDGET = 1200 * 1024;     // total PDF bytes kept across the whole bundle
+  var EWT_PDF_SINGLE_MAX = 600 * 1024;  // any single PDF bigger than this gets dropped (broken-era monsters)
+  var EWT_PDF_BUDGET = 1500 * 1024;     // total PDF bytes kept across the whole bundle
 
-  // Size-aware retention: keep newest PDFs while they fit the byte budget; the
-  // record's data fields always survive even when its PDF is dropped.
+  // Size-aware retention. A record whose PDF is parked in Blob Storage
+  // (pdfBlob) never needs the inline copy; a record still WAITING for its
+  // blob upload keeps the inline copy so a retry can still park it — only
+  // blanked as a last resort when the bundle wouldn't fit the 2MB doc cap.
+  // The server merges pushes by (ticketNo, date), so a trimmed push can no
+  // longer destroy a PDF the server already has.
   function trimEwtArray(data) {
     if (!Array.isArray(data)) return data;
     if (data.length > EWT_MAX) data = data.slice(data.length - EWT_MAX);
@@ -318,6 +323,7 @@
     for (var i = data.length - 1; i >= 0; i--) {
       var rec = data[i];
       if (!rec || !rec.pdf) continue;
+      if (rec.pdfBlob) { rec.pdf = ''; continue; }  // safely parked — inline copy redundant
       var len = rec.pdf.length;
       if (kept >= EWT_PDF_KEEP || len > EWT_PDF_SINGLE_MAX || len > budget) {
         rec.pdf = '';
@@ -386,7 +392,9 @@
       try { flushNow(); } catch (err) {}
       // Park the PDF in Blob Storage; the record then carries a tiny reference
       // instead of the file, so PDFs are kept forever with no size budgets.
-      uploadEwtPdf(rec);
+      // Sweep ALL waiting tickets, not just this one — earlier uploads the
+      // phone killed get retried on the very next finalize.
+      offloadPendingEwtPdfs();
     } catch (err) {}
   });
 
@@ -395,7 +403,10 @@
     apiFetch('/api/ewt-pdf', { method: 'POST', body: { ticketNo: rec.ticketNo, date: rec.date, pdf: rec.pdf } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (res) {
-        if (!res || !res.ok || !res.path) return; // blob not configured / failed — inline copy stays
+        if (!res || !res.ok || !res.path) {
+          try { console.warn('[sync] EWT PDF offload failed for ' + rec.ticketNo + (res && res.reason ? ' (' + res.reason + ')' : '')); } catch (e) {}
+          return; // blob not configured / failed — inline copy stays for the next retry
+        }
         var arr;
         try { arr = JSON.parse(localStorage.getItem(EWT_KEY) || '[]'); } catch (e) { arr = []; }
         var idx = arr.findIndex(function (x) { return x && x.ticketNo === rec.ticketNo && x.date === rec.date; });
@@ -569,7 +580,9 @@
     return ADMIN_EWT_CACHE.map(function (x, i) {
       return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">Ticket ' + esc(x.ticketNo || '—') + ' · ' + esc(x.date || '') +
         ' · ' + esc(x.customer || '') + (x.signed ? ' · signed' + (x.printName ? ' (' + esc(x.printName) + ')' : '') : (x.printName ? ' · ' + esc(x.printName) : '')) +
-        ((x.pdf || x.pdfBlob) ? ' <button type="button" data-ewt-pdf="' + i + '" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Open PDF</button>' : '') +
+        ((x.pdf || x.pdfBlob)
+          ? ' <button type="button" data-ewt-pdf="' + i + '" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Open PDF</button>'
+          : ' <button type="button" data-ewt-rebuild="' + i + '" title="The original PDF was lost before it reached storage — rebuild it from the ticket data (signature not included)" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:1px dashed var(--border,#e9ebee);background:transparent;color:var(--gray,#8b919b);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Rebuild PDF</button>') +
         '<br><span style="color:var(--gray)">' + esc((x.description || '').slice(0, 140)) + '</span></div>';
     }).join('');
   }
@@ -577,6 +590,36 @@
     var blob = new Blob([bytes], { type: 'application/pdf' });
     window.open(URL.createObjectURL(blob), '_blank');
   }
+  // Rebuild a lost PDF from the ticket's stored data (admin drill-down).
+  // The paper-form renderer lives on the page (ewtBuildPDF); the signature
+  // image only ever existed inside the original PDF, so rebuilds are unsigned
+  // — every other field, table, and total comes back.
+  document.addEventListener('click', function (ev) {
+    var rb = ev.target && ev.target.closest ? ev.target.closest('[data-ewt-rebuild]') : null;
+    if (!rb) return;
+    var rec = ADMIN_EWT_CACHE[+rb.getAttribute('data-ewt-rebuild')];
+    if (!rec) return;
+    if (typeof window.ewtBuildPDF !== 'function' || typeof window.jspdf === 'undefined') {
+      alert('PDF builder not loaded — reload the app and try again.');
+      return;
+    }
+    try {
+      var doc = window.ewtBuildPDF({
+        ticketNo: rec.ticketNo || '', date: rec.date || '',
+        customer: rec.customer || '', jobAddress: rec.jobAddress || '',
+        city: rec.city || '', state: rec.state || '',
+        po: rec.po || '', jobNum: rec.jobNum || '', phase: rec.phase || '',
+        labor: rec.labor || [], equipment: rec.equipment || [], materials: rec.materials || [],
+        description: rec.description || '',
+        acceptedBy: '', printName: rec.printName || '', title: rec.title || '',
+      });
+      openPdfBytes(doc.output('arraybuffer'));
+    } catch (e) {
+      try { console.warn('rebuild pdf', e); } catch (e2) {}
+      alert('Could not rebuild this PDF.');
+    }
+  });
+
   // Open a stored EWT PDF in a new tab (admin drill-down)
   document.addEventListener('click', function (ev) {
     var b = ev.target && ev.target.closest ? ev.target.closest('[data-ewt-pdf]') : null;

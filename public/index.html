@@ -2129,8 +2129,15 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   <div class="ewt-actions">
     <button class="btn btn-primary" id="ewt-preview-btn">Preview PDF</button>
     <button class="btn btn-primary" id="ewt-email-btn">Email Ticket</button>
+    <button class="btn" id="ewt-save-draft-btn">Save draft</button>
     <button class="btn" id="ewt-reset-btn">Reset ticket</button>
   </div>
+</div>
+
+<div class="ewt-section">
+  <h3>Drafts <span id="ewt-draft-count"></span></h3>
+  <div class="ewt-hint">Save a partly-filled ticket and finish it later. Drafts sync to your account; signatures aren't saved — collect those when the ticket is final.</div>
+  <div id="ewt-drafts-list"></div>
 </div>
 
 <div class="ewt-modal" id="ewt-modal">
@@ -3744,6 +3751,85 @@ function ewtCollect() {
     title: document.getElementById('ewt-title').value.trim(),
   };
 }
+
+// === EWT drafts — unlimited, synced to the user's account, deletable ===
+const EWT_DRAFTS_KEY = 'ebcc_ewt_drafts_v1';
+function ewtGetDrafts() {
+  try { const a = JSON.parse(localStorage.getItem(EWT_DRAFTS_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function ewtSetDrafts(arr) {
+  localStorage.setItem(EWT_DRAFTS_KEY, JSON.stringify(arr));
+  ewtRenderDrafts();
+}
+function ewtRenderDrafts() {
+  const list = document.getElementById('ewt-drafts-list');
+  const count = document.getElementById('ewt-draft-count');
+  const drafts = ewtGetDrafts();
+  if (count) count.textContent = '(' + drafts.length + ')';
+  if (!list) return;
+  if (!drafts.length) {
+    list.innerHTML = '<div class="ewt-hint" style="margin:0">No drafts saved yet.</div>';
+    return;
+  }
+  list.innerHTML = drafts.slice().reverse().map(d => {
+    const t = d.ticket || {};
+    const label = [t.ticketNo ? '#' + t.ticketNo : null, t.customer || null, t.jobNum ? 'Job ' + t.jobNum : null]
+      .filter(Boolean).join(' · ') || 'Untitled ticket';
+    const when = d.savedAt ? new Date(d.savedAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    return '<div class="equipment-card" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:center">' +
+      '<div style="min-width:0;grid-area:auto"><div class="name" style="word-break:break-word">' + escHTML(label) + '</div>' +
+      '<div class="rate">Saved ' + escHTML(when) + (t.date ? ' · ticket date ' + escHTML(t.date) : '') + '</div></div>' +
+      '<div style="display:flex;gap:6px;align-items:center">' +
+        '<button class="btn" data-ewt-draft-load="' + escAttr(d.id) + '">Load</button>' +
+        '<button class="remove-btn" title="Delete draft" data-ewt-draft-del="' + escAttr(d.id) + '">&times;</button>' +
+      '</div></div>';
+  }).join('');
+}
+function ewtLoadDraft(t) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('ewt-ticket-no', t.ticketNo); set('ewt-date', t.date); set('ewt-customer', t.customer);
+  set('ewt-job-address', t.jobAddress); set('ewt-city', t.city); set('ewt-state', t.state);
+  set('ewt-po', t.po); set('ewt-job-num', t.jobNum); set('ewt-phase', t.phase);
+  set('ewt-description', t.description); set('ewt-print-name', t.printName); set('ewt-title', t.title);
+  ewtLabor = (t.labor && t.labor.length)
+    ? t.labor.map(r => Object.assign({ desc: '', trade: '', reg: '', ot: '', sb: '' }, r))
+    : [{ desc: '', trade: '', reg: '', ot: '', sb: '' }];
+  ewtEquipment = (t.equipment || []).map(r => Object.assign({ name: '', hours: '', sb: '' }, r));
+  ewtMaterials = (t.materials && t.materials.length)
+    ? t.materials.map(r => Object.assign({ desc: '', qty: '', unit: '' }, r))
+    : [{ desc: '', qty: '', unit: '' }];
+  ewtRenderLabor(); ewtRenderEquipment(); ewtRenderMaterials();
+  if (window.ewtSignaturePad && window.ewtSignaturePad.clear) { try { window.ewtSignaturePad.clear(); } catch (e) {} }
+  window.scrollTo(0, 0);
+}
+document.getElementById('ewt-save-draft-btn').addEventListener('click', () => {
+  const t = ewtCollect();
+  delete t.acceptedBy;  // signatures are never stored in drafts
+  if (!t.ticketNo && !t.customer && !t.jobNum && !t.description && !t.labor.length && !t.equipment.length && !t.materials.length) {
+    alert('Nothing to save yet — fill in part of the ticket first.');
+    return;
+  }
+  const drafts = ewtGetDrafts();
+  drafts.push({ id: 'd' + Date.now() + Math.random().toString(36).slice(2, 7), savedAt: new Date().toISOString(), ticket: t });
+  ewtSetDrafts(drafts);
+  const btn = document.getElementById('ewt-save-draft-btn');
+  btn.textContent = 'Saved ✓';
+  setTimeout(() => { btn.textContent = 'Save draft'; }, 1800);
+});
+document.getElementById('ewt-drafts-list').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-ewt-draft-del]');
+  if (del) {
+    if (!confirm('Delete this draft? This cannot be undone.')) return;
+    ewtSetDrafts(ewtGetDrafts().filter(d => d.id !== del.getAttribute('data-ewt-draft-del')));
+    return;
+  }
+  const load = e.target.closest('[data-ewt-draft-load]');
+  if (!load) return;
+  const d = ewtGetDrafts().find(x => x.id === load.getAttribute('data-ewt-draft-load'));
+  if (d) ewtLoadDraft(d.ticket || {});
+});
+ewtRenderDrafts();
 
 function ewtGetRecipients() {
   const chips = Array.from(document.querySelectorAll('.ewt-recipient-chk:checked')).map(c => c.value);

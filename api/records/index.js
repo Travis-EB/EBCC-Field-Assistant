@@ -9,12 +9,47 @@
 const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
 
 const ALLOWED_TYPES = new Set([
-  'trucking_tickets', 'load_count', 'ewt_records',
+  'trucking_tickets', 'load_count', 'ewt_records', 'ewt_drafts',
   // Posted spreads (explicit snapshots for admin review)
   'cpy_posts', 'flat_posts',
   // Calculator tabs — synced so admins can review what's being priced out
   'cpy_state', 'flat_state', 'lime_state', 'flexbase_state',
 ]);
+
+// EWT pushes must never destroy stored PDFs. The client's copy of ewt_records
+// doesn't know the blob paths /api/send-ewt writes server-side, so a blind
+// upsert used to wipe them — leaving only the newest ticket with an openable
+// PDF. Merge by (ticketNo, date): keep the stored pdfBlob (or inline pdf) when
+// the incoming record arrives without one, and keep tickets that exist only on
+// the server (written by send-ewt or another device — the app has no EWT delete).
+function mergeEwtRecords(prev, next) {
+  const key = (r) => ((r && r.ticketNo) || '') + '|' + ((r && r.date) || '');
+  const byKey = new Map();
+  prev.forEach((r) => { if (r) byKey.set(key(r), r); });
+  const out = next.filter(Boolean).map((r) => {
+    const old = byKey.get(key(r));
+    byKey.delete(key(r));
+    if (!old) return r;
+    if (!r.pdfBlob && old.pdfBlob) { r.pdfBlob = old.pdfBlob; if (r.pdf) r.pdf = ''; }
+    else if (!r.pdfBlob && !r.pdf && old.pdf) { r.pdf = old.pdf; }
+    return r;
+  });
+  byKey.forEach((r) => out.push(r));
+  out.sort((a, b) => String(a.ts || '').localeCompare(String(b.ts || '')));
+  // Size guard for the 2MB doc cap: blob-backed records don't need inline
+  // copies; blob-less inline PDFs are kept newest-first within a byte budget.
+  if (out.length > 100) out.splice(0, out.length - 100);
+  let budget = 1500 * 1024, kept = 0;
+  for (let i = out.length - 1; i >= 0; i--) {
+    const r = out[i];
+    if (!r || !r.pdf) continue;
+    if (r.pdfBlob) { r.pdf = ''; continue; }
+    const len = r.pdf.length;
+    if (kept >= 10 || len > 600 * 1024 || len > budget) { r.pdf = ''; }
+    else { budget -= len; kept++; }
+  }
+  return out;
+}
 
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
@@ -60,6 +95,14 @@ module.exports = async function (context, req) {
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) { body = null; } }
       if (!body || !ALLOWED_TYPES.has(body.type)) {
         return json(context, 400, { error: 'Body must be { type, data } with a valid type.' });
+      }
+      if (body.type === 'ewt_records' && Array.isArray(body.data)) {
+        try {
+          let existing = null;
+          try { existing = (await records.item(me.id + ':ewt_records', me.id).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
+          const prev = existing && Array.isArray(existing.data) ? existing.data : [];
+          body.data = mergeEwtRecords(prev, body.data);
+        } catch (e) { context.log.warn('ewt merge failed', e); }
       }
       const now = new Date().toISOString();
       const doc = {
