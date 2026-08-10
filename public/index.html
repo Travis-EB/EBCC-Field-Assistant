@@ -2136,7 +2136,7 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 
 <div class="ewt-section">
   <h3>Drafts <span id="ewt-draft-count"></span></h3>
-  <div class="ewt-hint">Save a partly-filled ticket and finish it later. Drafts sync to your account; signatures aren't saved — collect those when the ticket is final.</div>
+  <div class="ewt-hint">Save a partly-filled ticket and finish it later. Drafts sync to your account — including the signature if one's already been collected.</div>
   <div id="ewt-drafts-list"></div>
 </div>
 
@@ -3779,7 +3779,7 @@ function ewtRenderDrafts() {
     const when = d.savedAt ? new Date(d.savedAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
     return '<div class="equipment-card" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:center">' +
       '<div style="min-width:0;grid-area:auto"><div class="name" style="word-break:break-word">' + escHTML(label) + '</div>' +
-      '<div class="rate">Saved ' + escHTML(when) + (t.date ? ' · ticket date ' + escHTML(t.date) : '') + '</div></div>' +
+      '<div class="rate">Saved ' + escHTML(when) + (t.date ? ' · ticket date ' + escHTML(t.date) : '') + (t.acceptedBy ? ' · signed' : '') + '</div></div>' +
       '<div style="display:flex;gap:6px;align-items:center">' +
         '<button class="btn" data-ewt-draft-load="' + escAttr(d.id) + '">Load</button>' +
         '<button class="remove-btn" title="Delete draft" data-ewt-draft-del="' + escAttr(d.id) + '">&times;</button>' +
@@ -3800,13 +3800,17 @@ function ewtLoadDraft(t) {
     ? t.materials.map(r => Object.assign({ desc: '', qty: '', unit: '' }, r))
     : [{ desc: '', qty: '', unit: '' }];
   ewtRenderLabor(); ewtRenderEquipment(); ewtRenderMaterials();
-  if (window.ewtSignaturePad && window.ewtSignaturePad.clear) { try { window.ewtSignaturePad.clear(); } catch (e) {} }
+  if (window.ewtSignaturePad) {
+    try {
+      window.ewtSignaturePad.clear();
+      if (t.acceptedBy && window.ewtSignaturePad.setDataURL) window.ewtSignaturePad.setDataURL(t.acceptedBy);
+    } catch (e) {}
+  }
   window.scrollTo(0, 0);
 }
 document.getElementById('ewt-save-draft-btn').addEventListener('click', () => {
-  const t = ewtCollect();
-  delete t.acceptedBy;  // signatures are never stored in drafts
-  if (!t.ticketNo && !t.customer && !t.jobNum && !t.description && !t.labor.length && !t.equipment.length && !t.materials.length) {
+  const t = ewtCollect();  // includes the signature when one has been collected
+  if (!t.ticketNo && !t.customer && !t.jobNum && !t.description && !t.acceptedBy && !t.labor.length && !t.equipment.length && !t.materials.length) {
     alert('Nothing to save yet — fill in part of the ticket first.');
     return;
   }
@@ -6660,10 +6664,26 @@ if (!lcState.meta.date) {
   }
   if (clearBtn) clearBtn.addEventListener('click', clearSig);
 
-  // Expose for ewtCollect + ewtResetForm
+  // Restore a saved signature image (used when loading a draft)
+  function setSigFromDataURL(dataUrl) {
+    if (!dataUrl || dataUrl.indexOf('data:image') !== 0) return;
+    if (canvas.width === 0) resize();  // pad may not have been laid out yet
+    const rect = canvas.getBoundingClientRect();
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, rect.width || canvas.width, rect.height || canvas.height);
+      hasSignature = true;
+      wrap.classList.add('signed');
+    };
+    img.src = dataUrl;
+  }
+
+  // Expose for ewtCollect + ewtResetForm + drafts
   window.ewtSignaturePad = {
     isEmpty: () => !hasSignature,
     getDataURL: () => hasSignature ? canvas.toDataURL('image/png') : '',
+    setDataURL: setSigFromDataURL,
     clear: clearSig,
   };
 
