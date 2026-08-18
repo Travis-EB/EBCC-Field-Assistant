@@ -519,12 +519,16 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   padding: 14px;
   margin-bottom: 12px;
   display: none;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   text-align: center;
   border-left: 3px solid var(--blue);
 }
 .job-projection.show { display: grid; }
+@media (max-width: 600px) {
+  /* four stats -> tidy 2x2 on phones */
+  .job-projection.show { grid-template-columns: 1fr 1fr; }
+}
 .job-projection .stat { padding: 6px; }
 .job-projection .label {
   font-size: 10px;
@@ -1765,6 +1769,10 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
     <div class="label">Workdays to complete</div>
     <div class="value" id="job-days">—</div>
   </div>
+  <div class="stat">
+    <div class="label">Est. finish <span id="job-finish-sub" style="text-transform:none;letter-spacing:0;font-weight:500"></span></div>
+    <div class="value" id="job-finish">—</div>
+  </div>
   <div class="stat total-cost">
     <div class="label">Total job cost</div>
     <div class="value" id="job-total-cost">—</div>
@@ -1906,6 +1914,10 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
   <div class="stat">
     <div class="label">Workdays to complete</div>
     <div class="value" id="flat-job-days">—</div>
+  </div>
+  <div class="stat">
+    <div class="label">Est. finish <span id="flat-job-finish-sub" style="text-transform:none;letter-spacing:0;font-weight:500"></span></div>
+    <div class="value" id="flat-job-finish">—</div>
   </div>
   <div class="stat total-cost">
     <div class="label">Total job cost</div>
@@ -2661,6 +2673,30 @@ function setActiveState(next) {
   document.querySelectorAll('[data-state-select]').forEach(sel => { sel.value = next; });
 }
 
+// Estimated finish date: walk the calendar forward from today, counting only
+// workdays — Mon–Sat in Texas (6-day weeks), Mon–Fri in California (5-day).
+// Today counts as workday 1 when it is a workday. Fractional days round up.
+function estFinishDate(days, state) {
+  if (!(days > 0)) return null;
+  const sixDay = state === 'TX';
+  const isWorkday = (d) => { const w = d.getDay(); return w !== 0 && (sixDay || w !== 6); };
+  const d = new Date(); d.setHours(12, 0, 0, 0);
+  let remaining = Math.ceil(days);
+  while (!isWorkday(d)) d.setDate(d.getDate() + 1);
+  while (remaining > 1) { d.setDate(d.getDate() + 1); if (isWorkday(d)) remaining--; }
+  return d;
+}
+function formatFinishDate(d) {
+  return d ? d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : '—';
+}
+function setFinishStat(valueId, subId, days) {
+  const el = document.getElementById(valueId), sub = document.getElementById(subId);
+  if (!el) return;
+  const d = estFinishDate(days, activeState);
+  el.textContent = formatFinishDate(d);
+  if (sub) sub.textContent = d ? '(' + (activeState === 'TX' ? '6' : '5') + '-day wk)' : '';
+}
+
 // Session state
 let hoursPerDay = 8;
 let yardsToMove = 0;
@@ -2851,9 +2887,11 @@ function updateCalculatorTotals() {
       const daysDisplay = days < 10 ? days.toFixed(1) : Math.ceil(days).toLocaleString();
       document.getElementById('job-days').textContent = daysDisplay;
       document.getElementById('job-total-cost').textContent = formatMoney(days * totalCost);
+      setFinishStat('job-finish', 'job-finish-sub', days);
     } else {
       document.getElementById('job-days').textContent = '—';
       document.getElementById('job-total-cost').textContent = '—';
+      setFinishStat('job-finish', 'job-finish-sub', 0);
     }
   } else {
     projection.classList.remove('show');
@@ -3290,9 +3328,11 @@ function updateFlatTotals() {
       const daysDisplay = days < 10 ? days.toFixed(1) : Math.ceil(days).toLocaleString();
       document.getElementById('flat-job-days').textContent = daysDisplay;
       document.getElementById('flat-job-total-cost').textContent = formatMoney(days * totalCost);
+      setFinishStat('flat-job-finish', 'flat-job-finish-sub', days);
     } else {
       document.getElementById('flat-job-days').textContent = '—';
       document.getElementById('flat-job-total-cost').textContent = '—';
+      setFinishStat('flat-job-finish', 'flat-job-finish-sub', 0);
     }
   } else {
     projection.classList.remove('show');
