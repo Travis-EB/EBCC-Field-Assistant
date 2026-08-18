@@ -51,6 +51,34 @@ function mergeEwtRecords(prev, next) {
   return out;
 }
 
+// EWT drafts are edited from more than one device (laptop to write, phone to
+// collect the signature), so a blind upsert would let whichever device pushed
+// last erase the other's drafts. Merge by draft id: newest savedAt wins, and
+// a tombstone (deleted on any device) always beats a live copy so deletes
+// stick everywhere. Tombstones age out after 30 days.
+function mergeEwtDrafts(prev, next) {
+  const byId = new Map();
+  const consider = (d) => {
+    if (!d || !d.id) return;
+    const cur = byId.get(d.id);
+    if (!cur) { byId.set(d.id, d); return; }
+    if (d.tombstone && !cur.tombstone) { byId.set(d.id, d); return; }
+    if (cur.tombstone && !d.tombstone) return;
+    const a = String(d.savedAt || d.deletedAt || ''), b = String(cur.savedAt || cur.deletedAt || '');
+    if (a > b) byId.set(d.id, d);
+  };
+  prev.forEach(consider);
+  next.forEach(consider);
+  const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+  const out = [];
+  byId.forEach((d) => {
+    if (d.tombstone) { const t = Date.parse(d.deletedAt || 0); if (isFinite(t) && t < cutoff) return; }
+    out.push(d);
+  });
+  out.sort((a, b) => String(a.savedAt || a.deletedAt || '').localeCompare(String(b.savedAt || b.deletedAt || '')));
+  return out;
+}
+
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
   if (!principal) return json(context, 401, { error: 'Not authenticated.' });
@@ -96,13 +124,15 @@ module.exports = async function (context, req) {
       if (!body || !ALLOWED_TYPES.has(body.type)) {
         return json(context, 400, { error: 'Body must be { type, data } with a valid type.' });
       }
-      if (body.type === 'ewt_records' && Array.isArray(body.data)) {
+      let merged = null; // returned to the client so it can adopt the merged view
+      if ((body.type === 'ewt_records' || body.type === 'ewt_drafts') && Array.isArray(body.data)) {
         try {
           let existing = null;
-          try { existing = (await records.item(me.id + ':ewt_records', me.id).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
+          try { existing = (await records.item(me.id + ':' + body.type, me.id).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
           const prev = existing && Array.isArray(existing.data) ? existing.data : [];
-          body.data = mergeEwtRecords(prev, body.data);
-        } catch (e) { context.log.warn('ewt merge failed', e); }
+          body.data = body.type === 'ewt_records' ? mergeEwtRecords(prev, body.data) : mergeEwtDrafts(prev, body.data);
+          if (body.type === 'ewt_drafts') merged = body.data;
+        } catch (e) { context.log.warn(body.type + ' merge failed', e); }
       }
       const now = new Date().toISOString();
       const doc = {
@@ -126,7 +156,7 @@ module.exports = async function (context, req) {
         await users.items.upsert(me);
       } catch (e) { context.log.warn('count update failed', e); }
 
-      return json(context, 200, { ok: true, updatedAt: now });
+      return json(context, 200, merged ? { ok: true, updatedAt: now, data: merged } : { ok: true, updatedAt: now });
     }
 
     if (method === 'DELETE') {

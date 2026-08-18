@@ -3754,10 +3754,14 @@ function ewtCollect() {
 
 // === EWT drafts — unlimited, synced to the user's account, deletable ===
 const EWT_DRAFTS_KEY = 'ebcc_ewt_drafts_v1';
-function ewtGetDrafts() {
+// The stored list can contain tombstones ({id, tombstone:true, deletedAt}) —
+// they let a delete on one device stick on every other device. Callers that
+// show or load drafts want live ones only; ewtGetDraftsRaw keeps tombstones.
+function ewtGetDraftsRaw() {
   try { const a = JSON.parse(localStorage.getItem(EWT_DRAFTS_KEY) || '[]'); return Array.isArray(a) ? a : []; }
   catch (e) { return []; }
 }
+function ewtGetDrafts() { return ewtGetDraftsRaw().filter(d => d && !d.tombstone); }
 function ewtSetDrafts(arr) {
   localStorage.setItem(EWT_DRAFTS_KEY, JSON.stringify(arr));
   ewtRenderDrafts();
@@ -3814,7 +3818,7 @@ document.getElementById('ewt-save-draft-btn').addEventListener('click', () => {
     alert('Nothing to save yet — fill in part of the ticket first.');
     return;
   }
-  const drafts = ewtGetDrafts();
+  const drafts = ewtGetDraftsRaw();
   drafts.push({ id: 'd' + Date.now() + Math.random().toString(36).slice(2, 7), savedAt: new Date().toISOString(), ticket: t });
   ewtSetDrafts(drafts);
   const btn = document.getElementById('ewt-save-draft-btn');
@@ -3825,7 +3829,11 @@ document.getElementById('ewt-drafts-list').addEventListener('click', (e) => {
   const del = e.target.closest('[data-ewt-draft-del]');
   if (del) {
     if (!confirm('Delete this draft? This cannot be undone.')) return;
-    ewtSetDrafts(ewtGetDrafts().filter(d => d.id !== del.getAttribute('data-ewt-draft-del')));
+    const id = del.getAttribute('data-ewt-draft-del');
+    // Leave a tombstone so the delete propagates to the user's other devices.
+    ewtSetDrafts(ewtGetDraftsRaw().map(d => (d && d.id === id && !d.tombstone)
+      ? { id: id, tombstone: true, deletedAt: new Date().toISOString() }
+      : d));
     return;
   }
   const load = e.target.closest('[data-ewt-draft-load]');
@@ -3834,6 +3842,13 @@ document.getElementById('ewt-drafts-list').addEventListener('click', (e) => {
   if (d) ewtLoadDraft(d.ticket || {});
 });
 ewtRenderDrafts();
+// Drafts merged in from another device (laptop -> phone): refresh the list in place.
+window.addEventListener('ebcc-drafts-updated', ewtRenderDrafts);
+// Opening the EWT tab is the moment the foreman expects laptop drafts to be there — pull.
+(function () {
+  const btn = document.querySelector('.tab[data-tab="ewt"]');
+  if (btn) btn.addEventListener('click', () => { try { window.dispatchEvent(new CustomEvent('ebcc-drafts-pull')); } catch (e) {} });
+})();
 
 function ewtGetRecipients() {
   const chips = Array.from(document.querySelectorAll('.ewt-recipient-chk:checked')).map(c => c.value);

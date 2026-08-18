@@ -22,11 +22,16 @@
     'ebcc_flexbase_state_v1': 'flexbase_state'
   };
   var EWT_KEY = 'ebcc_ewt_records_v1';
+  var DRAFTS_KEY = 'ebcc_ewt_drafts_v1';
   var PENDING_KEY = 'ebcc_sync_pending';
   var HYDRATED_FLAG = 'ebcc_hydrated_once';
 
   var ME = null;
   var pushTimers = {};
+  // The native localStorage.setItem, captured before installSyncHooks wraps it.
+  // (Kept in a closure var — properties assigned onto localStorage itself get
+  // stringified, which would turn this function into useless text.)
+  var origSetItem = localStorage.setItem.bind(localStorage);
 
   // ---------- small helpers ----------
   function apiFetch(url, opts) {
@@ -172,6 +177,55 @@
     if (el) { el.textContent = text; el.style.color = color || '#059669'; }
   }
 
+  // ---------- EWT drafts: two-way merge across devices ----------
+  // Same rules as the server: merge by draft id, newest savedAt wins, a
+  // tombstone (deleted anywhere) always beats a live copy.
+  function mergeDrafts(a, b) {
+    var byId = {}, order = [];
+    function consider(d) {
+      if (!d || !d.id) return;
+      var cur = byId[d.id];
+      if (!cur) { byId[d.id] = d; order.push(d.id); return; }
+      if (d.tombstone && !cur.tombstone) { byId[d.id] = d; return; }
+      if (cur.tombstone && !d.tombstone) return;
+      if (String(d.savedAt || d.deletedAt || '') > String(cur.savedAt || cur.deletedAt || '')) byId[d.id] = d;
+    }
+    (Array.isArray(a) ? a : []).forEach(consider);
+    (Array.isArray(b) ? b : []).forEach(consider);
+    var out = order.map(function (id) { return byId[id]; });
+    out.sort(function (x, y) { return String(x.savedAt || x.deletedAt || '').localeCompare(String(y.savedAt || y.deletedAt || '')); });
+    return out;
+  }
+  function readDraftsLocal() {
+    try { var v = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+  // Adopt a merged list locally (without re-triggering a push) and tell the
+  // page so the Drafts list re-renders in place.
+  function adoptDrafts(merged) {
+    var before = localStorage.getItem(DRAFTS_KEY) || '[]';
+    var after = JSON.stringify(merged);
+    if (after === before) return false;
+    // Use the ORIGINAL setItem so this write doesn't queue another push.
+    origSetItem(DRAFTS_KEY, after);
+    try { window.dispatchEvent(new CustomEvent('ebcc-drafts-updated')); } catch (e) {}
+    return true;
+  }
+  var pullingDrafts = false;
+  function pullDrafts() {
+    if (!ME || pullingDrafts) return Promise.resolve();
+    pullingDrafts = true;
+    return apiFetch('/api/records').then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
+      var server = res && res.records && res.records.ewt_drafts;
+      var serverArr = server && Array.isArray(server.data) ? server.data : [];
+      var local = readDraftsLocal();
+      var merged = mergeDrafts(serverArr, local);
+      adoptDrafts(merged);
+      // If this device knew something the server didn't, push the merged view.
+      if (JSON.stringify(merged) !== JSON.stringify(serverArr)) queuePush(DRAFTS_KEY);
+    }).catch(function () {}).then(function () { pullingDrafts = false; });
+  }
+  window.addEventListener('ebcc-drafts-pull', function () { pullDrafts(); });
+
   // ---------- hydrate local from server (first device / cross-device) ----------
   function hydrateFromServer() {
     return apiFetch('/api/records').then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
@@ -181,6 +235,9 @@
         var type = SYNC_MAP[lsKey];
         var server = res.records[type];
         if (!server || server.data == null) return;
+        // Drafts always merge (both directions) — a foreman writes them on a
+        // laptop and needs them on the phone even after the phone has its own.
+        if (lsKey === DRAFTS_KEY) { adoptDrafts(mergeDrafts(server.data, readDraftsLocal())); return; }
         var local = localStorage.getItem(lsKey);
         var localEmpty = !local || local === '[]' || local === '{}' || local === 'null';
         // Only hydrate when local is empty — never clobber unsynced local edits.
@@ -198,7 +255,7 @@
 
   // ---------- push local -> server ----------
   function installSyncHooks() {
-    var origSet = localStorage.setItem.bind(localStorage);
+    var origSet = origSetItem;
     localStorage.setItem = function (key, value) {
       origSet(key, value);
       if (SYNC_MAP[key]) queuePush(key);
@@ -217,8 +274,9 @@
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'hidden') flushNow();
       // Coming BACK from the share sheet / mail app: retry anything the
-      // phone killed while the app was backgrounded — including PDF offloads.
-      if (document.visibilityState === 'visible') { flushPending(); offloadPendingEwtPdfs(); }
+      // phone killed while the app was backgrounded — including PDF offloads —
+      // and pick up drafts written on another device in the meantime.
+      if (document.visibilityState === 'visible') { flushPending(); offloadPendingEwtPdfs(); pullDrafts(); }
     });
   }
 
@@ -282,6 +340,13 @@
         if (r.ok) {
           var p = getPending(); delete p[lsKey]; setPending(p);
           if (Object.keys(getPending()).length === 0) setSyncStatus('All changes saved', '#059669');
+          // Drafts: the server replies with the merged list (ours + other
+          // devices'); adopt it so a push doubles as a pull.
+          if (lsKey === DRAFTS_KEY) {
+            r.json().then(function (j) {
+              if (j && Array.isArray(j.data)) adoptDrafts(mergeDrafts(j.data, readDraftsLocal()));
+            }).catch(function () {});
+          }
         } else {
           // Surface the server's actual complaint so failures are diagnosable.
           r.text().then(function (t) {
