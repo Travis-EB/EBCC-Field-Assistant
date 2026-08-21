@@ -550,7 +550,7 @@
           '<div style="min-width:0">' +
             '<div style="font-weight:600;font-size:14px">' + esc(u.name || u.email) + '</div>' +
             '<div style="font-size:12px;color:var(--gray)">' + esc(u.email) + '</div>' +
-            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts ' + (c.load_count || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · Spreads ' + ((c.cpy_posts || 0) + (c.flat_posts || 0)) + ' · Last active ' + esc(last) + '</div>' +
+            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts sent ' + (c.load_count_sends || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · Spreads ' + ((c.cpy_posts || 0) + (c.flat_posts || 0)) + ' · Last active ' + esc(last) + '</div>' +
           '</div>' +
           '<div style="display:flex;gap:6px;align-items:center">' +
             '<select data-role-for="' + esc(u.id) + '" style="font-family:inherit;padding:6px;border:1px solid var(--border);border-radius:8px">' + sel + '</select>' +
@@ -593,7 +593,11 @@
           '<button id="admin-detail-close" style="border:none;background:var(--soft,#f3f4f6);color:var(--ink,#1f2937);border-radius:8px;padding:6px 10px;cursor:pointer;font-family:inherit">Close</button>' +
         '</div>' +
         section('Truck Tickets (' + (Array.isArray(tickets) ? tickets.length : 0) + ')', ticketsHtml(tickets)) +
-        section('Load Count', loadCountHtml(loadCount)) +
+        section('Load Count — current day' + updatedTag(rec.load_count), loadCountHtml(loadCount)) +
+        (function () {
+          var sends = (rec.load_count_sends && rec.load_count_sends.data) || [];
+          return section('Load Count — sent days (' + sends.length + ')', loadCountSendsHtml(sends));
+        })() +
         section('Extra Work Tickets (' + (Array.isArray(ewt) ? ewt.length : 0) + ')', ewtHtml(ewt)) +
         (function () {
           var posts = (rec.cpy_posts && rec.cpy_posts.data) || [];
@@ -628,15 +632,59 @@
         ' · ' + esc(x.tons || '') + 't / ' + esc(x.yards || '') + 'cy · ' + esc(x.truckingCo || '') + '</div>';
     }).join('');
   }
-  function loadCountHtml(lc) {
-    if (!lc || !lc.trucks) return '<em style="color:var(--gray)">None</em>';
-    var head = 'Source ' + esc(lc.source || '—') + ' · ' + esc(lc.date || '') + ' · Job ' + esc(lc.jobNum || '—') + '<br>';
-    var trucks = (lc.trucks || []).map(function (tr) {
-      var loads = (tr.loads || []).length;
-      return '· Truck ' + esc(tr.truckNo || tr.truckTypeId || '—') + ' — ' + loads + ' loads (' + esc(tr.name || '') + ')';
-    }).join('<br>');
-    return head + trucks;
+  // ---- Load Count: the live day (synced state) and the archived, sent days ----
+  function lcTypes() { try { return Array.isArray(TRUCK_COUNT_TYPES) ? TRUCK_COUNT_TYPES : []; } catch (e) { return []; } }
+  function lcTypeOf(id) { var t = lcTypes().filter(function (x) { return x.id === id; })[0]; return t || { label: id || 'Truck', cy: 0 }; }
+  function lcCountLine(n, l, c) { return n + ' truck' + (n === 1 ? '' : 's') + ' · ' + l + ' load' + (l === 1 ? '' : 's') + ' · ' + c + ' cy'; }
+  function lcStatBlock(n, l, c) {
+    return '<div class="summary" style="margin-bottom:8px">' + statCell('Trucks', n) + statCell('Loads', l) + statCell('Yards', c + ' cy', 'cost-per-yard') + '</div>';
   }
+  function loadCountHtml(lc) {
+    // The synced record is the app's live state: { meta:{...}, trucks:[...] }.
+    if (!lc || !Array.isArray(lc.trucks) || !lc.trucks.length) return none();
+    var m = lc.meta || lc;
+    var loads = 0, cy = 0;
+    var rows = lc.trucks.map(function (tr) {
+      var done = (tr.loads || []).filter(function (L) { return L && L.in && L.out; }).length;
+      var open = (tr.loads || []).filter(function (L) { return L && L.in && !L.out; }).length;
+      var ti = lcTypeOf(tr.truckTypeId), tcy = done * (ti.cy || 0);
+      loads += done; cy += tcy;
+      return machineRow(esc(ti.label) + (tr.truckNo ? ' · #' + esc(tr.truckNo) : ''), esc(tr.name || '') + (open ? (tr.name ? ' · ' : '') + open + ' still on-site' : ''),
+        done + ' load' + (done === 1 ? '' : 's'), tcy + ' cy');
+    }).join('');
+    var head = '<div style="font-size:10.5px;color:var(--gray);margin:0 0 6px">' + esc(m.date || 'no date') +
+      ' · Source ' + esc(m.source || '—') + ' · Job ' + esc(m.jobNum || '—') + (m.deliveredTo ? ' · to ' + esc(m.deliveredTo) : '') + '</div>';
+    return head + lcStatBlock(lc.trucks.length, loads, cy) + rows;
+  }
+  var ADMIN_LC_CACHE = [];
+  function loadCountSendsHtml(arr) {
+    ADMIN_LC_CACHE = Array.isArray(arr) ? arr : [];
+    if (!ADMIN_LC_CACHE.length) return none();
+    return ADMIN_LC_CACHE.map(function (x, i) { return { x: x, i: i }; }).reverse().map(function (it) {
+      var x = it.x;
+      var when = x.ts ? new Date(x.ts).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' }) : '';
+      var meta = '<div style="font-size:10.5px;color:var(--gray);margin:0 0 6px">' + esc(when) +
+        (x.emailedTo && x.emailedTo.length ? (x.sent ? ' · emailed to ' : ' · email failed, shared from device · ') + esc(x.emailedTo.join(', ')) : ' · shared from device (no recipients checked)') +
+        (x.source ? ' · Source ' + esc(x.source) : '') + (x.jobNum ? ' · Job ' + esc(x.jobNum) : '') + (x.deliveredTo ? ' · to ' + esc(x.deliveredTo) : '') + '</div>';
+      var pdf = x.pdfBlob
+        ? '<button type="button" data-lc-pdf="' + it.i + '" style="padding:4px 12px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;margin-bottom:8px">Open PDF</button>'
+        : '<div style="font-size:11px;color:var(--gray);margin-bottom:8px">PDF not archived (storage was unavailable when this was sent)</div>';
+      var types = (x.byType || []).map(function (b) { return machineRow(esc(b.label), b.trucks + ' truck' + (b.trucks === 1 ? '' : 's'), b.loads + ' load' + (b.loads === 1 ? '' : 's'), b.cy + ' cy'); }).join('');
+      return postDetails((x.date || when) + ' · ' + lcCountLine(x.trucks || 0, x.loads || 0, x.cy || 0), meta + lcStatBlock(x.trucks || 0, x.loads || 0, x.cy || 0) + pdf + types);
+    }).join('');
+  }
+  // Open an archived Load Count PDF (admin drill-down) — same private store as EWT PDFs
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-lc-pdf]') : null;
+    if (!b) return;
+    var rec = ADMIN_LC_CACHE[+b.getAttribute('data-lc-pdf')];
+    if (!rec || !rec.pdfBlob) return;
+    var name = String(rec.pdfBlob).split('/').slice(1).join('/');
+    apiFetch('/api/ewt-pdf?user=' + encodeURIComponent(ADMIN_EWT_OWNER) + '&name=' + encodeURIComponent(name))
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(function (buf) { openPdfBytes(buf); })
+      .catch(function () { alert('Could not load this PDF.'); });
+  });
   var ADMIN_EWT_CACHE = [];
   var ADMIN_EWT_OWNER = '';
   function ewtHtml(e) {

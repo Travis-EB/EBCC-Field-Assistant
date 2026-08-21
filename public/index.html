@@ -2336,13 +2336,14 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
 
 <div class="ewt-section">
   <h3>Send Day Summary</h3>
-  <div class="ewt-hint">PDF summary of the day's counts. Pick recipients or type others. Same flow as Truck Tickets.</div>
+  <div class="ewt-hint">Emails the day's PDF from your own mailbox to the checked recipients and saves a copy for the office. With no recipients checked, it opens your phone's share sheet instead.</div>
   <div class="ewt-recipients" id="lc-recipients"></div>
   <input type="text" id="lc-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
   <div class="ewt-actions">
-    <button class="btn btn-primary" id="lc-share-btn">Share day</button>
+    <button class="btn btn-primary" id="lc-share-btn">Send day</button>
     <button class="btn" id="lc-clear-btn">Clear day</button>
   </div>
+  <div id="lc-share-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
 </div>
 
 </section>
@@ -6529,37 +6530,38 @@ async function lcBuildPDF() {
     });
     const hoursStr = mins ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : '';
 
-    ensureSpace(40);
+    ensureSpace(52);
     doc.setDrawColor(220).setLineWidth(0.3).line(MARGIN, y, W - MARGIN, y);
-    y += 6;
+    y += 16;   // title baseline sits clear of the divider (11pt text needs ~9pt above its baseline)
     // Truck title
     doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(24, 81, 162);
     const title = ti.label + (t.truckNo ? '  ·  #' + t.truckNo : '') + (t.name ? '  ·  ' + t.name : '');
-    doc.text(title, MARGIN, y); y += 13;
+    doc.text(title, MARGIN, y); y += 14;
     // Truck totals
     doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(80);
     const tParts = [completed.length + ' load' + (completed.length === 1 ? '' : 's'), truckCy + ' cy'];
     if (hoursStr) tParts.push(hoursStr + ' on-site');
     if (inProgress.length) tParts.push(inProgress.length + ' still on-site');
-    doc.text(tParts.join(' · '), MARGIN, y); y += 12;
-    // Loads list (two-column)
+    doc.text(tParts.join(' · '), MARGIN, y); y += 14;
+    // Loads list (two-column). The built-in PDF font has no arrow glyph — the
+    // old "→" came out as garbage — so times are written as "in – out".
     doc.setFontSize(9).setTextColor(0);
     const allLoads = (t.loads || []);
     const half = Math.ceil(allLoads.length / 2);
     for (let i = 0; i < half; i++) {
-      ensureSpace(11);
+      ensureSpace(12);
       const L1 = allLoads[i];
       const L2 = allLoads[i + half];
       const fmt = (n, L) => {
         if (!L) return '';
         const outTxt = L.out ? L.out : 'on-site';
-        return (n + 1) + '. ' + (L.in || '?') + ' → ' + outTxt;
+        return (n + 1) + '.  ' + (L.in || '?') + '  -  ' + outTxt;
       };
       doc.text(fmt(i, L1), MARGIN + 10, y);
-      if (L2) doc.text(fmt(i + half, L2), MARGIN + 220, y);
-      y += 11;
+      if (L2) doc.text(fmt(i + half, L2), MARGIN + 230, y);
+      y += 12;
     }
-    y += 4;
+    y += 8;
   });
 
   // Footer
@@ -6573,34 +6575,82 @@ async function lcBuildPDF() {
   return doc;
 }
 
+// Day totals, including the per-truck-type breakdown the office likes to see.
+function lcSummary() {
+  const trucks = lcState.trucks || [];
+  const byType = {};
+  let loads = 0, cy = 0;
+  trucks.forEach(t => {
+    const done = (t.loads || []).filter(L => L.in && L.out).length;
+    const ti = lcTypeInfo(t.truckTypeId);
+    loads += done; cy += done * (ti.cy || 0);
+    if (!done) return;
+    if (!byType[ti.label]) byType[ti.label] = { label: ti.label, trucks: 0, loads: 0, cy: 0 };
+    byType[ti.label].trucks += 1; byType[ti.label].loads += done; byType[ti.label].cy += done * (ti.cy || 0);
+  });
+  return { trucks: trucks.length, loads, cy, byType: Object.values(byType) };
+}
+
 async function lcShareDay() {
   if (!lcState.trucks.length) {
     alert('No trucks recorded yet.');
     return;
   }
+  const statusEl = document.getElementById('lc-share-status');
+  const setStatus = (msg, color) => { if (statusEl) { statusEl.textContent = msg; statusEl.style.color = color || 'var(--dark)'; } };
   let doc;
   try { doc = await lcBuildPDF(); }
   catch (e) { alert('Could not generate PDF: ' + (e && e.message ? e.message : e)); return; }
   const blob = doc.output('blob');
-  const dateStr = (lcState.meta && lcState.meta.date) || new Date().toISOString().slice(0, 10);
+  const meta = lcState.meta || {};
+  const dateStr = meta.date || new Date().toISOString().slice(0, 10);
   const fileName = 'EBCC_Load_Count_' + dateStr + '.pdf';
   const subject = 'EBCC Load Count ' + dateStr;
 
-  const trucksN = lcState.trucks.length;
-  const totalLoads = lcState.trucks.reduce((s, t) => s + (t.loads || []).filter(L => L.in && L.out).length, 0);
-  const totalCy = lcState.trucks.reduce((s, t) => {
-    const ti = lcTypeInfo(t.truckTypeId);
-    return s + (t.loads || []).filter(L => L.in && L.out).length * (ti.cy || 0);
-  }, 0);
+  const sum = lcSummary();
+  const trucksN = sum.trucks, totalLoads = sum.loads, totalCy = sum.cy;
   const bodyText = [
     'Load count for ' + dateStr + ':',
     trucksN + ' truck' + (trucksN === 1 ? '' : 's') + ' · ' + totalLoads + ' load' + (totalLoads === 1 ? '' : 's') + ' · ' + totalCy + ' cy',
+    ...(sum.byType.length ? ['', ...sum.byType.map(b => '  ' + b.label + ': ' + b.trucks + ' truck' + (b.trucks === 1 ? '' : 's') + ' · ' + b.loads + ' load' + (b.loads === 1 ? '' : 's') + ' · ' + b.cy + ' cy')] : []),
     '',
     'See attached PDF for the full breakdown.',
     '',
     '— Submitted via EBCC Field Assistant',
   ].join('\n');
+  const recipients = lcGetRecipients();
 
+  // 1) Best path: the server emails it from YOUR mailbox — recipients pre-filled,
+  //    PDF attached, subject set — and archives the PDF + totals for the office.
+  //    Same mechanism as Extra Work Tickets. With no recipients it still archives,
+  //    then hands off to the share sheet below.
+  setStatus(recipients.length ? 'Sending…' : 'Saving a copy…', 'var(--gray)');
+  try {
+    const r = await fetch('/api/send-load-count', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subject, text: bodyText, recipients, fileName, pdf: doc.output('datauristring'),
+        summary: { date: dateStr, source: meta.source, deliveredTo: meta.deliveredTo, contractor: meta.contractor,
+                   checker: meta.checker, jobNum: meta.jobNum, trucks: trucksN, loads: totalLoads, cy: totalCy, byType: sum.byType },
+      }),
+    });
+    const res = r.ok ? await r.json() : null;
+    if (res && res.sent) {
+      setStatus('Emailed ✓ to ' + (res.recipients || recipients).join(', ') + (res.archived ? ' · copy saved for the office' : ''), 'var(--green)');
+      return;
+    }
+    if (recipients.length) {
+      console.warn('Load count email not sent (' + (res ? res.reason : 'HTTP ' + r.status) + ') — falling back to share sheet');
+      setStatus('Email service unavailable right now — opening the share sheet instead.', 'var(--gray)');
+    } else {
+      setStatus(res && res.archived ? 'Copy saved for the office. Check recipients to email it directly next time.' : '', 'var(--gray)');
+    }
+  } catch (e) {
+    console.warn('send-load-count failed, falling back to share sheet', e);
+    setStatus(navigator.onLine ? 'Email service unavailable right now — opening the share sheet instead.' : 'Offline — opening the share sheet instead.', 'var(--gray)');
+  }
+
+  // 2) Fallback: the device share sheet with the PDF attached
   const pdfFile = new File([blob], fileName, { type: 'application/pdf' });
   if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
     try {
@@ -6611,12 +6661,11 @@ async function lcShareDay() {
       console.warn('Share with PDF failed, falling back:', e);
     }
   }
-  // Fallback: download + mailto
+  // 3) Last resort (desktop, no share sheet): download + mailto
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-  const recipients = lcGetRecipients();
   const mailto = 'mailto:' + encodeURIComponent(recipients.join(','))
     + '?subject=' + encodeURIComponent(subject)
     + '&body=' + encodeURIComponent(bodyText + '\n\n(PDF "' + fileName + '" downloaded to your device — attach it from Files.)');
