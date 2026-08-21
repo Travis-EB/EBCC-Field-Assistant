@@ -2013,6 +2013,10 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
     <div class="row"><span class="key">Spec coverage</span><span class="val" id="lime-last-truck">—</span></div>
   </div>
 
+  <div class="controls" style="margin-bottom:12px">
+    <button class="btn btn-primary" id="lime-post-btn">Post calc</button>
+  </div>
+
   <div class="lime-hint">
     Trucks round at a <strong>5-ton threshold</strong> — leftover &lt; 5 tons rounds down (stretches the spec), 5+ tons rounds up (full coverage). 1 ton = 2,000 lb &middot; 1 sq yd = 9 sq ft &middot; 10-ton truck = 20,000 lb.
   </div>
@@ -2050,6 +2054,10 @@ header p { font-size: 12px; color: var(--gray); margin-top: 3px; }
     <div class="row"><span class="key">Total tonnage needed</span><span class="val" id="fb-tons">—</span></div>
     <div class="row"><span class="key">Trucks (exact)</span><span class="val" id="fb-trucks-exact">—</span></div>
     <div class="row"><span class="key">Last truck carries</span><span class="val" id="fb-last-truck">—</span></div>
+  </div>
+
+  <div class="controls" style="margin-bottom:12px">
+    <button class="btn btn-primary" id="fb-post-btn">Post calc</button>
   </div>
 
   <div class="lime-hint">
@@ -3504,6 +3512,65 @@ function renderFlexBase() {
   document.getElementById(id).addEventListener('input', renderFlexBase);
 });
 renderFlexBase();
+
+// === Post calc: snapshot a Lime Trucks / Flex Base calculation for admin review ===
+// Same flow as Post Spread — pick the project, then the app shell stores + syncs it.
+document.getElementById('lime-post-btn').addEventListener('click', () => {
+  const rate = parseFloat(document.getElementById('lime-rate').value) || 0;
+  const sqft = parseFloat(document.getElementById('lime-area').value) || 0;
+  if (!(rate > 0 && sqft > 0)) { alert('Enter the spec rate and area before posting.'); return; }
+  const sqyd = sqft / SQFT_PER_SQYD;
+  const totalLbs = sqyd * rate;
+  const exactTrucks = totalLbs / LIME_TRUCK_LBS;
+  const trucksToOrder = Math.round(exactTrucks);
+  const effectiveRate = sqyd > 0 ? (trucksToOrder * LIME_TRUCK_LBS) / sqyd : 0;
+  const snap = {
+    ts: new Date().toISOString(),
+    state: activeState,
+    rate: rate,
+    areaSqft: Math.round(sqft),
+    sqyd: Math.round(sqyd),
+    totalLbs: Math.round(totalLbs),
+    totalTons: Math.round((totalLbs / 2000) * 10) / 10,
+    exactTrucks: Math.round(exactTrucks * 100) / 100,
+    trucksToOrder: trucksToOrder,
+    effectiveRate: Math.round(effectiveRate * 10) / 10,
+    pctOfSpec: Math.round((effectiveRate / rate) * 100),
+  };
+  pickProject((proj) => {
+    if (proj) { snap.projectCode = proj.code; snap.projectName = proj.name; }
+    window.dispatchEvent(new CustomEvent('ebcc-lime-posted', { detail: snap }));
+    alert('Lime calc posted for review.');
+  }, 'lime calc');
+});
+
+document.getElementById('fb-post-btn').addEventListener('click', () => {
+  const area = parseFloat(document.getElementById('fb-area').value) || 0;
+  const depthIn = parseFloat(document.getElementById('fb-depth').value) || 0;
+  const truckTons = parseFloat(document.getElementById('fb-truck-tons').value) || 0;
+  if (!(area > 0 && depthIn > 0 && truckTons > 0)) { alert('Enter the area, design section, and truck capacity before posting.'); return; }
+  const cubicYards = (area * (depthIn / 12)) / 27;
+  const totalTons = cubicYards * FLEXBASE_TONS_PER_CY;
+  const exactTrucks = totalTons / truckTons;
+  const trucksNeeded = Math.ceil(exactTrucks);
+  const snap = {
+    ts: new Date().toISOString(),
+    state: activeState,
+    areaSqft: Math.round(area),
+    depthIn: depthIn,
+    truckTons: truckTons,
+    cubicYards: Math.round(cubicYards * 10) / 10,
+    totalTons: Math.round(totalTons * 10) / 10,
+    exactTrucks: Math.round(exactTrucks * 100) / 100,
+    trucksNeeded: trucksNeeded,
+    lastTruckTons: Math.round((totalTons - (trucksNeeded - 1) * truckTons) * 10) / 10,
+  };
+  pickProject((proj) => {
+    if (proj) { snap.projectCode = proj.code; snap.projectName = proj.name; }
+    window.dispatchEvent(new CustomEvent('ebcc-flexbase-posted', { detail: snap }));
+    alert('Flex base calc posted for review.');
+  }, 'flex base calc');
+});
 
 // === Stepper +/- buttons for qty / round-time (mobile-friendly) ===
 document.addEventListener('click', (e) => {
@@ -7406,13 +7473,13 @@ document.getElementById('jb-create-btn').addEventListener('click', () => {
 });
 
 // Project picker used by Post Spread on both calculator tabs
-function pickProject(cb) {
+function pickProject(cb, what) {
   const projs = window.EBCC_PROJECTS || [];
   if (!projs.length) { cb(null); return; }   // projects unknown (offline) — post without
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   ov.innerHTML = '<div style="background:var(--card);border-radius:14px;padding:18px;max-width:360px;width:100%">' +
-    '<div style="font-weight:650;margin-bottom:10px;font-size:15px">What project is this spread for?</div>' +
+    '<div style="font-weight:650;margin-bottom:10px;font-size:15px">What project is this ' + escHTML(what || 'spread') + ' for?</div>' +
     '<select id="proj-pick" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px">' +
       '<option value="">— No project —</option>' +
       projs.map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.code + ' — ' + p.name) + '</option>').join('') +

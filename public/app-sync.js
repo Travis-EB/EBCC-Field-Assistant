@@ -15,6 +15,8 @@
     // Posted spreads (explicit snapshots for admin review)
     'ebcc_cpy_posts_v1': 'cpy_posts',
     'ebcc_flat_posts_v1': 'flat_posts',
+    'ebcc_lime_posts_v1': 'lime_posts',
+    'ebcc_flexbase_posts_v1': 'flexbase_posts',
     // Calculator tabs — synced so the admin can review them per user
     'ebcc_cpy_state_v1': 'cpy_state',
     'ebcc_flat_state_v1': 'flat_state',
@@ -425,6 +427,15 @@
   window.addEventListener('ebcc-flat-posted', function (e) {
     try { if (e.detail && e.detail.items) storePost(FLAT_POSTS_KEY, e.detail); } catch (err) {}
   });
+  // Posted Lime Trucks / Flex Base calcs (the 'Post calc' buttons)
+  var LIME_POSTS_KEY = 'ebcc_lime_posts_v1';
+  var FB_POSTS_KEY = 'ebcc_flexbase_posts_v1';
+  window.addEventListener('ebcc-lime-posted', function (e) {
+    try { if (e.detail && e.detail.rate) storePost(LIME_POSTS_KEY, e.detail); } catch (err) {}
+  });
+  window.addEventListener('ebcc-flexbase-posted', function (e) {
+    try { if (e.detail && e.detail.depthIn) storePost(FB_POSTS_KEY, e.detail); } catch (err) {}
+  });
 
   // The app dispatches 'ebcc-ewt-finalized' (with the collected ticket + PDF data URI)
   // whenever a ticket is previewed or emailed. Attached at load — never misses one.
@@ -550,7 +561,7 @@
           '<div style="min-width:0">' +
             '<div style="font-weight:600;font-size:14px">' + esc(u.name || u.email) + '</div>' +
             '<div style="font-size:12px;color:var(--gray)">' + esc(u.email) + '</div>' +
-            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts sent ' + (c.load_count_sends || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · Spreads ' + ((c.cpy_posts || 0) + (c.flat_posts || 0)) + ' · Last active ' + esc(last) + '</div>' +
+            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts sent ' + (c.load_count_sends || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · Spreads ' + ((c.cpy_posts || 0) + (c.flat_posts || 0)) + ' · Calcs ' + ((c.lime_posts || 0) + (c.flexbase_posts || 0)) + ' · Last active ' + esc(last) + '</div>' +
           '</div>' +
           '<div style="display:flex;gap:6px;align-items:center">' +
             '<select data-role-for="' + esc(u.id) + '" style="font-family:inherit;padding:6px;border:1px solid var(--border);border-radius:8px">' + sel + '</select>' +
@@ -606,6 +617,14 @@
         (function () {
           var posts = (rec.flat_posts && rec.flat_posts.data) || [];
           return section('Posted Spreads — Flat Work (' + posts.length + ')' + updatedTag(rec.flat_posts), flatPostsHtml(posts));
+        })() +
+        (function () {
+          var posts = (rec.lime_posts && rec.lime_posts.data) || [];
+          return section('Posted Calcs — Lime Trucks (' + posts.length + ')' + updatedTag(rec.lime_posts), limePostsHtml(posts));
+        })() +
+        (function () {
+          var posts = (rec.flexbase_posts && rec.flexbase_posts.data) || [];
+          return section('Posted Calcs — Flex Base (' + posts.length + ')' + updatedTag(rec.flexbase_posts), fbPostsHtml(posts));
         })() +
         section('Cost Per Yard — current setup' + updatedTag(rec.cpy_state), cpyHtml(rec.cpy_state && rec.cpy_state.data)) +
         section('Flat Work — current setup' + updatedTag(rec.flat_state), flatHtml(rec.flat_state && rec.flat_state.data)) +
@@ -848,6 +867,32 @@
         return machineRow(esc(p.name), 'Qty ' + esc(p.qty), '$' + fmtNum(p.costPerDay) + '/day');
       }).join('');
       return postDetails(postLabel(s), meta + stats + proj + items);
+    }).join('');
+  }
+  // Posted Lime Trucks calcs — headline is the order (trucks), with the spec math beneath
+  function limePostsHtml(arr) {
+    if (!Array.isArray(arr) || !arr.length) return none();
+    return arr.slice().reverse().map(function (s) {
+      var meta = '<div style="font-size:10.5px;color:var(--gray);margin:0 0 6px">Spec ' + esc(s.rate) + ' lb/sy · ' + fmtNum(s.areaSqft) + ' sq ft (' + fmtNum(s.sqyd) + ' sy)</div>';
+      var stats = '<div class="summary" style="margin-bottom:8px">' +
+        statCell('Trucks to order', fmtNum(s.trucksToOrder), 'cost-per-yard', '10-ton · ' + esc(s.exactTrucks) + ' exact') +
+        statCell('Total lime', fmtNum(s.totalTons) + ' tons', '', fmtNum(s.totalLbs) + ' lb') +
+        statCell('Spec coverage', esc(s.pctOfSpec) + '%', '', esc(s.effectiveRate) + ' lb/sy delivered') +
+      '</div>';
+      return postDetails(postLabel(s) + ' · ' + fmtNum(s.trucksToOrder) + ' truck' + (s.trucksToOrder === 1 ? '' : 's'), meta + stats);
+    }).join('');
+  }
+  // Posted Flex Base calcs — headline is the truck loads to order
+  function fbPostsHtml(arr) {
+    if (!Array.isArray(arr) || !arr.length) return none();
+    return arr.slice().reverse().map(function (s) {
+      var meta = '<div style="font-size:10.5px;color:var(--gray);margin:0 0 6px">' + fmtNum(s.areaSqft) + ' sq ft × ' + esc(s.depthIn) + '" section · ' + esc(s.truckTons) + '-ton trucks · 1.8 t/cy</div>';
+      var stats = '<div class="summary" style="margin-bottom:8px">' +
+        statCell('Truck loads', fmtNum(s.trucksNeeded), 'cost-per-yard', esc(s.exactTrucks) + ' exact · last ' + esc(s.lastTruckTons) + ' t') +
+        statCell('Total tonnage', fmtNum(s.totalTons) + ' tons') +
+        statCell('Compacted volume', fmtNum(s.cubicYards) + ' cy') +
+      '</div>';
+      return postDetails(postLabel(s) + ' · ' + fmtNum(s.trucksNeeded) + ' load' + (s.trucksNeeded === 1 ? '' : 's'), meta + stats);
     }).join('');
   }
   function updatedTag(entry) {
