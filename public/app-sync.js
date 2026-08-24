@@ -97,6 +97,7 @@
       if (me.disabled) { showDisabled(me); return; }
       ME = me;
       renderAccountMenu(me);
+      renderProfileTab(me);
       if (me.isAdmin) enableAdmin();
       hydrateFromServer().then(function () {
         installSyncHooks();
@@ -144,6 +145,40 @@
     try { localStorage.setItem('ebcc_theme', mode); } catch (e) {}
     var m = document.querySelector('meta[name="theme-color"]');
     if (m) m.setAttribute('content', mode === 'dark' ? '#14181e' : '#ffffff');
+    // The toggle lives in two places (avatar popup + Profile tab) — keep both true
+    ['theme-toggle', 'profile-theme-toggle'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.checked = mode === 'dark';
+    });
+  }
+
+  // The Profile tab (Settings > Profile) — same account info as the avatar popup,
+  // as a full page that's reachable from the nav.
+  function renderProfileTab(me) {
+    var body = document.getElementById('profile-body');
+    if (!body) return;
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var initials = (me.name || me.email || '?').trim().slice(0, 1).toUpperCase();
+    body.innerHTML =
+      '<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">' +
+        '<div style="width:52px;height:52px;border-radius:50%;background:#23272e;color:#fff;font-weight:700;font-size:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + esc(initials) + '</div>' +
+        '<div style="min-width:0">' +
+          '<div style="font-weight:650;font-size:16px">' + esc(me.name || me.email) + '</div>' +
+          '<div style="font-size:13px;color:var(--gray)">' + esc(me.email) + '</div>' +
+          '<div style="font-size:12px;color:var(--gray);margin-top:2px">Role: ' + esc(me.isAdmin ? 'Admin' : (me.role || 'user')) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div id="profile-sync-status" style="font-size:12px;color:#059669;margin-bottom:14px;padding:8px 10px;background:var(--soft,#f4f5f7);border-radius:8px">All changes saved</div>' +
+      '<label style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px;font-weight:600;margin:0 0 16px;cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:10px">Dark mode' +
+        '<input type="checkbox" id="profile-theme-toggle"' + (isDark ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:var(--orange,#d97706);cursor:pointer">' +
+      '</label>' +
+      '<a href="/.auth/logout?post_logout_redirect_uri=/login.html" style="display:block;text-align:center;background:var(--soft,#f3f4f6);color:var(--ink,#1f2937);text-decoration:none;padding:10px;border-radius:10px;font-size:14px;font-weight:600">Sign out</a>';
+    var tt = document.getElementById('profile-theme-toggle');
+    if (tt) tt.addEventListener('change', function () { applyTheme(tt.checked ? 'dark' : 'light'); });
+    // keep the popup's sync line and this one in step with the latest status
+    var pop = document.getElementById('sync-status');
+    var mine = document.getElementById('profile-sync-status');
+    if (pop && mine) { mine.textContent = pop.textContent; mine.style.color = pop.style.color || '#059669'; }
   }
 
   function renderAccountMenu(me) {
@@ -175,8 +210,10 @@
   }
 
   function setSyncStatus(text, color) {
-    var el = document.getElementById('sync-status');
-    if (el) { el.textContent = text; el.style.color = color || '#059669'; }
+    ['sync-status', 'profile-sync-status'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) { el.textContent = text; el.style.color = color || '#059669'; }
+    });
   }
 
   // ---------- EWT drafts: two-way merge across devices ----------
