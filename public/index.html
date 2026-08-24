@@ -1812,6 +1812,11 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     <h3>Profile</h3>
     <div id="profile-body"><p style="color:var(--gray);font-size:13px">Sign in to see your account.</p></div>
   </div>
+  <div class="ewt-section">
+    <h3>My Drafts</h3>
+    <div class="ewt-hint">Everything unfinished on your account, organized by tab. Extra Work Ticket drafts sync across your devices; calculator setups and the load-count day live on this device until you post or send them.</div>
+    <div id="profile-drafts"></div>
+  </div>
 </section>
 
 <section class="tab-content active has-rail" id="tab-calculator">
@@ -3187,6 +3192,8 @@ document.querySelectorAll('.tab').forEach(btn => {
     btn.classList.add('active');
     btn.setAttribute('aria-selected', 'true');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    // Opening Profile refreshes the drafts panel with the latest state
+    if (btn.dataset.tab === 'profile' && typeof renderProfileDrafts === 'function') renderProfileDrafts();
     // Picking a tab closes the phone drawer
     document.body.classList.remove('nav-open');
     var bb = document.getElementById('nav-burger');
@@ -6811,6 +6818,118 @@ async function lcShareDay() {
 }
 
 document.getElementById('lc-share-btn').addEventListener('click', lcShareDay);
+
+// === Profile: every unfinished thing on this account, grouped by tab ===
+function renderProfileDrafts() {
+  const wrap = document.getElementById('profile-drafts');
+  if (!wrap) return;
+  const row = (title, sub, buttons) =>
+    '<div class="equipment-card" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:center">' +
+      '<div style="min-width:0;grid-area:auto"><div class="name" style="word-break:break-word">' + title + '</div>' +
+      '<div class="rate">' + sub + '</div></div>' +
+      '<div style="display:flex;gap:6px;align-items:center">' + buttons + '</div>' +
+    '</div>';
+  const openBtn = (tab) => '<button class="btn" data-prof-open="' + tab + '">Open</button>';
+  const group = (label, inner) => '<div class="section-header">' + label + '</div>' + inner;
+  let html = '';
+
+  // Extra Work Ticket — the real saved drafts
+  const drafts = (typeof ewtGetDrafts === 'function') ? ewtGetDrafts() : [];
+  if (drafts.length) {
+    html += group('Extra Work Ticket — ' + drafts.length + ' draft' + (drafts.length === 1 ? '' : 's'),
+      drafts.slice().reverse().map(d => {
+        const t = d.ticket || {};
+        const label = [t.ticketNo ? '#' + t.ticketNo : null, t.customer || null, t.jobNum ? 'Job ' + t.jobNum : null].filter(Boolean).join(' · ') || 'Untitled ticket';
+        const when = d.savedAt ? new Date(d.savedAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+        return row(escHTML(label), 'Saved ' + escHTML(when) + (t.acceptedBy ? ' · signed' : ''),
+          '<button class="btn" data-prof-ewt-load="' + escAttr(d.id) + '">Load</button>' +
+          '<button class="remove-btn" title="Delete draft" data-prof-ewt-del="' + escAttr(d.id) + '">&times;</button>');
+      }).join(''));
+  }
+  // Cost Per Yard — the working setup
+  if (job.length) {
+    let cost = 0, yards = 0;
+    job.forEach(it => { const r = computeRow(it); cost += r.costPerDay; yards += r.yardsPerDay; });
+    html += group('Cost Per Yard — current setup',
+      row(job.length + ' piece' + (job.length === 1 ? '' : 's') + ' of equipment',
+        '$' + Math.round(cost).toLocaleString() + '/day · ' + Math.round(yards).toLocaleString() + ' yd/day' +
+        (yardsToMove > 0 ? ' · ' + yardsToMove.toLocaleString() + ' yd to move' : ''),
+        openBtn('calculator')));
+  }
+  // Flat Work — the working setup
+  if (flatJob.length || flatJobSqft > 0) {
+    let cost = 0;
+    flatJob.forEach(it => { cost += (+it.quantity || 0) * (+it.rate || 0) * flatHoursPerDay; });
+    html += group('Flat Work — current setup',
+      row(flatJob.length + ' piece' + (flatJob.length === 1 ? '' : 's') + ' of equipment',
+        '$' + Math.round(cost).toLocaleString() + '/day' +
+        (flatSqftPerDay > 0 ? ' · ' + flatSqftPerDay.toLocaleString() + ' sq ft/day' : '') +
+        (flatJobSqft > 0 ? ' · ' + flatJobSqft.toLocaleString() + ' sq ft job' : ''),
+        openBtn('flatwork')));
+  }
+  // Lime Trucks — inputs in progress
+  const limeRate = parseFloat(document.getElementById('lime-rate').value) || 0;
+  const limeArea = parseFloat(document.getElementById('lime-area').value) || 0;
+  if (limeRate > 0 || limeArea > 0) {
+    const done = limeRate > 0 && limeArea > 0;
+    html += group('Lime Trucks — current inputs',
+      row((limeRate || '—') + ' lb/sy over ' + (limeArea ? limeArea.toLocaleString() : '—') + ' sq ft',
+        done ? document.getElementById('lime-tons').textContent + ' tons · ' + document.getElementById('lime-trucks').textContent + ' trucks to order' : 'incomplete — finish the inputs',
+        openBtn('lime')));
+  }
+  // Flex Base — inputs in progress
+  const fbArea = parseFloat(document.getElementById('fb-area').value) || 0;
+  const fbDepth = parseFloat(document.getElementById('fb-depth').value) || 0;
+  if (fbArea > 0 || fbDepth > 0) {
+    const done = fbArea > 0 && fbDepth > 0;
+    html += group('Flex Base — current inputs',
+      row((fbArea ? fbArea.toLocaleString() : '—') + ' sq ft × ' + (fbDepth || '—') + '" section',
+        done ? document.getElementById('fb-tons').textContent + ' · ' + document.getElementById('fb-trucks').textContent + ' loads' : 'incomplete — finish the inputs',
+        openBtn('flexbase')));
+  }
+  // Load Count — the day in progress
+  if (lcState.trucks.length) {
+    const s = lcSummary();
+    const m = lcState.meta || {};
+    html += group('Load Count — current day',
+      row(escHTML(m.date || 'No date set') + (m.jobNum ? ' · Job ' + escHTML(m.jobNum) : ''),
+        s.trucks + ' truck' + (s.trucks === 1 ? '' : 's') + ' · ' + s.loads + ' load' + (s.loads === 1 ? '' : 's') + ' · ' + s.cy + ' cy',
+        openBtn('loadcount')));
+  }
+
+  wrap.innerHTML = html || '<div class="empty">Nothing in progress — EWT drafts, calculator setups, and the load-count day will show up here.</div>';
+}
+
+document.getElementById('profile-drafts').addEventListener('click', (e) => {
+  const open = e.target.closest('[data-prof-open]');
+  if (open) {
+    const b = document.querySelector('.tab[data-tab="' + open.getAttribute('data-prof-open') + '"]');
+    if (b) b.click();
+    return;
+  }
+  const load = e.target.closest('[data-prof-ewt-load]');
+  if (load) {
+    const d = ewtGetDrafts().find(x => x.id === load.getAttribute('data-prof-ewt-load'));
+    const b = document.querySelector('.tab[data-tab="ewt"]');
+    if (b) b.click();
+    if (d) ewtLoadDraft(d.ticket || {});
+    return;
+  }
+  const del = e.target.closest('[data-prof-ewt-del]');
+  if (del) {
+    if (!confirm('Delete this draft? This cannot be undone.')) return;
+    const id = del.getAttribute('data-prof-ewt-del');
+    ewtSetDrafts(ewtGetDraftsRaw().map(d => (d && d.id === id && !d.tombstone)
+      ? { id: id, tombstone: true, deletedAt: new Date().toISOString() }
+      : d));
+    renderProfileDrafts();
+  }
+});
+// Drafts merged in from another device while Profile is open — refresh in place
+window.addEventListener('ebcc-drafts-updated', () => {
+  const tab = document.getElementById('tab-profile');
+  if (tab && tab.classList.contains('active')) renderProfileDrafts();
+});
 
 // Init
 lcPopulateTypeDropdown();
