@@ -7201,7 +7201,7 @@ function jbRenderList() {
       ? ' · ' + p.fileCount + ' file' + (p.fileCount === 1 ? '' : 's') + ' · ' + jbFmtSize(p.totalSize)
       : ' · no files') + (linkN ? ' · ' + linkN + ' link' + (linkN === 1 ? '' : 's') : '');
     return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jb-open="' + escAttr(p.code) + '">' +
-      '<div><div class="name">' + escHTML(p.code) + '</div><div class="rate">' + escHTML(p.name) + escHTML(meta) + '</div></div>' +
+      '<div><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(p.code) + escHTML(meta) + '</div></div>' +
       '<button class="btn" data-jb-open="' + escAttr(p.code) + '">Open</button>' +
     '</div>';
   }).join('');
@@ -7381,8 +7381,8 @@ function jbOpenProject(code) {
   box.innerHTML =
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">' +
       '<button class="btn" id="jb-back-btn">&larr; Back</button>' +
-      '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.code) + '</div>' +
-      '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.name) + '</div></div>' +
+      '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.name) + '</div>' +
+      '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.code) + '</div></div>' +
     '</div>' +
     '<div id="jb-dropzone" style="margin:12px 0;padding:18px 16px;border:2px dashed var(--border);border-radius:12px;text-align:center;color:var(--gray);font-size:13px;background:var(--dz-bg)">' +
       '<span id="jb-drophint">Drag files here — they save automatically</span><br>' +
