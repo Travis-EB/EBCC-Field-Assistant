@@ -2452,6 +2452,8 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     </div>
 
     <div class="section-header">Projects <span id="jb-count" style="text-transform:none;letter-spacing:0"></span></div>
+    <input type="search" id="jb-search" placeholder="Search projects — name or job #…" autocomplete="off"
+      style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--card);color:var(--dark);margin-bottom:8px">
     <div class="controls" id="jb-sort-row" style="gap:6px">
       <span style="font-size:11px;color:var(--gray);align-self:center;text-transform:uppercase;letter-spacing:.08em;font-weight:600">Sort</span>
       <button class="btn btn-primary" data-jb-sort="code">Job #</button>
@@ -7186,12 +7188,17 @@ function jbLoadProjects() {
 
 let jbSort = 'code';
 
+let jbSearchQuery = '';
+
 function jbRenderList() {
   const list = document.getElementById('jb-list');
   const count = document.getElementById('jb-count');
-  const projs = (window.EBCC_PROJECTS || []).slice();
-  if (count) count.textContent = '(' + projs.length + ')';
-  if (!projs.length) { list.innerHTML = '<div class="empty">No projects yet — create the first one above.</div>'; return; }
+  const all = (window.EBCC_PROJECTS || []).slice();
+  const q = jbSearchQuery.trim().toLowerCase();
+  const projs = q ? all.filter(p => (String(p.name) + ' ' + String(p.code)).toLowerCase().includes(q)) : all;
+  if (count) count.textContent = q ? '(' + projs.length + ' of ' + all.length + ')' : '(' + all.length + ')';
+  if (!all.length) { list.innerHTML = '<div class="empty">No projects yet — create the first one above.</div>'; return; }
+  if (!projs.length) { list.innerHTML = '<div class="empty">No projects match "' + escHTML(jbSearchQuery.trim()) + '".</div>'; return; }
   if (jbSort === 'name') projs.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   else if (jbSort === 'size') projs.sort((a, b) => (b.totalSize || 0) - (a.totalSize || 0));
   else projs.sort((a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
@@ -7206,6 +7213,11 @@ function jbRenderList() {
     '</div>';
   }).join('');
 }
+
+document.getElementById('jb-search').addEventListener('input', (e) => {
+  jbSearchQuery = e.target.value || '';
+  jbRenderList();
+});
 
 document.getElementById('jb-sort-row').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-jb-sort]');
