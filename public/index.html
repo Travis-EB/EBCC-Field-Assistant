@@ -137,7 +137,8 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 }
 .nav-burger span { display: block; width: 18px; height: 2px; background: var(--dark); border-radius: 2px; }
 .tab {
-  display: block; width: 100%; text-align: left;
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; text-align: left;
   background: none;
   border: none;
   border-left: 3px solid transparent;
@@ -149,6 +150,11 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   cursor: pointer;
   font-family: inherit;
   white-space: nowrap;
+}
+.tab svg {
+  width: 17px; height: 17px; flex-shrink: 0;
+  stroke: currentColor; fill: none; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
 }
 .tab:hover { color: var(--dark); background: var(--light-gray); }
 .tab.active {
@@ -1788,22 +1794,22 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <div class="nav-title">EBCC Field Assistant</div>
   <div class="nav-group">
     <div class="nav-group-label">Calculations</div>
-    <button class="tab active" data-tab="calculator" role="tab" aria-selected="true">Cost Per Yard</button>
-    <button class="tab" data-tab="flatwork" role="tab" aria-selected="false">Flat Work</button>
-    <button class="tab" data-tab="lime" role="tab" aria-selected="false">Lime Trucks</button>
-    <button class="tab" data-tab="flexbase" role="tab" aria-selected="false">Flex Base</button>
+    <button class="tab active" data-tab="calculator" role="tab" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11"/><path d="M15 9.2c-.5-1-1.7-1.7-3-1.7-1.7 0-3 .9-3 2.2 0 2.9 6 1.6 6 4.5 0 1.3-1.3 2.2-3 2.2-1.3 0-2.5-.7-3-1.7"/></svg>Cost Per Yard</button>
+    <button class="tab" data-tab="flatwork" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 13v-1.7h6.8V13"/><path d="M9.4 11.3V6.3c0-1.6 1.1-2.6 2.6-2.6s2.6 1 2.6 2.6v5"/><circle cx="12" cy="8.7" r="1.8"/><path d="M9.6 13.2 6.2 20.6"/><path d="M14.4 13.2l3.4 7.4"/><path d="M12 13.2v7.4"/></svg>Flat Work</button>
+    <button class="tab" data-tab="lime" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 16.5H4V7h10v9.5z"/><path d="M14 9.5h3.5l3 3v4h-2.4"/><circle cx="7.3" cy="17.3" r="1.8"/><circle cx="16.3" cy="17.3" r="1.8"/><path d="M9.1 17.3h5.4"/></svg>Lime Trucks</button>
+    <button class="tab" data-tab="flexbase" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18"/><path d="M5 19c1.5-6.5 4-9.5 7-9.5s5.5 3 7 9.5"/></svg>Flex Base</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-label">Project Communications</div>
-    <button class="tab" data-tab="ewt" role="tab" aria-selected="false">Extra Work Ticket</button>
-    <button class="tab" data-tab="trucking" role="tab" aria-selected="false">Truck Tickets</button>
-    <button class="tab" data-tab="loadcount" role="tab" aria-selected="false">Load Count</button>
-    <button class="tab" data-tab="jobbooks" role="tab" aria-selected="false">Job Books</button>
+    <button class="tab" data-tab="ewt" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8l-4-5z"/><path d="M14 3v5h4"/><path d="M9.5 13h5M9.5 16.5h5"/></svg>Extra Work Ticket</button>
+    <button class="tab" data-tab="trucking" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.2a1.2 1.2 0 0 1 1.2-1.2h2.9l1.9-2.2h6l1.9 2.2h2.9A1.2 1.2 0 0 1 21 8.2v9.6a1.2 1.2 0 0 1-1.2 1.2H4.2A1.2 1.2 0 0 1 3 17.8V8.2z"/><circle cx="12" cy="13" r="3.4"/></svg>Truck Tickets</button>
+    <button class="tab" data-tab="loadcount" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6.8V12l3.4 2"/></svg>Load Count</button>
+    <button class="tab" data-tab="jobbooks" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5a1.2 1.2 0 0 1 1.2-1.2h5l2 2.4h8.6A1.2 1.2 0 0 1 21 9.9v7.9a1.2 1.2 0 0 1-1.2 1.2H4.2A1.2 1.2 0 0 1 3 17.8V7.5z"/></svg>Job Books</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-label">Settings</div>
-    <button class="tab admin-only" data-tab="admin" role="tab" aria-selected="false" style="display:none">Manage Users</button>
-    <button class="tab" data-tab="profile" role="tab" aria-selected="false">Profile</button>
+    <button class="tab admin-only" data-tab="admin" role="tab" aria-selected="false" style="display:none"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8.3" r="3.2"/><path d="M3.5 19c0-3.1 2.4-5 5.5-5s5.5 1.9 5.5 5"/><circle cx="16.8" cy="9.2" r="2.5"/><path d="M16.5 14.2c2.6.4 4 2.1 4 4.8"/></svg>Manage Users</button>
+    <button class="tab" data-tab="profile" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9.8" r="2.9"/><path d="M6.4 18.4c1.1-2.6 3.1-3.9 5.6-3.9s4.5 1.3 5.6 3.9"/></svg>Profile</button>
   </div>
 </nav>
 
