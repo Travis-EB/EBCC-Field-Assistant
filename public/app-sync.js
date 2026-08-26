@@ -12,6 +12,9 @@
     'ebcc_load_count_v1': 'load_count',
     'ebcc_ewt_records_v1': 'ewt_records',
     'ebcc_ewt_drafts_v1': 'ewt_drafts',
+    // Daily per-project JHAs — created on one device, signed on another,
+    // so they merge both directions like EWT drafts.
+    'ebcc_jha_records_v1': 'jha_records',
     // Posted spreads (explicit snapshots for admin review)
     'ebcc_cpy_posts_v1': 'cpy_posts',
     'ebcc_flat_posts_v1': 'flat_posts',
@@ -25,6 +28,7 @@
   };
   var EWT_KEY = 'ebcc_ewt_records_v1';
   var DRAFTS_KEY = 'ebcc_ewt_drafts_v1';
+  var JHA_KEY = 'ebcc_jha_records_v1';
   var PENDING_KEY = 'ebcc_sync_pending';
   var HYDRATED_FLAG = 'ebcc_hydrated_once';
 
@@ -96,6 +100,8 @@
       }
       if (me.disabled) { showDisabled(me); return; }
       ME = me;
+      window.EBCC_ME = me; // page features (e.g. JHA "Prepared By") read the signed-in name
+
       renderAccountMenu(me);
       renderProfileTab(me);
       if (me.isAdmin) enableAdmin();
@@ -265,6 +271,46 @@
   }
   window.addEventListener('ebcc-drafts-pull', function () { pullDrafts(); });
 
+  // ---------- JHA merge/pull (same laptop-to-phone flow as drafts) ----------
+  function mergeJha(a, b) {
+    var byId = {}, order = [];
+    function consider(j) {
+      if (!j || !j.id) return;
+      var cur = byId[j.id];
+      if (!cur) { byId[j.id] = j; order.push(j.id); return; }
+      if (String(j.updatedAt || '') > String(cur.updatedAt || '')) byId[j.id] = j;
+    }
+    (Array.isArray(a) ? a : []).forEach(consider);
+    (Array.isArray(b) ? b : []).forEach(consider);
+    var out = order.map(function (id) { return byId[id]; });
+    out.sort(function (x, y) { return String(x.date || '').localeCompare(String(y.date || '')) || String(x.createdAt || '').localeCompare(String(y.createdAt || '')); });
+    return out;
+  }
+  function readJhaLocal() {
+    try { var v = JSON.parse(localStorage.getItem(JHA_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+  function adoptJha(merged) {
+    var before = localStorage.getItem(JHA_KEY) || '[]';
+    var after = JSON.stringify(merged);
+    if (after === before) return false;
+    origSetItem(JHA_KEY, after);
+    try { window.dispatchEvent(new CustomEvent('ebcc-jha-updated')); } catch (e) {}
+    return true;
+  }
+  var pullingJha = false;
+  function pullJha() {
+    if (!ME || pullingJha) return Promise.resolve();
+    pullingJha = true;
+    return apiFetch('/api/records').then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
+      var server = res && res.records && res.records.jha_records;
+      var serverArr = server && Array.isArray(server.data) ? server.data : [];
+      var merged = mergeJha(serverArr, readJhaLocal());
+      adoptJha(merged);
+      if (JSON.stringify(merged) !== JSON.stringify(serverArr)) queuePush(JHA_KEY);
+    }).catch(function () {}).then(function () { pullingJha = false; });
+  }
+  window.addEventListener('ebcc-jha-pull', function () { pullJha(); });
+
   // ---------- hydrate local from server (first device / cross-device) ----------
   function hydrateFromServer() {
     return apiFetch('/api/records').then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
@@ -277,6 +323,7 @@
         // Drafts always merge (both directions) — a foreman writes them on a
         // laptop and needs them on the phone even after the phone has its own.
         if (lsKey === DRAFTS_KEY) { adoptDrafts(mergeDrafts(server.data, readDraftsLocal())); return; }
+        if (lsKey === JHA_KEY) { adoptJha(mergeJha(server.data, readJhaLocal())); return; }
         var local = localStorage.getItem(lsKey);
         var localEmpty = !local || local === '[]' || local === '{}' || local === 'null';
         // Only hydrate when local is empty — never clobber unsynced local edits.
@@ -315,7 +362,7 @@
       // Coming BACK from the share sheet / mail app: retry anything the
       // phone killed while the app was backgrounded — including PDF offloads —
       // and pick up drafts written on another device in the meantime.
-      if (document.visibilityState === 'visible') { flushPending(); offloadPendingEwtPdfs(); pullDrafts(); }
+      if (document.visibilityState === 'visible') { flushPending(); offloadPendingEwtPdfs(); pullDrafts(); pullJha(); }
     });
   }
 
@@ -384,6 +431,12 @@
           if (lsKey === DRAFTS_KEY) {
             r.json().then(function (j) {
               if (j && Array.isArray(j.data)) adoptDrafts(mergeDrafts(j.data, readDraftsLocal()));
+            }).catch(function () {});
+          }
+          // JHAs merge the same way — a push doubles as a pull.
+          if (lsKey === JHA_KEY) {
+            r.json().then(function (j) {
+              if (j && Array.isArray(j.data)) adoptJha(mergeJha(j.data, readJhaLocal()));
             }).catch(function () {});
           }
         } else {
@@ -598,7 +651,7 @@
           '<div style="min-width:0">' +
             '<div style="font-weight:600;font-size:14px">' + esc(u.name || u.email) + '</div>' +
             '<div style="font-size:12px;color:var(--gray)">' + esc(u.email) + '</div>' +
-            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts sent ' + (c.load_count_sends || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · Spreads ' + ((c.cpy_posts || 0) + (c.flat_posts || 0)) + ' · Calcs ' + ((c.lime_posts || 0) + (c.flexbase_posts || 0)) + ' · Last active ' + esc(last) + '</div>' +
+            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts sent ' + (c.load_count_sends || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · JHA ' + (c.jha_records || 0) + ' · Spreads ' + ((c.cpy_posts || 0) + (c.flat_posts || 0)) + ' · Calcs ' + ((c.lime_posts || 0) + (c.flexbase_posts || 0)) + ' · Last active ' + esc(last) + '</div>' +
           '</div>' +
           '<div style="display:flex;gap:6px;align-items:center">' +
             '<select data-role-for="' + esc(u.id) + '" style="font-family:inherit;padding:6px;border:1px solid var(--border);border-radius:8px">' + sel + '</select>' +
@@ -647,6 +700,10 @@
           return section('Load Count — sent days (' + sends.length + ')', loadCountSendsHtml(sends));
         })() +
         section('Extra Work Tickets (' + (Array.isArray(ewt) ? ewt.length : 0) + ')', ewtHtml(ewt)) +
+        (function () {
+          var jhas = (rec.jha_records && rec.jha_records.data) || [];
+          return section('JHA’s (' + jhas.length + ')' + updatedTag(rec.jha_records), jhaAdminHtml(jhas));
+        })() +
         (function () {
           var posts = (rec.cpy_posts && rec.cpy_posts.data) || [];
           return section('Posted Spreads — Cost Per Yard (' + posts.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(posts));
@@ -906,6 +963,46 @@
       return postDetails(postLabel(s), meta + stats + proj + items);
     }).join('');
   }
+  // JHAs — grouped by project, one collapsible per day. Signatures render as
+  // small inline images; an injured "yes" is flagged in red.
+  function jhaAdminHtml(arr) {
+    if (!Array.isArray(arr) || !arr.length) return none();
+    var byProj = {};
+    arr.forEach(function (j) {
+      if (!j) return;
+      var k = j.projectName || j.projectCode || 'Unknown project';
+      (byProj[k] = byProj[k] || []).push(j);
+    });
+    return Object.keys(byProj).sort().map(function (proj) {
+      var days = byProj[proj].slice().sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+      var inner = days.map(function (j) {
+        var sos = j.signoffs || [];
+        var signed = sos.filter(function (s) { return s && s.sig; }).length;
+        var injured = sos.filter(function (s) { return s && s.injured === 'yes'; }).length;
+        var head = esc(j.date || '—') + ' · ' + signed + ' of ' + sos.length + ' signed' + (injured ? ' · ⚠ ' + injured + ' injured' : '');
+        var hz = Object.keys(j.hazards || {}).filter(function (h) { return j.hazards[h] === true; });
+        var body =
+          '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">Prepared by ' + esc(j.preparedBy || '—') + ' · Contractor ' + esc(j.contractor || '—') + '</div>' +
+          (j.description ? '<div style="margin-bottom:6px;white-space:pre-wrap">' + esc(j.description) + '</div>' : '') +
+          (hz.length ? '<div style="margin-bottom:6px"><strong>Hazards marked Yes:</strong> ' + hz.map(esc).join(', ') + '</div>' : '<div style="margin-bottom:6px;color:var(--gray)">No hazards marked Yes.</div>') +
+          ((j.steps || []).filter(function (s) { return s && (s.step || s.hazard || s.control); }).map(function (s, i) {
+            return '<div style="padding:5px 0;border-top:1px solid var(--light-gray)"><strong>Step ' + (i + 1) + ':</strong> ' + esc(s.step || '—') +
+              '<br><span style="color:var(--gray)">Hazards:</span> ' + esc(s.hazard || '—') +
+              '<br><span style="color:var(--gray)">Controls:</span> ' + esc(s.control || '—') + '</div>';
+          }).join('')) +
+          (sos.length ? sos.map(function (s) {
+            return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-top:1px solid var(--light-gray)">' +
+              '<span style="min-width:120px;font-weight:600">' + esc(s.name || '—') + '</span>' +
+              (s.injured === 'yes' ? '<span style="color:var(--red);font-weight:700">INJURED</span>' : '<span style="color:var(--gray)">not injured</span>') +
+              (s.sig ? '<img src="' + esc(s.sig) + '" alt="signature" style="height:28px;background:#fff;border:1px solid var(--border);border-radius:4px">' : '<em style="color:var(--gray)">unsigned</em>') +
+            '</div>';
+          }).join('') : '');
+        return postDetails(head, body);
+      }).join('');
+      return '<div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + days.length + ')</div>' + inner;
+    }).join('');
+  }
+
   // Posted Lime Trucks calcs — headline is the order (trucks), with the spec math beneath
   function limePostsHtml(arr) {
     if (!Array.isArray(arr) || !arr.length) return none();

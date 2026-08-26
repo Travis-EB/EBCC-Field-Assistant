@@ -10,6 +10,7 @@ const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../s
 
 const ALLOWED_TYPES = new Set([
   'trucking_tickets', 'load_count', 'load_count_sends', 'ewt_records', 'ewt_drafts',
+  'jha_records',
   // Posted spreads (explicit snapshots for admin review)
   'cpy_posts', 'flat_posts', 'lime_posts', 'flexbase_posts',
   // Calculator tabs — synced so admins can review what's being priced out
@@ -79,6 +80,33 @@ function mergeEwtDrafts(prev, next) {
   return out;
 }
 
+// JHAs follow the drafts flow (created on a laptop, signed on a phone), so
+// pushes merge by JHA id — newest updatedAt wins — and the merged list goes
+// back to the client. Size guard for the 2MB doc cap: signature images are
+// stripped from the oldest JHAs first; whole oldest records only as a last
+// resort.
+function mergeJhaRecords(prev, next) {
+  const byId = new Map();
+  const consider = (j) => {
+    if (!j || !j.id) return;
+    const cur = byId.get(j.id);
+    if (!cur || String(j.updatedAt || '') > String(cur.updatedAt || '')) byId.set(j.id, j);
+  };
+  prev.forEach(consider);
+  next.forEach(consider);
+  const out = [...byId.values()];
+  out.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+  if (out.length > 150) out.splice(0, out.length - 150);
+  let size = JSON.stringify(out).length;
+  for (let i = 0; i < out.length && size > 1400 * 1024; i++) {
+    (out[i].signoffs || []).forEach((s) => {
+      if (s && s.sig) { size -= s.sig.length; s.sig = ''; s.sigTrimmed = true; }
+    });
+  }
+  while (out.length > 1 && JSON.stringify(out).length > 1600 * 1024) out.shift();
+  return out;
+}
+
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
   if (!principal) return json(context, 401, { error: 'Not authenticated.' });
@@ -125,13 +153,15 @@ module.exports = async function (context, req) {
         return json(context, 400, { error: 'Body must be { type, data } with a valid type.' });
       }
       let merged = null; // returned to the client so it can adopt the merged view
-      if ((body.type === 'ewt_records' || body.type === 'ewt_drafts') && Array.isArray(body.data)) {
+      if ((body.type === 'ewt_records' || body.type === 'ewt_drafts' || body.type === 'jha_records') && Array.isArray(body.data)) {
         try {
           let existing = null;
           try { existing = (await records.item(me.id + ':' + body.type, me.id).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
           const prev = existing && Array.isArray(existing.data) ? existing.data : [];
-          body.data = body.type === 'ewt_records' ? mergeEwtRecords(prev, body.data) : mergeEwtDrafts(prev, body.data);
-          if (body.type === 'ewt_drafts') merged = body.data;
+          body.data = body.type === 'ewt_records' ? mergeEwtRecords(prev, body.data)
+            : body.type === 'jha_records' ? mergeJhaRecords(prev, body.data)
+            : mergeEwtDrafts(prev, body.data);
+          if (body.type === 'ewt_drafts' || body.type === 'jha_records') merged = body.data;
         } catch (e) { context.log.warn(body.type + ' merge failed', e); }
       }
       const now = new Date().toISOString();

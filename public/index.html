@@ -156,6 +156,51 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   stroke: currentColor; fill: none; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round;
 }
+
+/* JHA (Job Hazard Analysis) */
+#jha-proj {
+  width: 100%; box-sizing: border-box; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+  font-family: inherit; font-size: 14px;
+  background: var(--card, #fff); color: inherit;
+}
+.jha-hazard-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 0; border-bottom: 1px solid var(--light-gray); font-size: 13.5px;
+}
+.jha-hazard-row:last-child { border-bottom: none; }
+.jha-yn { display: flex; gap: 6px; flex-shrink: 0; }
+.jha-yn button {
+  font-family: inherit; font-size: 12.5px; font-weight: 600;
+  padding: 5px 13px; border-radius: 99px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card, #fff); color: var(--gray);
+}
+.jha-yn button.on-yes { background: var(--blue); border-color: var(--blue); color: #fff; }
+.jha-yn button.on-injured { background: var(--red); border-color: var(--red); color: #fff; }
+.jha-yn button.on-no { background: var(--light-gray); border-color: var(--border); color: var(--dark); }
+.jha-step { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: start; }
+.jha-step textarea {
+  width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  font-family: inherit; font-size: 13px; background: var(--card, #fff); color: inherit;
+}
+@media (max-width: 700px) { .jha-step { grid-template-columns: 1fr; } }
+.jha-so-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 0; border-bottom: 1px solid var(--light-gray);
+}
+.jha-so-row .nm { font-weight: 600; font-size: 14px; flex: 1; min-width: 110px; }
+.jha-so-row img { height: 34px; background: #fff; border: 1px solid var(--border); border-radius: 6px; }
+.jha-x { border: none; background: none; color: var(--gray); cursor: pointer; font-size: 16px; padding: 4px 6px; }
+#jha-sig-modal {
+  position: fixed; inset: 0; z-index: 1300;
+  background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.jha-sig-card {
+  background: var(--card, #fff); border-radius: 14px; padding: 16px;
+  width: 100%; max-width: 520px; box-shadow: 0 18px 50px rgba(0,0,0,.3);
+}
 .tab:hover { color: var(--dark); background: var(--light-gray); }
 .tab.active {
   color: var(--dark);
@@ -733,8 +778,10 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   letter-spacing: 0.5px;
   gap: 3px;
 }
-.ewt-grid input {
+.ewt-grid input, .ewt-grid textarea {
   font-size: 15px;
+  font-family: inherit;
+  resize: vertical;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1808,8 +1855,8 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   </div>
   <div class="nav-group">
     <div class="nav-group-label">Safety</div>
-    <button class="tab" data-tab="jha" role="tab" aria-selected="false">JHA's</button>
-    <button class="tab" data-tab="sssp" role="tab" aria-selected="false">SSSP's</button>
+    <button class="tab" data-tab="jha" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.3 17.2a1 1 0 0 1 1-1.2h15.4a1 1 0 0 1 1 1.2l-.2 1.3a1 1 0 0 1-1 .8H4.5a1 1 0 0 1-1-.8z"/><path d="M10 10.5V6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4.5"/><path d="M5.2 16v-2.3a6.8 6.8 0 0 1 4.8-6.5"/><path d="M14 7.2a6.8 6.8 0 0 1 4.8 6.5V16"/></svg>JHA's</button>
+    <button class="tab" data-tab="sssp" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16"/><path d="M13.6 5.2 18 19.5H6L10.4 5.2a1.7 1.7 0 0 1 3.2 0z"/><path d="M8.9 10.3h6.2"/><path d="M7.6 14.6h8.8"/></svg>SSSP's</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-label">Settings</div>
@@ -1819,10 +1866,76 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 </nav>
 
 <section class="tab-content" id="tab-jha">
+
+<div class="ewt-banner">
+  <div><strong>Job Hazard Analysis</strong></div>
+  <div class="ewt-license">Site Clearing, Earthwork &amp; Grading</div>
+</div>
+
+<div class="ewt-section" id="jha-picker">
+  <h3>Project</h3>
+  <div class="ewt-hint">JHA's are organized by project — the same project list as Job Books. Pick a project to see its daily JHA's or start today's.</div>
+  <select id="jha-proj"><option value="">Select a project…</option></select>
+  <div id="jha-list" style="margin-top:10px"></div>
+</div>
+
+<div id="jha-editor" style="display:none">
   <div class="ewt-section">
-    <h3>Job Hazard Analyses</h3>
-    <div class="ewt-hint">JHA's will live here. This tab is being built out — check back soon.</div>
+    <h3 id="jha-ed-title">JHA</h3>
+    <div class="ewt-grid">
+      <label>Date <input type="date" id="jha-date"></label>
+      <label>Contractor <input type="text" id="jha-contractor"></label>
+      <label>Prepared By <input type="text" id="jha-prepared"></label>
+      <label class="ewt-grid-wide">Description of Work <textarea id="jha-desc" rows="3" placeholder="Describe today's work…"></textarea></label>
+    </div>
   </div>
+
+  <div class="ewt-section">
+    <h3>Safety &amp; Health Considerations</h3>
+    <div class="ewt-hint">Mark Yes on anything present on this job today.</div>
+    <div id="jha-hazards"></div>
+  </div>
+
+  <div class="ewt-section">
+    <h3>Job Steps</h3>
+    <div class="ewt-hint">Steps to be performed, the hazards associated with each step, and what's required to eliminate or control the hazard.</div>
+    <div id="jha-steps"></div>
+    <button class="btn" id="jha-add-step">+ Add step</button>
+  </div>
+
+  <div class="ewt-section">
+    <h3>Daily Sign-Off <span id="jha-signed-count" style="font-weight:500;color:var(--gray);font-size:13px"></span></h3>
+    <div class="ewt-hint">Each crew member signs daily and answers "Were you injured today?". The crew list carries over to the next day's JHA — signatures and answers don't.</div>
+    <div id="jha-signoffs"></div>
+    <div class="custom-form-grid" style="margin-top:10px">
+      <input type="text" id="jha-new-person" placeholder="Add crew member name" autocomplete="off">
+      <button class="btn btn-primary" id="jha-add-person">Add</button>
+    </div>
+  </div>
+
+  <div class="ewt-section">
+    <div class="ewt-actions">
+      <button class="btn" id="jha-back">&larr; Back to project list</button>
+    </div>
+    <div class="ewt-hint" style="margin-top:6px">Changes save automatically and sync to your account.</div>
+  </div>
+</div>
+
+<div id="jha-sig-modal" style="display:none">
+  <div class="jha-sig-card">
+    <div style="font-weight:600;margin-bottom:8px" id="jha-sig-who">Sign</div>
+    <div class="ewt-signature-wrap">
+      <canvas id="jha-sig-canvas" class="ewt-signature-pad" aria-label="Crew member signature"></canvas>
+      <span class="ewt-signature-hint" id="jha-sig-hint">Sign here with your finger</span>
+    </div>
+    <div class="ewt-actions" style="margin-top:10px">
+      <button class="btn btn-primary" id="jha-sig-save">Save signature</button>
+      <button class="btn" id="jha-sig-clear">Clear</button>
+      <button class="btn" id="jha-sig-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 </section>
 
 <section class="tab-content" id="tab-sssp">
@@ -7726,6 +7839,397 @@ function pickProject(cb, what) {
 
 document.querySelector('.tab[data-tab="jobbooks"]').addEventListener('click', jbLoadProjects);
 jbLoadProjects();
+
+// ============================================================
+// JHA (Job Hazard Analysis) — daily per-project JHAs with a
+// crew sign-off. The crew roster (and the form itself) carries
+// over from the project's previous JHA; signatures don't.
+// Stored in ebcc_jha_records_v1, synced as jha_records.
+// ============================================================
+const JHA_KEY = 'ebcc_jha_records_v1';
+const JHA_HAZARDS = [
+  'Falls From Elevation', 'Underground Utilities', 'Energized Systems/LOTO',
+  'Confined Space(s)', 'Line Breaking', 'Health Hazards',
+  'Respiratory Protection', 'High Voltage Work', 'Scaffolding/Aerial Lifts',
+  'Excavating/Trenching', 'Work Permits', 'Asbestos and/or Lead',
+  'Public Exposure', 'MEP Issues', 'Hazardous Materials/Waste',
+  'Hot Work', 'Crane/Rigging', 'Working Over Water'
+];
+let jhaCurrentId = null;
+let jhaSaveTimer = null;
+
+function jhaRead() {
+  try { const v = JSON.parse(localStorage.getItem(JHA_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+  catch (e) { return []; }
+}
+function jhaWriteAll(list) { localStorage.setItem(JHA_KEY, JSON.stringify(list)); }
+function jhaToday() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function jhaFmtDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  return m ? (Number(m[2]) + '/' + Number(m[3]) + '/' + m[1].slice(2)) : String(iso || '—');
+}
+// Mutate the current JHA through this so updatedAt always moves and the
+// write lands in localStorage (which is what app-sync pushes from).
+function jhaMutate(fn) {
+  const all = jhaRead();
+  const j = all.find(x => x.id === jhaCurrentId);
+  if (!j) return null;
+  fn(j);
+  j.updatedAt = new Date().toISOString();
+  jhaWriteAll(all);
+  return j;
+}
+function jhaCur() { return jhaRead().find(x => x.id === jhaCurrentId) || null; }
+
+function jhaPopulateProjects() {
+  const sel = document.getElementById('jha-proj');
+  const keep = sel.value;
+  const opts = (window.EBCC_PROJECTS || []).slice()
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    .map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.name) + ' (' + escHTML(p.code) + ')</option>');
+  sel.innerHTML = '<option value="">Select a project…</option>' + opts.join('');
+  if (keep) sel.value = keep;
+}
+
+function jhaRenderList() {
+  const sel = document.getElementById('jha-proj');
+  const list = document.getElementById('jha-list');
+  const code = sel.value;
+  if (!code) { list.innerHTML = ''; return; }
+  const mine = jhaRead().filter(j => j.projectCode === code)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const today = jhaToday();
+  const todays = mine.find(j => j.date === today);
+  const newLabel = todays ? 'Open today’s JHA (' + jhaFmtDate(today) + ')'
+    : 'Start today’s JHA (' + jhaFmtDate(today) + ')' + (mine.length ? ' — carries over ' + jhaFmtDate(mine[0].date) : '');
+  let html = '<div class="controls" style="margin-bottom:10px"><button class="btn btn-primary" id="jha-new-btn">' + escHTML(newLabel) + '</button></div>';
+  if (!mine.length) {
+    html += '<div class="empty">No JHA’s yet for this project.</div>';
+  } else {
+    html += mine.map(j => {
+      const signed = (j.signoffs || []).filter(s => s.sig).length;
+      const total = (j.signoffs || []).length;
+      const desc = String(j.description || '').slice(0, 70);
+      return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jha-open="' + escAttr(j.id) + '">' +
+        '<div><div class="name">' + escHTML(jhaFmtDate(j.date)) + (j.date === today ? ' · today' : '') + '</div>' +
+        '<div class="rate">' + signed + ' of ' + total + ' signed' + (desc ? ' · ' + escHTML(desc) : '') + '</div></div>' +
+        '<button class="btn" data-jha-open="' + escAttr(j.id) + '">Open</button>' +
+      '</div>';
+    }).join('');
+  }
+  list.innerHTML = html;
+}
+
+function jhaNewForToday() {
+  const sel = document.getElementById('jha-proj');
+  const code = sel.value;
+  if (!code) return;
+  const all = jhaRead();
+  const today = jhaToday();
+  const existing = all.find(j => j.projectCode === code && j.date === today);
+  if (existing) { jhaOpenEditor(existing.id); return; }
+  const proj = (window.EBCC_PROJECTS || []).find(p => p.code === code) || {};
+  const prev = all.filter(j => j.projectCode === code)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  const myName = (window.EBCC_ME && (window.EBCC_ME.name || window.EBCC_ME.email)) || '';
+  const now = new Date().toISOString();
+  const rec = {
+    id: 'jha_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    projectCode: code,
+    projectName: proj.name || code,
+    date: today,
+    contractor: prev ? (prev.contractor || '') : 'Earth Basics',
+    preparedBy: prev ? (prev.preparedBy || myName) : myName,
+    description: prev ? (prev.description || '') : '',
+    hazards: prev && prev.hazards ? Object.assign({}, prev.hazards) : {},
+    steps: prev && Array.isArray(prev.steps) && prev.steps.length
+      ? prev.steps.map(s => ({ step: s.step || '', hazard: s.hazard || '', control: s.control || '' }))
+      : [{ step: '', hazard: '', control: '' }],
+    // The roster carries over; each person signs fresh every day.
+    signoffs: prev ? (prev.signoffs || []).filter(s => s && s.name)
+      .map(s => ({ name: s.name, injured: '', sig: '' })) : [],
+    createdAt: now,
+    updatedAt: now
+  };
+  all.push(rec);
+  jhaWriteAll(all);
+  jhaOpenEditor(rec.id);
+}
+
+function jhaOpenEditor(id) {
+  const j = jhaRead().find(x => x.id === id);
+  if (!j) return;
+  jhaCurrentId = id;
+  document.getElementById('jha-picker').style.display = 'none';
+  document.getElementById('jha-editor').style.display = '';
+  document.getElementById('jha-ed-title').textContent = 'JHA — ' + (j.projectName || j.projectCode) + ' — ' + jhaFmtDate(j.date);
+  document.getElementById('jha-date').value = j.date || '';
+  document.getElementById('jha-contractor').value = j.contractor || '';
+  document.getElementById('jha-prepared').value = j.preparedBy || '';
+  document.getElementById('jha-desc').value = j.description || '';
+  jhaRenderHazards(j);
+  jhaRenderSteps(j);
+  jhaRenderSignoffs(j);
+  window.scrollTo({ top: 0 });
+}
+
+function jhaCloseEditor() {
+  jhaFlushFields();
+  jhaCurrentId = null;
+  document.getElementById('jha-editor').style.display = 'none';
+  document.getElementById('jha-picker').style.display = '';
+  jhaRenderList();
+}
+
+function jhaRenderHazards(j) {
+  const hz = j.hazards || {};
+  document.getElementById('jha-hazards').innerHTML = JHA_HAZARDS.map((h, i) => {
+    const v = hz[h]; // true = yes, false = no, undefined = unanswered
+    return '<div class="jha-hazard-row"><span>' + escHTML(h) + '</span>' +
+      '<span class="jha-yn">' +
+        '<button type="button" data-hz="' + i + '" data-v="yes" class="' + (v === true ? 'on-yes' : '') + '">Yes</button>' +
+        '<button type="button" data-hz="' + i + '" data-v="no" class="' + (v === false ? 'on-no' : '') + '">No</button>' +
+      '</span></div>';
+  }).join('');
+}
+
+function jhaRenderSteps(j) {
+  const steps = j.steps || [];
+  document.getElementById('jha-steps').innerHTML = steps.map((s, i) =>
+    '<div class="jha-step">' +
+      '<textarea data-step="' + i + '" data-f="step" placeholder="Step to be performed">' + escHTML(s.step || '') + '</textarea>' +
+      '<textarea data-step="' + i + '" data-f="hazard" placeholder="Hazards with this step">' + escHTML(s.hazard || '') + '</textarea>' +
+      '<textarea data-step="' + i + '" data-f="control" placeholder="Required to eliminate / control">' + escHTML(s.control || '') + '</textarea>' +
+      '<button type="button" class="jha-x" data-step-del="' + i + '" title="Remove step">&#10005;</button>' +
+    '</div>'
+  ).join('');
+}
+
+function jhaRenderSignoffs(j) {
+  const rows = j.signoffs || [];
+  const signed = rows.filter(s => s.sig).length;
+  document.getElementById('jha-signed-count').textContent = rows.length ? '(' + signed + ' of ' + rows.length + ' signed)' : '';
+  document.getElementById('jha-signoffs').innerHTML = rows.length ? rows.map((s, i) =>
+    '<div class="jha-so-row">' +
+      '<span class="nm">' + escHTML(s.name) + '</span>' +
+      '<span class="jha-yn" style="align-items:center"><span style="font-size:11.5px;color:var(--gray)">Injured?</span>' +
+        '<button type="button" data-so="' + i + '" data-inj="no" class="' + (s.injured === 'no' ? 'on-no' : '') + '">No</button>' +
+        '<button type="button" data-so="' + i + '" data-inj="yes" class="' + (s.injured === 'yes' ? 'on-injured' : '') + '">Yes</button>' +
+      '</span>' +
+      (s.sig
+        ? '<img src="' + escAttr(s.sig) + '" alt="signature"><button type="button" class="jha-x" data-so-unsign="' + i + '" title="Clear signature">&#10005;</button>'
+        : '<button type="button" class="btn" data-so-sign="' + i + '">Sign</button>') +
+      '<button type="button" class="jha-x" data-so-del="' + i + '" title="Remove from roster">Remove</button>' +
+    '</div>'
+  ).join('') : '<div class="empty">No crew on the roster yet — add names below.</div>';
+}
+
+// Header/description/steps text lands in the record on a short debounce
+// (and is flushed when leaving the editor).
+function jhaFieldsSoon() {
+  clearTimeout(jhaSaveTimer);
+  jhaSaveTimer = setTimeout(jhaFlushFields, 450);
+}
+function jhaFlushFields() {
+  clearTimeout(jhaSaveTimer);
+  if (!jhaCurrentId) return;
+  jhaMutate(j => {
+    j.date = document.getElementById('jha-date').value || j.date;
+    j.contractor = document.getElementById('jha-contractor').value;
+    j.preparedBy = document.getElementById('jha-prepared').value;
+    j.description = document.getElementById('jha-desc').value;
+    document.querySelectorAll('#jha-steps textarea').forEach(t => {
+      const i = Number(t.getAttribute('data-step'));
+      const f = t.getAttribute('data-f');
+      if (j.steps[i]) j.steps[i][f] = t.value;
+    });
+  });
+}
+
+// ---- events ----
+document.getElementById('jha-proj').addEventListener('change', jhaRenderList);
+document.getElementById('jha-list').addEventListener('click', (e) => {
+  if (e.target.closest('#jha-new-btn')) { jhaNewForToday(); return; }
+  const open = e.target.closest('[data-jha-open]');
+  if (open) jhaOpenEditor(open.getAttribute('data-jha-open'));
+});
+document.getElementById('jha-back').addEventListener('click', jhaCloseEditor);
+['jha-date', 'jha-contractor', 'jha-prepared', 'jha-desc'].forEach(id => {
+  document.getElementById(id).addEventListener('input', jhaFieldsSoon);
+});
+document.getElementById('jha-hazards').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-hz]');
+  if (!b) return;
+  jhaFlushFields();
+  const h = JHA_HAZARDS[Number(b.getAttribute('data-hz'))];
+  const j = jhaMutate(x => {
+    x.hazards = x.hazards || {};
+    const want = b.getAttribute('data-v') === 'yes';
+    // Tap the active answer again to un-answer.
+    if (x.hazards[h] === want) delete x.hazards[h]; else x.hazards[h] = want;
+  });
+  if (j) jhaRenderHazards(j);
+});
+document.getElementById('jha-steps').addEventListener('input', jhaFieldsSoon);
+document.getElementById('jha-steps').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-step-del]');
+  if (!del) return;
+  jhaFlushFields();
+  const j = jhaMutate(x => { x.steps.splice(Number(del.getAttribute('data-step-del')), 1); });
+  if (j) jhaRenderSteps(j);
+});
+document.getElementById('jha-add-step').addEventListener('click', () => {
+  jhaFlushFields();
+  const j = jhaMutate(x => { x.steps.push({ step: '', hazard: '', control: '' }); });
+  if (j) jhaRenderSteps(j);
+});
+document.getElementById('jha-add-person').addEventListener('click', () => {
+  const inp = document.getElementById('jha-new-person');
+  const name = inp.value.trim();
+  if (!name) return;
+  const j = jhaMutate(x => { x.signoffs = x.signoffs || []; x.signoffs.push({ name: name, injured: '', sig: '' }); });
+  inp.value = '';
+  if (j) jhaRenderSignoffs(j);
+});
+document.getElementById('jha-new-person').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('jha-add-person').click(); }
+});
+document.getElementById('jha-signoffs').addEventListener('click', (e) => {
+  const inj = e.target.closest('[data-so]');
+  if (inj && inj.hasAttribute('data-inj')) {
+    const i = Number(inj.getAttribute('data-so'));
+    const v = inj.getAttribute('data-inj');
+    const j = jhaMutate(x => { x.signoffs[i].injured = x.signoffs[i].injured === v ? '' : v; });
+    if (j) jhaRenderSignoffs(j);
+    return;
+  }
+  const sign = e.target.closest('[data-so-sign]');
+  if (sign) { jhaOpenSigModal(Number(sign.getAttribute('data-so-sign'))); return; }
+  const unsign = e.target.closest('[data-so-unsign]');
+  if (unsign) {
+    const j = jhaMutate(x => { x.signoffs[Number(unsign.getAttribute('data-so-unsign'))].sig = ''; });
+    if (j) jhaRenderSignoffs(j);
+    return;
+  }
+  const del = e.target.closest('[data-so-del]');
+  if (del) {
+    const i = Number(del.getAttribute('data-so-del'));
+    const cur = jhaCur();
+    const who = cur && cur.signoffs[i] ? cur.signoffs[i].name : 'this person';
+    if (!confirm('Remove ' + who + ' from the roster? They won’t carry over tomorrow.')) return;
+    const j = jhaMutate(x => { x.signoffs.splice(i, 1); });
+    if (j) jhaRenderSignoffs(j);
+  }
+});
+
+// ---- signature modal (same pad behavior as the EWT signature) ----
+let jhaSigIndex = -1, jhaSigHas = false;
+(function () {
+  const modal = document.getElementById('jha-sig-modal');
+  const canvas = document.getElementById('jha-sig-canvas');
+  const wrap = canvas.parentElement;
+  const ctx = canvas.getContext('2d');
+  let drawing = false, lastX = 0, lastY = 0;
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 2;
+  }
+  function pt(e) {
+    const rect = canvas.getBoundingClientRect();
+    const src = (e.touches && e.touches[0]) ? e.touches[0] : e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  }
+  function start(e) { drawing = true; const p = pt(e); lastX = p.x; lastY = p.y; jhaSigHas = true; wrap.classList.add('signed'); e.preventDefault(); }
+  function move(e) {
+    if (!drawing) return;
+    const p = pt(e);
+    ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+    lastX = p.x; lastY = p.y;
+    e.preventDefault();
+  }
+  function end() { drawing = false; }
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('mouseup', end);
+  canvas.addEventListener('mouseleave', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+  canvas.addEventListener('touchcancel', end);
+
+  function clearPad() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    jhaSigHas = false;
+    wrap.classList.remove('signed');
+  }
+  window.jhaOpenSigModal = function (i) {
+    const cur = jhaCur();
+    if (!cur || !cur.signoffs[i]) return;
+    jhaSigIndex = i;
+    document.getElementById('jha-sig-who').textContent = cur.signoffs[i].name + ' — sign for ' + jhaFmtDate(cur.date);
+    modal.style.display = 'flex';
+    resize();
+    clearPad();
+  };
+  document.getElementById('jha-sig-clear').addEventListener('click', clearPad);
+  document.getElementById('jha-sig-cancel').addEventListener('click', () => { modal.style.display = 'none'; jhaSigIndex = -1; });
+  modal.addEventListener('click', (e) => { if (e.target === modal) { modal.style.display = 'none'; jhaSigIndex = -1; } });
+  document.getElementById('jha-sig-save').addEventListener('click', () => {
+    if (jhaSigIndex < 0) return;
+    if (!jhaSigHas) { alert('Sign in the box first.'); return; }
+    // Export downscaled — keeps a day's worth of crew signatures small.
+    const rect = canvas.getBoundingClientRect();
+    const out = document.createElement('canvas');
+    const w = 360, h = Math.max(1, Math.round(rect.height * (360 / Math.max(1, rect.width))));
+    out.width = w; out.height = h;
+    out.getContext('2d').drawImage(canvas, 0, 0, w, h);
+    const url = out.toDataURL('image/png');
+    const i = jhaSigIndex;
+    const j = jhaMutate(x => {
+      x.signoffs[i].sig = url;
+      x.signoffs[i].ts = new Date().toISOString();
+      if (!x.signoffs[i].injured) x.signoffs[i].injured = 'no';
+    });
+    modal.style.display = 'none';
+    jhaSigIndex = -1;
+    if (j) jhaRenderSignoffs(j);
+  });
+})();
+
+// ---- tab wiring + cross-device updates ----
+document.querySelector('.tab[data-tab="jha"]').addEventListener('click', () => {
+  if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects().then(jhaPopulateProjects);
+  else jhaPopulateProjects();
+  jhaRenderList();
+  try { window.dispatchEvent(new CustomEvent('ebcc-jha-pull')); } catch (e) {}
+});
+// app-sync adopted a merged list from another device — refresh whatever's on screen.
+window.addEventListener('ebcc-jha-updated', () => {
+  if (!document.getElementById('tab-jha').classList.contains('active')) return;
+  if (jhaCurrentId) {
+    const j = jhaCur();
+    if (j) { jhaRenderSignoffs(j); jhaRenderHazards(j); }
+    else jhaCloseEditor(); // record disappeared server-side
+  } else {
+    jhaRenderList();
+  }
+});
+window.addEventListener('pagehide', jhaFlushFields);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') jhaFlushFields(); });
+jhaPopulateProjects();
 
 </script>
 
