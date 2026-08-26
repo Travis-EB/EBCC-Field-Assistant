@@ -1914,6 +1914,18 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   </div>
 
   <div class="ewt-section">
+    <h3>Send JHA</h3>
+    <div class="ewt-hint">Pick recipients (or type others below). Emails the JHA as a PDF — hazards, steps, and today's signatures — from your own mailbox, and archives a copy for the office.</div>
+    <div class="ewt-recipients" id="jha-recipients"></div>
+    <input type="text" id="jha-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
+    <div class="ewt-actions">
+      <button class="btn btn-primary" id="jha-preview-btn">Preview PDF</button>
+      <button class="btn btn-primary" id="jha-send-btn">Email JHA</button>
+    </div>
+    <div id="jha-send-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
+  </div>
+
+  <div class="ewt-section">
     <div class="ewt-actions">
       <button class="btn" id="jha-back">&larr; Back to project list</button>
     </div>
@@ -7973,6 +7985,7 @@ function jhaOpenEditor(id) {
   jhaRenderHazards(j);
   jhaRenderSteps(j);
   jhaRenderSignoffs(j);
+  jhaRenderSendStatus(j);
   window.scrollTo({ top: 0 });
 }
 
@@ -8208,6 +8221,304 @@ let jhaSigIndex = -1, jhaSigHas = false;
     if (j) jhaRenderSignoffs(j);
   });
 })();
+
+// ---- email / PDF (same flow as EWT + Load Count) ----
+function jhaRenderRecipients() {
+  const wrap = document.getElementById('jha-recipients');
+  wrap.innerHTML = EWT_SAVED_CONTACTS.map(email =>
+    '<label class="chip"><input type="checkbox" class="jha-recipient-chk" value="' + escAttr(email) + '"> ' + escHTML(email) + '</label>'
+  ).join('');
+}
+function jhaGetRecipients() {
+  const chips = Array.from(document.querySelectorAll('.jha-recipient-chk:checked')).map(c => c.value);
+  const extra = document.getElementById('jha-extra-recipients').value
+    .split(',').map(s => s.trim()).filter(Boolean);
+  return Array.from(new Set([...chips, ...extra]));
+}
+function jhaRenderSendStatus(j) {
+  const el = document.getElementById('jha-send-status');
+  if (!el) return;
+  if (j && j.sentTs) {
+    const when = new Date(j.sentTs).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    el.textContent = (j.sent ? 'Emailed ✓ ' : 'Copy saved ') + when +
+      (j.emailedTo && j.emailedTo.length ? ' to ' + j.emailedTo.join(', ') : '');
+    el.style.color = j.sent ? 'var(--green)' : 'var(--gray)';
+  } else {
+    el.textContent = '';
+  }
+}
+
+function jhaFormatText(j) {
+  const lines = ['EBCC JOB HAZARD ANALYSIS'];
+  lines.push('Project: ' + (j.projectName || '') + ' (' + (j.projectCode || '') + ')');
+  lines.push('Date: ' + jhaFmtDate(j.date) + ' · Contractor: ' + (j.contractor || '—') + ' · Prepared by: ' + (j.preparedBy || '—'));
+  if (j.description) lines.push('', 'DESCRIPTION OF WORK', j.description);
+  const yes = JHA_HAZARDS.filter(h => (j.hazards || {})[h] === true);
+  lines.push('', 'HAZARDS MARKED YES: ' + (yes.length ? yes.join(', ') : 'none'));
+  const steps = (j.steps || []).filter(s => s.step || s.hazard || s.control);
+  if (steps.length) {
+    lines.push('', 'JOB STEPS');
+    steps.forEach((s, i) => {
+      lines.push((i + 1) + '. ' + (s.step || '—'));
+      if (s.hazard) lines.push('   Hazards: ' + s.hazard);
+      if (s.control) lines.push('   Controls: ' + s.control);
+    });
+  }
+  const sos = j.signoffs || [];
+  const injured = sos.filter(s => s.injured === 'yes').map(s => s.name);
+  lines.push('', 'SIGN-OFF: ' + sos.filter(s => s.sig).length + ' of ' + sos.length + ' signed' +
+    (injured.length ? ' · INJURED TODAY: ' + injured.join(', ') : ' · no injuries reported'));
+  lines.push('', 'Signatures are on the attached PDF.', '', '— Submitted via EBCC Field Assistant');
+  return lines.join('\n');
+}
+
+// Renders the JHA in the style of the EBCC paper form: peach header bands,
+// the 18-item considerations grid, the ruled steps table, and the daily
+// sign-off with each signature image and injured answer.
+function jhaBuildPDF(j) {
+  if (typeof window.jspdf === 'undefined') throw new Error('PDF library not loaded — check your internet connection.');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 34;
+  const CW = W - 2 * M;
+  const PEACH = [249, 206, 187];
+  const BAND_TEXT = [122, 62, 22];
+  const INK = [31, 41, 55];
+  const GRAY = [120, 128, 138];
+  let y = M;
+
+  function ensure(need) {
+    if (y + need > H - M) { doc.addPage(); y = M; }
+  }
+  function band(label) {
+    ensure(30);
+    doc.setFillColor(...PEACH);
+    doc.rect(M, y, CW, 16, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...BAND_TEXT);
+    doc.text(label, M + 6, y + 11);
+    doc.setTextColor(...INK);
+    y += 22;
+  }
+
+  // Title
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...INK);
+  doc.text('JHA (Job Hazard Analysis)', M, y + 4);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...GRAY);
+  doc.text('Site Clearing, Earthwork & Grading', M, y + 17);
+  doc.text('EBCC Field Assistant', W - M, y + 4, { align: 'right' });
+  y += 30;
+
+  // Info row
+  doc.setFontSize(9.5); doc.setTextColor(...INK);
+  const info = [
+    ['Project', (j.projectName || '') + '  (' + (j.projectCode || '') + ')'],
+    ['Date', jhaFmtDate(j.date)],
+    ['Contractor', j.contractor || '—'],
+    ['Prepared By', j.preparedBy || '—'],
+  ];
+  info.forEach(pair => {
+    doc.setFont('helvetica', 'bold'); doc.text(pair[0] + ':', M, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(doc.splitTextToSize(pair[1], CW - 90), M + 78, y);
+    y += 14;
+  });
+  if (j.description) {
+    y += 2;
+    doc.setFont('helvetica', 'bold'); doc.text('Description of Work:', M, y); y += 13;
+    doc.setFont('helvetica', 'normal');
+    const dl = doc.splitTextToSize(j.description, CW);
+    ensure(dl.length * 12 + 4);
+    doc.text(dl, M, y);
+    y += dl.length * 12 + 4;
+  }
+  y += 2;
+
+  // Considerations grid — 3 columns like the paper form
+  band('SAFETY AND HEALTH CONSIDERATIONS');
+  const colW = CW / 3;
+  doc.setFontSize(7.8);
+  for (let r = 0; r < 6; r++) {
+    ensure(14);
+    for (let c = 0; c < 3; c++) {
+      const h = JHA_HAZARDS[r * 3 + c];
+      if (!h) continue;
+      const v = (j.hazards || {})[h];
+      const x = M + c * colW;
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(...INK);
+      doc.text(h + ':', x, y);
+      const lw = doc.getTextWidth(h + ': ');
+      if (v === true) { doc.setFont('helvetica', 'bold'); doc.setTextColor(...BAND_TEXT); doc.text('YES', x + lw, y); }
+      else if (v === false) { doc.setTextColor(...GRAY); doc.text('No', x + lw, y); }
+      else { doc.setTextColor(...GRAY); doc.text('—', x + lw, y); }
+    }
+    y += 13;
+  }
+  doc.setTextColor(...INK);
+  y += 4;
+
+  // Steps table
+  const steps = (j.steps || []).filter(s => s.step || s.hazard || s.control);
+  if (steps.length) {
+    band('DESCRIPTION OF STEPS  ·  HAZARDS WITH EACH STEP  ·  REQUIRED TO ELIMINATE OR CONTROL');
+    const sw = CW / 3 - 8;
+    doc.setFontSize(8.5);
+    steps.forEach((s, i) => {
+      const a = doc.splitTextToSize((i + 1) + '. ' + (s.step || '—'), sw);
+      const b = doc.splitTextToSize(s.hazard || '—', sw);
+      const c = doc.splitTextToSize(s.control || '—', sw);
+      const rows = Math.max(a.length, b.length, c.length);
+      const rh = rows * 11 + 8;
+      ensure(rh);
+      doc.setDrawColor(...PEACH);
+      doc.line(M, y - 4, M + CW, y - 4);
+      doc.setFont('helvetica', 'normal');
+      doc.text(a, M, y + 5);
+      doc.text(b, M + CW / 3 + 4, y + 5);
+      doc.text(c, M + (2 * CW) / 3 + 8, y + 5);
+      y += rh;
+    });
+    y += 2;
+  }
+
+  // Sign-off
+  const sos = j.signoffs || [];
+  band('DAILY SIGN-OFF  ·  EMPLOYEE NAME — WERE YOU INJURED TODAY?');
+  doc.setFontSize(9.5);
+  if (!sos.length) {
+    doc.setTextColor(...GRAY); doc.text('No crew on the roster.', M, y); y += 14;
+    doc.setTextColor(...INK);
+  }
+  sos.forEach(s => {
+    ensure(40);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(...INK);
+    doc.text(String(s.name || '—'), M, y + 14);
+    if (s.injured === 'yes') { doc.setTextColor(220, 38, 38); doc.text('INJURED: YES', M + 170, y + 14); }
+    else if (s.injured === 'no') { doc.setFont('helvetica', 'normal'); doc.setTextColor(...GRAY); doc.text('Injured: No', M + 170, y + 14); }
+    else { doc.setFont('helvetica', 'normal'); doc.setTextColor(...GRAY); doc.text('Injured: —', M + 170, y + 14); }
+    doc.setTextColor(...INK);
+    if (s.sig && s.sig.indexOf('data:image') === 0) {
+      try { doc.addImage(s.sig, 'PNG', M + 270, y - 2, 105, 32); } catch (e) {}
+      doc.setDrawColor(...GRAY);
+      doc.line(M + 270, y + 30, M + 375, y + 30);
+      if (s.ts) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...GRAY);
+        doc.text('signed ' + new Date(s.ts).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }), M + 380, y + 18);
+        doc.setFontSize(9.5); doc.setTextColor(...INK);
+      }
+    } else {
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(...GRAY);
+      doc.text('unsigned', M + 270, y + 14);
+      doc.setTextColor(...INK);
+    }
+    y += 38;
+  });
+
+  ensure(16);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+  doc.text('Submitted via EBCC Field Assistant', M, H - M + 12);
+  return doc;
+}
+
+document.getElementById('jha-preview-btn').addEventListener('click', () => {
+  jhaFlushFields();
+  const j = jhaCur();
+  if (!j) return;
+  let doc;
+  try { doc = jhaBuildPDF(j); }
+  catch (e) { alert(e && e.message ? e.message : 'Could not generate PDF.'); return; }
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  document.getElementById('ewt-pdf-frame').src = url;
+  const dl = document.getElementById('ewt-pdf-download');
+  dl.href = url;
+  dl.download = 'JHA_' + String(j.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (j.date || '') + '.pdf';
+  document.getElementById('ewt-modal').classList.add('open');
+});
+
+document.getElementById('jha-send-btn').addEventListener('click', async () => {
+  jhaFlushFields();
+  const j = jhaCur();
+  if (!j) return;
+  const statusEl = document.getElementById('jha-send-status');
+  const setStatus = (msg, color) => { statusEl.textContent = msg; statusEl.style.color = color || 'var(--dark)'; };
+  let doc;
+  try { doc = jhaBuildPDF(j); }
+  catch (e) { alert(e && e.message ? e.message : 'Could not generate PDF.'); return; }
+  const blob = doc.output('blob');
+  const fileName = 'JHA_' + String(j.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (j.date || '') + '.pdf';
+  const subject = 'JHA - ' + (j.projectName || j.projectCode || '') + ' - ' + jhaFmtDate(j.date);
+  const bodyText = jhaFormatText(j);
+  const recipients = jhaGetRecipients();
+  const sos = j.signoffs || [];
+
+  // 1) Best path: the server emails it from YOUR mailbox and archives the PDF.
+  //    With no recipients it still archives, then hands off to the share sheet.
+  setStatus(recipients.length ? 'Sending…' : 'Saving a copy…', 'var(--gray)');
+  try {
+    const r = await fetch('/api/send-jha', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subject, text: bodyText, recipients, fileName, pdf: doc.output('datauristring'),
+        summary: {
+          jhaId: j.id, date: j.date, projectCode: j.projectCode, projectName: j.projectName,
+          preparedBy: j.preparedBy, contractor: j.contractor,
+          signedCount: sos.filter(s => s.sig).length, rosterCount: sos.length,
+          injuredNames: sos.filter(s => s.injured === 'yes').map(s => s.name),
+        },
+      }),
+    });
+    const res = r.ok ? await r.json() : null;
+    if (res && res.ok) {
+      // Stamp the local record too — the server stamped its copy; merge keeps both in step.
+      const upd = jhaMutate(x => {
+        x.emailedTo = recipients;
+        x.sent = !!res.sent;
+        x.sentTs = new Date().toISOString();
+        if (res.pdfBlob) x.pdfBlob = res.pdfBlob;
+      });
+      if (res.sent) {
+        setStatus('Emailed ✓ to ' + (res.recipients || recipients).join(', ') + (res.archived ? ' · copy saved for the office' : ''), 'var(--green)');
+        return;
+      }
+      if (!recipients.length) {
+        setStatus(res.archived ? 'Copy saved for the office. Check recipients to email it directly next time.' : '', 'var(--gray)');
+        return;
+      }
+      console.warn('JHA email not sent (' + res.reason + ') — falling back to share sheet');
+      setStatus('Email service unavailable right now — opening the share sheet instead.', 'var(--gray)');
+    } else if (recipients.length) {
+      setStatus('Email service unavailable right now — opening the share sheet instead.', 'var(--gray)');
+    }
+  } catch (e) {
+    console.warn('send-jha failed, falling back to share sheet', e);
+    setStatus(navigator.onLine ? 'Email service unavailable right now — opening the share sheet instead.' : 'Offline — opening the share sheet instead.', 'var(--gray)');
+  }
+
+  // 2) Fallback: the device share sheet with the PDF attached
+  const pdfFile = new File([blob], fileName, { type: 'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+    try {
+      await navigator.share({ title: subject, text: bodyText, files: [pdfFile] });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      console.warn('Share with PDF failed, falling back:', e);
+    }
+  }
+  // 3) Last resort (desktop, no share sheet): download + mailto
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  if (recipients.length) {
+    window.location.href = 'mailto:' + encodeURIComponent(recipients.join(','))
+      + '?subject=' + encodeURIComponent(subject)
+      + '&body=' + encodeURIComponent(bodyText);
+  }
+});
+jhaRenderRecipients();
 
 // ---- tab wiring + cross-device updates ----
 document.querySelector('.tab[data-tab="jha"]').addEventListener('click', () => {

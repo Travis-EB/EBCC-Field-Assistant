@@ -798,6 +798,19 @@
       .then(function (buf) { openPdfBytes(buf); })
       .catch(function () { alert('Could not load this PDF.'); });
   });
+  // Open an archived JHA PDF (admin drill-down) — same private store as EWT PDFs
+  var ADMIN_JHA_CACHE = [];
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-jha-pdf]') : null;
+    if (!b) return;
+    var rec = ADMIN_JHA_CACHE[+b.getAttribute('data-jha-pdf')];
+    if (!rec || !rec.pdfBlob) return;
+    var name = String(rec.pdfBlob).split('/').slice(1).join('/');
+    apiFetch('/api/ewt-pdf?user=' + encodeURIComponent(ADMIN_EWT_OWNER) + '&name=' + encodeURIComponent(name))
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(function (buf) { openPdfBytes(buf); })
+      .catch(function () { alert('Could not load this PDF.'); });
+  });
   var ADMIN_EWT_CACHE = [];
   var ADMIN_EWT_OWNER = '';
   function ewtHtml(e) {
@@ -966,10 +979,12 @@
   // JHAs — grouped by project, one collapsible per day. Signatures render as
   // small inline images; an injured "yes" is flagged in red.
   function jhaAdminHtml(arr) {
-    if (!Array.isArray(arr) || !arr.length) return none();
+    ADMIN_JHA_CACHE = Array.isArray(arr) ? arr : [];
+    if (!ADMIN_JHA_CACHE.length) return none();
     var byProj = {};
-    arr.forEach(function (j) {
+    ADMIN_JHA_CACHE.forEach(function (j, idx) {
       if (!j) return;
+      j.__idx = idx; // index into ADMIN_JHA_CACHE for the PDF button
       var k = j.projectName || j.projectCode || 'Unknown project';
       (byProj[k] = byProj[k] || []).push(j);
     });
@@ -981,7 +996,15 @@
         var injured = sos.filter(function (s) { return s && s.injured === 'yes'; }).length;
         var head = esc(j.date || '—') + ' · ' + signed + ' of ' + sos.length + ' signed' + (injured ? ' · ⚠ ' + injured + ' injured' : '');
         var hz = Object.keys(j.hazards || {}).filter(function (h) { return j.hazards[h] === true; });
-        var body =
+        var sentLine = j.sentTs
+          ? '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">' +
+              (j.sent ? 'Emailed ' : 'Archived ') + esc(new Date(j.sentTs).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' })) +
+              (j.emailedTo && j.emailedTo.length ? ' to ' + esc(j.emailedTo.join(', ')) : '') + '</div>'
+          : '';
+        var pdfBtn = j.pdfBlob
+          ? '<button type="button" data-jha-pdf="' + j.__idx + '" style="padding:4px 12px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;margin-bottom:8px">Open PDF</button>'
+          : '';
+        var body = sentLine + pdfBtn +
           '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">Prepared by ' + esc(j.preparedBy || '—') + ' · Contractor ' + esc(j.contractor || '—') + '</div>' +
           (j.description ? '<div style="margin-bottom:6px;white-space:pre-wrap">' + esc(j.description) + '</div>' : '') +
           (hz.length ? '<div style="margin-bottom:6px"><strong>Hazards marked Yes:</strong> ' + hz.map(esc).join(', ') + '</div>' : '<div style="margin-bottom:6px;color:var(--gray)">No hazards marked Yes.</div>') +
