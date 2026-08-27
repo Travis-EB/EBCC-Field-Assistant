@@ -8087,7 +8087,7 @@ function prodDrawImage(d, proj) {
 
   // Footer
   x.fillStyle = PROD_GRAY; x.font = '500 12px ' + F;
-  x.fillText('Production only — no pricing included · Sent from EBCC Field Assistant', PAD, H - 26);
+  x.fillText('Sent from EBCC Field Assistant', PAD, H - 26);
   return cv;
 }
 
@@ -8142,7 +8142,7 @@ async function prodSend(kind) {
     lines.push('Hours/day: ' + d.hoursPerDay);
     lines.push('', 'Equipment:');
     d.rows.forEach(r => lines.push('  ' + r.qty + '× ' + r.name + (r.round ? ' — ' + r.round + ' min round' : '') + (r.cyday ? ' — ' + r.cyday.toLocaleString() + ' cy/day' : '')));
-    lines.push('', 'Production only — no pricing included.', '', '— Sent from EBCC Field Assistant');
+    lines.push('', '— Sent from EBCC Field Assistant');
     const bodyText = lines.join('\n');
     const recipients = prodGetRecipients(kind + '-recipient-chk', kind + '-extra-recipients');
 
