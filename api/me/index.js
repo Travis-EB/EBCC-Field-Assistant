@@ -1,11 +1,38 @@
 // GET /api/me — returns the signed-in user's identity + role.
 // Creates the user record on first sign-in and stamps last-active.
-const { getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
+// POST /api/me { name } — the user sets their own display name (required on
+// first login when neither Entra nor the contact list provides one). A
+// user-set name is authoritative: nothing overwrites it afterwards.
+const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
+
+const cleanName = (v) => String(v == null ? '' : v).replace(/[^\p{L}\p{M} .,'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 80);
 
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
   if (!principal) {
     return json(context, 401, { authenticated: false });
+  }
+
+  if ((req.method || 'GET').toUpperCase() === 'POST') {
+    let body = req.body;
+    if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) { body = null; } }
+    const name = cleanName(body && body.name);
+    if (name.length < 2) return json(context, 400, { error: 'Enter your full name.' });
+    try {
+      const user = await ensureUser(principal, principal.email);
+      if (user.role === 'disabled') return json(context, 403, { error: 'Account disabled.' });
+      user.name = name;
+      user.nameSource = 'user';
+      const { users } = await getContainers();
+      await users.items.upsert(user);
+      return json(context, 200, {
+        authenticated: true, userId: user.id, email: user.email,
+        name: user.name, role: user.role, isAdmin: isAdmin(user),
+      });
+    } catch (e) {
+      context.log.error('me set-name error', e);
+      return json(context, 500, { error: 'Server error saving name.' });
+    }
   }
 
   // Prefer a friendly display name from the AAD claims if present.

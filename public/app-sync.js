@@ -101,6 +101,7 @@
       if (me.disabled) { showDisabled(me); return; }
       ME = me;
       window.EBCC_ME = me; // page features (e.g. JHA "Prepared By") read the signed-in name
+      maybeRequireName(me);
 
       renderAccountMenu(me);
       renderProfileTab(me);
@@ -115,6 +116,60 @@
       installSyncHooks();
     });
   }
+
+  // ---------- first-login name gate ----------
+  // Entra doesn't always send a name claim and not everyone is on the company
+  // contact list, so an account can land with its email as the display name.
+  // When that happens, block the app behind a required "your full name" prompt
+  // once; the server marks the answer user-set and never overwrites it.
+  function maybeRequireName(me) {
+    if (!me) return;
+    var n = String(me.name || '').trim();
+    if (n && n.toLowerCase() !== String(me.email || '').trim().toLowerCase()) return;
+    if (document.getElementById('name-gate')) return;
+    var ov = document.createElement('div');
+    ov.id = 'name-gate';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML =
+      '<div style="background:var(--card,#fff);color:var(--dark,#1f2937);border-radius:14px;padding:20px;max-width:420px;width:100%;box-shadow:0 18px 50px rgba(0,0,0,.35)">' +
+        '<div style="font-weight:700;font-size:17px;margin-bottom:4px">Welcome to the Field Assistant</div>' +
+        '<p style="font-size:13px;color:var(--gray,#6b7280);margin:0 0 12px">Enter your full name — it goes on your tickets, JHA sign-offs, and reports.</p>' +
+        '<input id="name-gate-input" type="text" autocomplete="name" placeholder="First Last" style="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid var(--border,#e5e7eb);border-radius:8px;font-size:15px;font-family:inherit;background:var(--card,#fff);color:inherit">' +
+        '<div id="name-gate-err" style="color:#dc2626;font-size:12px;min-height:16px;margin:6px 0 2px"></div>' +
+        '<button id="name-gate-save" style="width:100%;padding:11px;border:none;border-radius:8px;background:var(--blue,#2563eb);color:#fff;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer">Save name</button>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var input = document.getElementById('name-gate-input');
+    var err = document.getElementById('name-gate-err');
+    var btn = document.getElementById('name-gate-save');
+    setTimeout(function () { try { input.focus(); } catch (e) {} }, 50);
+    function save() {
+      var v = input.value.replace(/\s+/g, ' ').trim();
+      if (v.length < 2 || v.indexOf(' ') < 0) { err.textContent = 'Type your first and last name.'; return; }
+      btn.disabled = true;
+      err.textContent = '';
+      apiFetch('/api/me', { method: 'POST', body: { name: v } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (res) {
+          if (res && res.name) {
+            ME.name = res.name;
+            window.EBCC_ME = ME;
+            try { renderAccountMenu(ME); renderProfileTab(ME); } catch (e) {}
+            ov.remove();
+          } else {
+            btn.disabled = false;
+            err.textContent = 'Could not save — try again.';
+          }
+        })
+        .catch(function () {
+          btn.disabled = false;
+          err.textContent = navigator.onLine ? 'Could not save — try again.' : 'Offline — reconnect and try again.';
+        });
+    }
+    btn.addEventListener('click', save);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') save(); });
+  }
+  window.__ebccNameGate = maybeRequireName; // exposed for the dev harness
 
   function showDebug(status, txt) {
     var box = document.createElement('div');

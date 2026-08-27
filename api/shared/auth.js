@@ -61,6 +61,23 @@ function getPrincipal(req) {
 
 // Look up (or create on first sight) the user record, and stamp last-active.
 // Returns the persisted user doc including its role.
+// Display-name priority: a name the user typed themselves ('user') is never
+// overwritten; an Entra name claim ('claims') beats the company contact list
+// ('contacts'); the bare email is the last resort. Most callers pass the email
+// as displayName — that must never clobber a real name (it used to, which is
+// why accounts showed emails as names).
+function realName(displayName, email) {
+  const n = String(displayName || '').trim();
+  if (!n || n.toLowerCase() === String(email || '').trim().toLowerCase()) return '';
+  return n;
+}
+function contactName(email) {
+  try {
+    const { NAME_BY_EMAIL } = require('./contacts');
+    return NAME_BY_EMAIL[String(email || '').trim().toLowerCase()] || '';
+  } catch (e) { return ''; }
+}
+
 async function ensureUser(principal, displayName) {
   const { users } = await getContainers();
   const id = principal.userId;
@@ -74,12 +91,15 @@ async function ensureUser(principal, displayName) {
 
   const now = new Date().toISOString();
   const seededAdmin = ADMIN_EMAILS.includes(principal.email);
+  const claimName = realName(displayName, principal.email);
+  const listName = contactName(principal.email);
 
   if (!doc) {
     doc = {
       id,
       email: principal.email,
-      name: displayName || principal.email || 'Unknown',
+      name: claimName || listName || principal.email || 'Unknown',
+      nameSource: claimName ? 'claims' : (listName ? 'contacts' : 'email'),
       role: seededAdmin ? 'admin' : 'user',
       createdAt: now,
       lastActiveAt: now,
@@ -87,8 +107,11 @@ async function ensureUser(principal, displayName) {
     };
   } else {
     doc.lastActiveAt = now;
-    if (displayName) doc.name = displayName;
     if (principal.email) doc.email = principal.email;
+    if (doc.nameSource !== 'user') {
+      if (claimName) { doc.name = claimName; doc.nameSource = 'claims'; }
+      else if (!realName(doc.name, doc.email) && listName) { doc.name = listName; doc.nameSource = 'contacts'; }
+    }
     // Seeded admins are always at least admin (never silently demoted below admin).
     if (seededAdmin && doc.role !== 'admin') doc.role = 'admin';
   }
