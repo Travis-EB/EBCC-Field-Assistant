@@ -964,6 +964,17 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   min-height: 50vh;
   background: #f3f4f6;
 }
+/* Image previews (production reports) scale to fit instead of rendering at
+   the PNG's natural 2000px width the way the iframe does. */
+.ewt-modal img#ewt-img-frame {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 74vh;
+  object-fit: contain;
+  background: #f3f4f6;
+  overflow: auto;
+}
 .ewt-modal-actions {
   padding: 10px 14px;
   border-top: 1px solid var(--border);
@@ -2468,6 +2479,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
       <button class="btn" id="ewt-modal-close">Close</button>
     </div>
     <iframe id="ewt-pdf-frame" title="Preview"></iframe>
+    <img id="ewt-img-frame" alt="Preview" style="display:none">
     <div class="ewt-modal-actions">
       <a class="btn btn-primary" id="ewt-pdf-download" download="ewt.pdf">Download</a>
     </div>
@@ -4669,15 +4681,10 @@ document.getElementById('ewt-preview-btn').addEventListener('click', () => {
   const doc = ewtBuildPDF(t);
   // (Preview is just a look — only the Email button records the ticket.)
   const blob = doc.output('blob');
-  const url = URL.createObjectURL(blob);
-  document.getElementById('ewt-pdf-frame').src = url;
-  const dl = document.getElementById('ewt-pdf-download');
-  dl.href = url;
   const fname = 'EWT-' + (t.ticketNo || 'draft')
     + (t.customer ? '-' + t.customer.replace(/[^a-z0-9]/gi, '_') : '')
     + '.pdf';
-  dl.download = fname;
-  document.getElementById('ewt-modal').classList.add('open');
+  previewShow(URL.createObjectURL(blob), false, fname);
 });
 
 document.getElementById('ewt-modal-close').addEventListener('click', () => {
@@ -8123,18 +8130,36 @@ function prodGetRecipients(cls, extraId) {
   return Array.from(new Set([...chips, ...extra]));
 }
 
+// Point the shared preview modal at a URL. Images go into a scaled <img>
+// (the iframe would show a 2000px PNG at natural size); PDFs keep the iframe.
+function previewShow(url, isImage, downloadName) {
+  const frame = document.getElementById('ewt-pdf-frame');
+  const img = document.getElementById('ewt-img-frame');
+  if (isImage) {
+    frame.style.display = 'none';
+    frame.src = 'about:blank';
+    img.style.display = 'block';
+    img.src = url;
+  } else {
+    img.style.display = 'none';
+    img.src = '';
+    frame.style.display = '';
+    frame.src = url;
+  }
+  const dl = document.getElementById('ewt-pdf-download');
+  dl.href = url;
+  dl.download = downloadName;
+  document.getElementById('ewt-modal').classList.add('open');
+}
+
 function prodPreview(kind) {
   const d = kind === 'cpy' ? prodCollectCpy() : prodCollectFlat();
   if (!d.rows.length) { alert('Add at least one piece of equipment first.'); return; }
   pickProject((proj) => {
     const cv = prodDrawImage(d, proj);
     cv.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      document.getElementById('ewt-pdf-frame').src = url;
-      const dl = document.getElementById('ewt-pdf-download');
-      dl.href = url;
-      dl.download = 'EBCC_' + (kind === 'cpy' ? 'Earthwork' : 'FlatWork') + '_Production_' + new Date().toISOString().slice(0, 10) + '.png';
-      document.getElementById('ewt-modal').classList.add('open');
+      previewShow(URL.createObjectURL(blob), true,
+        'EBCC_' + (kind === 'cpy' ? 'Earthwork' : 'FlatWork') + '_Production_' + new Date().toISOString().slice(0, 10) + '.png');
     }, 'image/png');
   }, 'production report', 'Continue');
 }
@@ -8806,12 +8831,8 @@ document.getElementById('jha-preview-btn').addEventListener('click', () => {
   try { doc = jhaBuildPDF(j); }
   catch (e) { alert(e && e.message ? e.message : 'Could not generate PDF.'); return; }
   const blob = doc.output('blob');
-  const url = URL.createObjectURL(blob);
-  document.getElementById('ewt-pdf-frame').src = url;
-  const dl = document.getElementById('ewt-pdf-download');
-  dl.href = url;
-  dl.download = 'JHA_' + String(j.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (j.date || '') + '.pdf';
-  document.getElementById('ewt-modal').classList.add('open');
+  previewShow(URL.createObjectURL(blob), false,
+    'JHA_' + String(j.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (j.date || '') + '.pdf');
 });
 
 document.getElementById('jha-send-btn').addEventListener('click', async () => {
