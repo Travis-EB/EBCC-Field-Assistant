@@ -972,7 +972,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   height: auto;
   max-height: 74vh;
   object-fit: contain;
-  background: #f3f4f6;
+  background: #12161b; /* matches the dark report page */
   overflow: auto;
 }
 .ewt-modal-actions {
@@ -7950,10 +7950,15 @@ jbLoadProjects();
 // equipment, quantities, hours, round times, yardage/coverage.
 // Safe to email straight to PMs and superintendents.
 // ============================================================
-const PROD_ORANGE = '#d97706';
-const PROD_INK = '#1f2937';
-const PROD_GRAY = '#6b7280';
-const PROD_LINE = '#e5e7eb';
+// Dark-mode palette — the report matches the app's dark look with bold orange.
+const PROD_ORANGE = '#d97706';       // header + table bands
+const PROD_ORANGE_HI = '#f5a623';    // stat values and per-machine yardage
+const PROD_BG = '#12161b';           // page
+const PROD_CARD = '#1b222a';         // stat tiles
+const PROD_INK = '#eef2f6';          // primary text
+const PROD_GRAY = '#8b95a1';         // secondary text
+const PROD_LINE = '#2a323c';         // borders and dividers
+const PROD_STRIPE = '#171d24';       // alternating table rows
 // EB logo for the report header — preloaded so the sync canvas draw can use it.
 const PROD_LOGO = new Image();
 PROD_LOGO.src = '/icons/logo.png';
@@ -8038,7 +8043,7 @@ function prodDrawImage(d, proj) {
   }
 
   // Page
-  x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H);
+  x.fillStyle = PROD_BG; x.fillRect(0, 0, W, H);
   // Header — bold orange band with the EB logo in a white chip
   x.fillStyle = PROD_ORANGE; x.fillRect(0, 0, W, 118);
   let tx0 = PAD;
@@ -8067,11 +8072,11 @@ function prodDrawImage(d, proj) {
   tiles.forEach((t, i) => {
     const col = i % 3, row = Math.floor(i / 3);
     const tx = PAD + col * (tw + gap), tyy = ty + row * 108;
-    x.strokeStyle = PROD_LINE; x.lineWidth = 1.5; x.fillStyle = '#fffbf5';
+    x.strokeStyle = PROD_LINE; x.lineWidth = 1.5; x.fillStyle = PROD_CARD;
     rr(tx, tyy, tw, 94, 12); x.fill(); x.stroke();
     x.fillStyle = PROD_GRAY; x.font = '700 11.5px ' + F;
     x.fillText(t.label.toUpperCase(), tx + 16, tyy + 26);
-    x.fillStyle = PROD_ORANGE; x.font = '800 30px ' + F;
+    x.fillStyle = PROD_ORANGE_HI; x.font = '800 30px ' + F;
     x.fillText(t.value, tx + 16, tyy + 60);
     if (t.sub) { x.fillStyle = PROD_GRAY; x.font = '500 12.5px ' + F; x.fillText(t.sub, tx + 16, tyy + 80); }
   });
@@ -8092,7 +8097,7 @@ function prodDrawImage(d, proj) {
   }
   y += 36 + 4;
   d.rows.forEach((r, i) => {
-    if (i % 2 === 1) { x.fillStyle = '#faf7f2'; x.fillRect(PAD, y, W - 2 * PAD, rowH); }
+    if (i % 2 === 1) { x.fillStyle = PROD_STRIPE; x.fillRect(PAD, y, W - 2 * PAD, rowH); }
     x.fillStyle = PROD_INK; x.font = '600 15px ' + F;
     let nm = r.name;
     while (x.measureText(nm).width > (showRound ? cQty - PAD - 70 : cQty - PAD - 70) && nm.length > 4) nm = nm.slice(0, -1);
@@ -8103,7 +8108,7 @@ function prodDrawImage(d, proj) {
       x.fillStyle = PROD_GRAY; x.font = '500 14px ' + F;
       x.fillText(r.round ? r.round + ' min' : '—', cRound, y + 26);
       x.textAlign = 'right';
-      if (r.cyday) { x.fillStyle = PROD_ORANGE; x.font = '700 15px ' + F; x.fillText(fmt(r.cyday) + (r.proc ? ' proc.' : ''), cCy - 16, y + 26); }
+      if (r.cyday) { x.fillStyle = PROD_ORANGE_HI; x.font = '700 15px ' + F; x.fillText(fmt(r.cyday) + (r.proc ? ' proc.' : ''), cCy - 16, y + 26); }
       else { x.fillStyle = PROD_GRAY; x.font = '500 14px ' + F; x.fillText('—', cCy - 16, y + 26); }
     }
     x.textAlign = 'left';
