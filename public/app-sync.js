@@ -643,19 +643,28 @@
 
       var rows = users.map(function (u) {
         var c = u.counts || {};
-        var last = u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString() : '—';
+        var last = u.lastActiveAt
+          ? new Date(u.lastActiveAt).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' })
+          : 'never';
         var sel = ['admin', 'user', 'disabled'].map(function (r) {
           return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>';
         }).join('');
-        return '<div class="admin-row" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">' +
+        // Only chips with something in them — zeros are noise.
+        var chip = function (label, v) { return v ? '<span class="adm-chip">' + label + ' <b>' + v + '</b></span>' : ''; };
+        var chips = chip('Tickets', c.trucking_tickets) + chip('Load counts', c.load_count_sends) +
+          chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) +
+          chip('Spreads', (c.cpy_posts || 0) + (c.flat_posts || 0)) +
+          chip('Calcs', (c.lime_posts || 0) + (c.flexbase_posts || 0));
+        return '<div class="adm-user-card">' +
           '<div style="min-width:0">' +
-            '<div style="font-weight:600;font-size:14px">' + esc(u.name || u.email) + '</div>' +
-            '<div style="font-size:12px;color:var(--gray)">' + esc(u.email) + '</div>' +
-            '<div style="font-size:11px;color:var(--gray);margin-top:2px">Tickets ' + (c.trucking_tickets || 0) + ' · Load counts sent ' + (c.load_count_sends || 0) + ' · EWT ' + (c.ewt_records || 0) + ' · JHA ' + (c.jha_records || 0) + ' · Spreads ' + ((c.cpy_posts || 0) + (c.flat_posts || 0)) + ' · Calcs ' + ((c.lime_posts || 0) + (c.flexbase_posts || 0)) + ' · Last active ' + esc(last) + '</div>' +
+            '<div class="adm-user-name">' + esc(u.name || u.email) + '</div>' +
+            '<div class="adm-user-email">' + esc(u.email) + '</div>' +
+            (chips ? '<div class="adm-chips">' + chips + '</div>' : '') +
+            '<div class="adm-last">' + (chips ? '' : 'No records yet · ') + 'Last active ' + esc(last) + '</div>' +
           '</div>' +
-          '<div style="display:flex;gap:6px;align-items:center">' +
-            '<select data-role-for="' + esc(u.id) + '" style="font-family:inherit;padding:6px;border:1px solid var(--border);border-radius:8px">' + sel + '</select>' +
-            '<button data-view-for="' + esc(u.id) + '" data-name="' + esc(u.name || u.email) + '" style="font-family:inherit;padding:6px 10px;border:1px solid var(--border);background:var(--card,#fff);color:var(--ink,#1f2937);border-radius:8px;cursor:pointer">View</button>' +
+          '<div class="adm-actions">' +
+            '<select data-role-for="' + esc(u.id) + '">' + sel + '</select>' +
+            '<button class="btn" data-view-for="' + esc(u.id) + '" data-name="' + esc(u.name || u.email) + '">View</button>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -688,42 +697,34 @@
       var tickets = (rec.trucking_tickets && rec.trucking_tickets.data) || [];
       var loadCount = (rec.load_count && rec.load_count.data) || null;
       var ewt = (rec.ewt_records && rec.ewt_records.data) || [];
-      var html = '<div style="margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--card,#fff)">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-          '<strong style="font-size:15px">' + esc(name) + '</strong>' +
-          '<button id="admin-detail-close" style="border:none;background:var(--soft,#f3f4f6);color:var(--ink,#1f2937);border-radius:8px;padding:6px 10px;cursor:pointer;font-family:inherit">Close</button>' +
+      var sends = (rec.load_count_sends && rec.load_count_sends.data) || [];
+      var jhas = (rec.jha_records && rec.jha_records.data) || [];
+      var cpyP = (rec.cpy_posts && rec.cpy_posts.data) || [];
+      var flatP = (rec.flat_posts && rec.flat_posts.data) || [];
+      var limeP = (rec.lime_posts && rec.lime_posts.data) || [];
+      var fbP = (rec.flexbase_posts && rec.flexbase_posts.data) || [];
+      var html = '<div class="adm-detail-card">' +
+        '<div class="adm-detail-head">' +
+          '<strong>' + esc(name) + '</strong>' +
+          '<button class="btn" id="admin-detail-close">Close</button>' +
         '</div>' +
-        section('Truck Tickets (' + (Array.isArray(tickets) ? tickets.length : 0) + ')', ticketsHtml(tickets)) +
-        section('Load Count — current day' + updatedTag(rec.load_count), loadCountHtml(loadCount)) +
-        (function () {
-          var sends = (rec.load_count_sends && rec.load_count_sends.data) || [];
-          return section('Load Count — sent days (' + sends.length + ')', loadCountSendsHtml(sends));
-        })() +
-        section('Extra Work Tickets (' + (Array.isArray(ewt) ? ewt.length : 0) + ')', ewtHtml(ewt)) +
-        (function () {
-          var jhas = (rec.jha_records && rec.jha_records.data) || [];
-          return section('JHA’s (' + jhas.length + ')' + updatedTag(rec.jha_records), jhaAdminHtml(jhas));
-        })() +
-        (function () {
-          var posts = (rec.cpy_posts && rec.cpy_posts.data) || [];
-          return section('Posted Spreads — Cost Per Yard (' + posts.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(posts));
-        })() +
-        (function () {
-          var posts = (rec.flat_posts && rec.flat_posts.data) || [];
-          return section('Posted Spreads — Flat Work (' + posts.length + ')' + updatedTag(rec.flat_posts), flatPostsHtml(posts));
-        })() +
-        (function () {
-          var posts = (rec.lime_posts && rec.lime_posts.data) || [];
-          return section('Posted Calcs — Lime Trucks (' + posts.length + ')' + updatedTag(rec.lime_posts), limePostsHtml(posts));
-        })() +
-        (function () {
-          var posts = (rec.flexbase_posts && rec.flexbase_posts.data) || [];
-          return section('Posted Calcs — Flex Base (' + posts.length + ')' + updatedTag(rec.flexbase_posts), fbPostsHtml(posts));
-        })() +
-        section('Cost Per Yard — current setup' + updatedTag(rec.cpy_state), cpyHtml(rec.cpy_state && rec.cpy_state.data)) +
-        section('Flat Work — current setup' + updatedTag(rec.flat_state), flatHtml(rec.flat_state && rec.flat_state.data)) +
-        section('Lime Trucks' + updatedTag(rec.lime_state), limeHtml(rec.lime_state && rec.lime_state.data)) +
-        section('Flex Base' + updatedTag(rec.flexbase_state), fbHtml(rec.flexbase_state && rec.flexbase_state.data)) +
+        '<div class="adm-group-label">Project Communications</div>' +
+        section('Truck Tickets (' + tickets.length + ')', ticketsHtml(tickets), !tickets.length) +
+        section('Load Count — current day' + updatedTag(rec.load_count), loadCountHtml(loadCount), !loadCount) +
+        section('Load Count — sent days (' + sends.length + ')', loadCountSendsHtml(sends), !sends.length) +
+        section('Extra Work Tickets (' + ewt.length + ')', ewtHtml(ewt), !ewt.length) +
+        '<div class="adm-group-label">Safety</div>' +
+        section('JHA’s (' + jhas.length + ')' + updatedTag(rec.jha_records), jhaAdminHtml(jhas), !jhas.length) +
+        '<div class="adm-group-label">Posted Spreads &amp; Calcs</div>' +
+        section('Cost Per Yard (' + cpyP.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(cpyP), !cpyP.length) +
+        section('Flat Work (' + flatP.length + ')' + updatedTag(rec.flat_posts), flatPostsHtml(flatP), !flatP.length) +
+        section('Lime Trucks (' + limeP.length + ')' + updatedTag(rec.lime_posts), limePostsHtml(limeP), !limeP.length) +
+        section('Flex Base (' + fbP.length + ')' + updatedTag(rec.flexbase_posts), fbPostsHtml(fbP), !fbP.length) +
+        '<div class="adm-group-label">Calculator Setups</div>' +
+        section('Cost Per Yard' + updatedTag(rec.cpy_state), cpyHtml(rec.cpy_state && rec.cpy_state.data), !(rec.cpy_state && rec.cpy_state.data)) +
+        section('Flat Work' + updatedTag(rec.flat_state), flatHtml(rec.flat_state && rec.flat_state.data), !(rec.flat_state && rec.flat_state.data)) +
+        section('Lime Trucks' + updatedTag(rec.lime_state), limeHtml(rec.lime_state && rec.lime_state.data), !(rec.lime_state && rec.lime_state.data)) +
+        section('Flex Base' + updatedTag(rec.flexbase_state), fbHtml(rec.flexbase_state && rec.flexbase_state.data), !(rec.flexbase_state && rec.flexbase_state.data)) +
       '</div>';
       box.innerHTML = html;
       var cl = document.getElementById('admin-detail-close');
@@ -734,8 +735,8 @@
 
   // Drill-down level 1: collapsed by default — the admin opens only what
   // they need (user > section > date > spread).
-  function section(title, inner) {
-    return '<details style="margin-top:6px;border-bottom:1px solid var(--hairline);padding-bottom:6px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--dark);padding:4px 0">' + esc(title) + '</summary><div style="font-size:12px;color:var(--dark);margin-top:6px;overflow-x:auto">' + inner + '</div></details>';
+  function section(title, inner, isEmpty) {
+    return '<details class="adm-sec' + (isEmpty ? ' is-empty' : '') + '"><summary>' + esc(title) + '</summary><div class="adm-sec-body">' + inner + '</div></details>';
   }
   function ticketsHtml(t) {
     if (!Array.isArray(t) || !t.length) return '<em style="color:var(--gray)">None</em>';
@@ -925,7 +926,7 @@
   }
   // Drill-down level 2: one collapsed row per post, labelled by date.
   function postDetails(label, inner) {
-    return '<details style="margin:4px 0 4px 10px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:var(--dark);padding:3px 0">' + esc(label) + '</summary><div style="margin-top:6px">' + inner + '</div></details>';
+    return '<details class="adm-post"><summary>' + esc(label) + '</summary><div style="margin-top:6px">' + inner + '</div></details>';
   }
 
   function spreadsHtml(arr) {

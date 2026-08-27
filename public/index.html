@@ -157,6 +157,45 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   stroke-linecap: round; stroke-linejoin: round;
 }
 
+/* Manage Users (admin console) */
+.adm-user-card {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+  background: var(--card, #fff); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 10px; min-width: 0;
+}
+.adm-user-name { font-weight: 700; font-size: 15px; color: var(--dark); overflow-wrap: anywhere; }
+.adm-user-email { font-size: 12px; color: var(--gray); margin-top: 1px; overflow-wrap: anywhere; }
+.adm-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.adm-chip {
+  display: inline-flex; gap: 4px; align-items: baseline;
+  background: var(--light-gray); border-radius: 99px;
+  font-size: 10.5px; color: var(--gray); padding: 3px 9px; white-space: nowrap;
+}
+.adm-chip b { color: var(--dark); font-weight: 700; }
+.adm-last { font-size: 11px; color: var(--gray); margin-top: 7px; }
+.adm-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.adm-actions select {
+  font-family: inherit; font-size: 13px; padding: 7px 8px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card, #fff); color: var(--dark);
+}
+.adm-detail-card {
+  margin-top: 14px; padding: 16px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--card, #fff);
+}
+.adm-detail-head { display: flex; justify-content: space-between; align-items: center; }
+.adm-detail-head strong { font-size: 16px; }
+.adm-group-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--gray); font-weight: 650; margin: 18px 0 2px;
+}
+.adm-sec { border-bottom: 1px solid var(--hairline); }
+.adm-sec > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--dark); padding: 10px 0; }
+.adm-sec.is-empty > summary { color: var(--gray); font-weight: 500; }
+.adm-sec-body { font-size: 12.5px; color: var(--dark); padding: 2px 0 14px; overflow-x: auto; }
+.adm-post { margin: 6px 0; border-left: 2px solid var(--light-gray); padding-left: 10px; }
+.adm-post > summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--dark); padding: 4px 0; }
+
 /* JHA (Job Hazard Analysis) */
 #jha-proj, #sssp-proj {
   width: 100%; box-sizing: border-box; padding: 10px 12px;
