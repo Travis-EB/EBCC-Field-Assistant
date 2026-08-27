@@ -6,7 +6,7 @@
 // so callers can fall back to the device share sheet.
 const TENANT_ID = process.env.AAD_TENANT_ID || 'f95ee318-b7d4-49aa-b795-b188b614caca';
 
-async function sendGraphMail(context, { fromEmail, subject, text, recipients, fileName, pdfB64 }) {
+async function sendGraphMail(context, { fromEmail, subject, text, recipients, fileName, pdfB64, contentType }) {
   const clientId = process.env.AAD_CLIENT_ID;
   const clientSecret = process.env.AAD_CLIENT_SECRET;
   if (!clientId || !clientSecret) return { ok: false, reason: 'mail-not-configured' };
@@ -43,7 +43,7 @@ async function sendGraphMail(context, { fromEmail, subject, text, recipients, fi
           attachments: pdfB64 ? [{
             '@odata.type': '#microsoft.graph.fileAttachment',
             name: fileName,
-            contentType: 'application/pdf',
+            contentType: contentType || 'application/pdf',
             contentBytes: pdfB64,
           }] : [],
         },

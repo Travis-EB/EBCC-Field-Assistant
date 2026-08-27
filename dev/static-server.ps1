@@ -54,6 +54,8 @@ while ($listener.IsListening) {
         $json = '{"number":' + $ticketCounter + '}'
       } elseif ($path -eq '/api/send-ewt') {
         $json = '{"ok":true,"sent":true}'
+      } elseif ($path -eq '/api/send-production') {
+        $json = '{"ok":true,"sent":true,"recipients":["travis@earthbasics.net"],"archived":true}'
       } elseif ($path -eq '/api/send-jha') {
         $json = '{"ok":true,"sent":true,"recipients":["travis@earthbasics.net"],"archived":true,"pdfBlob":"dev-admin/jha-26-292-03-2026-08-26-999.pdf"}'
       } elseif ($path -eq '/api/send-load-count') {

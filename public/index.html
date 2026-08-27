@@ -2158,6 +2158,16 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <div class="search-results" id="search-results"></div>
 </div>
 
+<div class="section-header">Send production report</div>
+<div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, round times, and yardage only. No rates or costs, so it's safe to send to PM's and superintendents.</div>
+<div class="ewt-recipients" id="cpy-recipients"></div>
+<input type="text" id="cpy-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
+<div class="controls" style="margin-top:8px">
+  <button class="btn btn-primary" id="cpy-prod-preview">Preview image</button>
+  <button class="btn btn-primary" id="cpy-prod-send">Email production</button>
+</div>
+<div id="cpy-prod-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
+
 <div class="footer">
   Fuel cost assumption: $3.50/gal &middot; Hours/day adjustable above &middot; Rates editable via Edit rates button.
 </div>
@@ -2253,6 +2263,16 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <input type="text" id="flat-search" placeholder="Add equipment to this job — type to search…" autocomplete="off">
   <div class="search-results" id="flat-search-results"></div>
 </div>
+
+<div class="section-header">Send production report</div>
+<div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, and coverage only. No rates or costs, so it's safe to send to PM's and superintendents.</div>
+<div class="ewt-recipients" id="flat-recipients"></div>
+<input type="text" id="flat-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
+<div class="controls" style="margin-top:8px">
+  <button class="btn btn-primary" id="flat-prod-preview">Preview image</button>
+  <button class="btn btn-primary" id="flat-prod-send">Email production</button>
+</div>
+<div id="flat-prod-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
 
 <div class="footer">
   Enter your crew's expected sq ft / day to see cost per sq ft. Rates editable on Cost Per Yard tab.
@@ -7870,7 +7890,7 @@ document.getElementById('jb-create-btn').addEventListener('click', () => {
 });
 
 // Project picker used by Post Spread on both calculator tabs
-function pickProject(cb, what) {
+function pickProject(cb, what, okLabel) {
   const projs = window.EBCC_PROJECTS || [];
   if (!projs.length) { cb(null); return; }   // projects unknown (offline) — post without
   const ov = document.createElement('div');
@@ -7883,7 +7903,7 @@ function pickProject(cb, what) {
     '</select>' +
     '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">' +
       '<button class="btn" id="proj-cancel">Cancel</button>' +
-      '<button class="btn btn-primary" id="proj-ok">Post</button>' +
+      '<button class="btn btn-primary" id="proj-ok">' + escHTML(okLabel || 'Post') + '</button>' +
     '</div></div>';
   document.body.appendChild(ov);
   ov.querySelector('#proj-cancel').onclick = () => ov.remove();
@@ -7896,6 +7916,271 @@ function pickProject(cb, what) {
 
 document.querySelector('.tab[data-tab="jobbooks"]').addEventListener('click', jbLoadProjects);
 jbLoadProjects();
+
+// ============================================================
+// Production reports (Cost Per Yard + Flat Work) — a clean,
+// app-styled IMAGE of the day's production with ZERO pricing:
+// equipment, quantities, hours, round times, yardage/coverage.
+// Safe to email straight to PMs and superintendents.
+// ============================================================
+const PROD_ORANGE = '#d97706';
+const PROD_INK = '#1f2937';
+const PROD_GRAY = '#6b7280';
+const PROD_LINE = '#e5e7eb';
+
+function prodCollectCpy() {
+  const rows = [];
+  let totalYards = 0, dirt = 0, rock = 0, processed = 0;
+  job.forEach(item => {
+    const qty = +item.quantity || 0;
+    if (!qty) return;
+    const r = computeRow(item);
+    totalYards += r.yardsPerDay;
+    if (item.producer) { if (item.fixedLoad) rock += r.yardsPerDay; else dirt += r.yardsPerDay; }
+    if (item.processor) processed += r.processedPerDay;
+    rows.push({
+      name: item.name,
+      qty: qty,
+      round: (item.producer && +item.roundTime > 0) ? +item.roundTime : null,
+      cyday: r.yardsPerDay > 0 ? Math.round(r.yardsPerDay)
+        : (r.processedPerDay > 0 ? Math.round(r.processedPerDay) : null),
+      proc: !!item.processor,
+    });
+  });
+  const days = (yardsToMove > 0 && totalYards > 0) ? yardsToMove / totalYards : 0;
+  return {
+    kind: 'cpy', title: 'Earthwork Production', state: activeState,
+    hoursPerDay: hoursPerDay, ydPerLoad: ydPerLoad, rows: rows,
+    totalYards: Math.round(totalYards), dirt: Math.round(dirt), rock: Math.round(rock),
+    processed: Math.round(processed), yardsToMove: yardsToMove,
+    days: days ? Math.round(days * 10) / 10 : 0,
+    finish: days ? formatFinishDate(estFinishDate(days, activeState)) : '',
+  };
+}
+
+function prodCollectFlat() {
+  const rows = [];
+  flatJob.forEach(item => {
+    const qty = +item.quantity || 0;
+    if (!qty) return;
+    rows.push({ name: item.name, qty: qty, round: null, cyday: null });
+  });
+  const days = (flatJobSqft > 0 && flatSqftPerDay > 0) ? flatJobSqft / flatSqftPerDay : 0;
+  return {
+    kind: 'flat', title: 'Flat Work Production', state: activeState,
+    hoursPerDay: flatHoursPerDay, rows: rows,
+    sqftPerDay: flatSqftPerDay, jobSqft: flatJobSqft,
+    days: days ? Math.round(days * 10) / 10 : 0,
+    finish: days ? formatFinishDate(estFinishDate(days, activeState)) : '',
+  };
+}
+
+function prodDrawImage(d, proj) {
+  const W = 1000, PAD = 44, SCALE = 2;
+  const fmt = n => Math.round(n).toLocaleString();
+  const showRound = d.kind === 'cpy';
+  const rowH = 40;
+  const tiles = [];
+  if (d.kind === 'cpy') {
+    tiles.push({ label: 'Yards / Day', value: fmt(d.totalYards),
+      sub: (d.dirt && d.rock) ? 'dirt ' + fmt(d.dirt) + ' · rock ' + fmt(d.rock) : (d.rock ? 'rock' : 'dirt') });
+    if (d.processed) tiles.push({ label: 'Processed / Day', value: fmt(d.processed), sub: 'yd³ material' });
+    tiles.push({ label: 'Hours / Day', value: String(d.hoursPerDay), sub: d.ydPerLoad ? d.ydPerLoad + ' yd/load' : '' });
+    if (d.yardsToMove) tiles.push({ label: 'Yards To Move', value: fmt(d.yardsToMove), sub: 'total job' });
+    if (d.days) tiles.push({ label: 'Days To Finish', value: String(d.days), sub: d.finish ? 'est. ' + d.finish : '' });
+  } else {
+    if (d.sqftPerDay) tiles.push({ label: 'Sq Ft / Day', value: fmt(d.sqftPerDay), sub: 'crew coverage' });
+    tiles.push({ label: 'Hours / Day', value: String(d.hoursPerDay), sub: '' });
+    if (d.jobSqft) tiles.push({ label: 'Job Sq Ft', value: fmt(d.jobSqft), sub: 'total job' });
+    if (d.days) tiles.push({ label: 'Days To Finish', value: String(d.days), sub: d.finish ? 'est. ' + d.finish : '' });
+  }
+  const tileRows = Math.ceil(tiles.length / 3) || 1;
+  const H = 118 + 28 + tileRows * 108 + 24 + 44 + d.rows.length * rowH + 70;
+
+  const cv = document.createElement('canvas');
+  cv.width = W * SCALE; cv.height = H * SCALE;
+  const x = cv.getContext('2d');
+  x.scale(SCALE, SCALE);
+  const F = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  function rr(px, py, w, h, r) {
+    if (x.roundRect) { x.beginPath(); x.roundRect(px, py, w, h, r); }
+    else { x.beginPath(); x.rect(px, py, w, h); }
+  }
+
+  // Page
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H);
+  // Header — bold orange band
+  x.fillStyle = PROD_ORANGE; x.fillRect(0, 0, W, 118);
+  x.fillStyle = '#ffffff';
+  x.font = '800 30px ' + F;
+  x.fillText('EBCC PRODUCTION REPORT', PAD, 52);
+  x.font = '600 16px ' + F;
+  x.globalAlpha = 0.95;
+  x.fillText(d.title + ' · ' + (d.state === 'TX' ? 'Texas' : 'California') + (proj ? ' · ' + proj.code + ' — ' + proj.name : ''), PAD, 82);
+  x.globalAlpha = 1;
+  x.font = '700 16px ' + F;
+  const dateStr = new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  x.textAlign = 'right';
+  x.fillText(dateStr, W - PAD, 52);
+  x.textAlign = 'left';
+
+  // Stat tiles
+  let ty = 118 + 28;
+  const gap = 14, tw = (W - 2 * PAD - 2 * gap) / 3;
+  tiles.forEach((t, i) => {
+    const col = i % 3, row = Math.floor(i / 3);
+    const tx = PAD + col * (tw + gap), tyy = ty + row * 108;
+    x.strokeStyle = PROD_LINE; x.lineWidth = 1.5; x.fillStyle = '#fffbf5';
+    rr(tx, tyy, tw, 94, 12); x.fill(); x.stroke();
+    x.fillStyle = PROD_GRAY; x.font = '700 11.5px ' + F;
+    x.fillText(t.label.toUpperCase(), tx + 16, tyy + 26);
+    x.fillStyle = PROD_ORANGE; x.font = '800 30px ' + F;
+    x.fillText(t.value, tx + 16, tyy + 60);
+    if (t.sub) { x.fillStyle = PROD_GRAY; x.font = '500 12.5px ' + F; x.fillText(t.sub, tx + 16, tyy + 80); }
+  });
+  let y = ty + tileRows * 108 + 24;
+
+  // Equipment table — orange header band
+  const cQty = W - PAD - (showRound ? 300 : 60);
+  const cRound = W - PAD - 190;
+  const cCy = W - PAD;
+  x.fillStyle = PROD_ORANGE;
+  rr(PAD, y, W - 2 * PAD, 36, 8); x.fill();
+  x.fillStyle = '#ffffff'; x.font = '700 12.5px ' + F;
+  x.fillText('EQUIPMENT & CREW', PAD + 16, y + 23);
+  x.textAlign = 'center'; x.fillText('QTY', cQty, y + 23); x.textAlign = 'left';
+  if (showRound) {
+    x.textAlign = 'center'; x.fillText('ROUND', cRound, y + 23); x.textAlign = 'left';
+    x.textAlign = 'right'; x.fillText('CY / DAY', cCy - 16, y + 23); x.textAlign = 'left';
+  }
+  y += 36 + 4;
+  d.rows.forEach((r, i) => {
+    if (i % 2 === 1) { x.fillStyle = '#faf7f2'; x.fillRect(PAD, y, W - 2 * PAD, rowH); }
+    x.fillStyle = PROD_INK; x.font = '600 15px ' + F;
+    let nm = r.name;
+    while (x.measureText(nm).width > (showRound ? cQty - PAD - 70 : cQty - PAD - 70) && nm.length > 4) nm = nm.slice(0, -1);
+    x.fillText(nm === r.name ? nm : nm + '…', PAD + 16, y + 26);
+    x.textAlign = 'center'; x.font = '700 15px ' + F;
+    x.fillText(String(r.qty), cQty, y + 26);
+    if (showRound) {
+      x.fillStyle = PROD_GRAY; x.font = '500 14px ' + F;
+      x.fillText(r.round ? r.round + ' min' : '—', cRound, y + 26);
+      x.textAlign = 'right';
+      if (r.cyday) { x.fillStyle = PROD_ORANGE; x.font = '700 15px ' + F; x.fillText(fmt(r.cyday) + (r.proc ? ' proc.' : ''), cCy - 16, y + 26); }
+      else { x.fillStyle = PROD_GRAY; x.font = '500 14px ' + F; x.fillText('—', cCy - 16, y + 26); }
+    }
+    x.textAlign = 'left';
+    x.strokeStyle = PROD_LINE; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(PAD, y + rowH); x.lineTo(W - PAD, y + rowH); x.stroke();
+    y += rowH;
+  });
+
+  // Footer
+  x.fillStyle = PROD_GRAY; x.font = '500 12px ' + F;
+  x.fillText('Production only — no pricing included · Sent from EBCC Field Assistant', PAD, H - 26);
+  return cv;
+}
+
+function prodRenderRecipients(wrapId, cls) {
+  const wrap = document.getElementById(wrapId);
+  wrap.innerHTML = EWT_SAVED_CONTACTS.map(email =>
+    '<label class="chip"><input type="checkbox" class="' + cls + '" value="' + escAttr(email) + '"> ' + escHTML(email) + '</label>'
+  ).join('');
+}
+function prodGetRecipients(cls, extraId) {
+  const chips = Array.from(document.querySelectorAll('.' + cls + ':checked')).map(c => c.value);
+  const extra = document.getElementById(extraId).value.split(',').map(s => s.trim()).filter(Boolean);
+  return Array.from(new Set([...chips, ...extra]));
+}
+
+function prodPreview(kind) {
+  const d = kind === 'cpy' ? prodCollectCpy() : prodCollectFlat();
+  if (!d.rows.length) { alert('Add at least one piece of equipment first.'); return; }
+  pickProject((proj) => {
+    const cv = prodDrawImage(d, proj);
+    cv.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      document.getElementById('ewt-pdf-frame').src = url;
+      const dl = document.getElementById('ewt-pdf-download');
+      dl.href = url;
+      dl.download = 'EBCC_' + (kind === 'cpy' ? 'Earthwork' : 'FlatWork') + '_Production_' + new Date().toISOString().slice(0, 10) + '.png';
+      document.getElementById('ewt-modal').classList.add('open');
+    }, 'image/png');
+  }, 'production report', 'Continue');
+}
+
+async function prodSend(kind) {
+  const d = kind === 'cpy' ? prodCollectCpy() : prodCollectFlat();
+  if (!d.rows.length) { alert('Add at least one piece of equipment first.'); return; }
+  const statusEl = document.getElementById(kind + '-prod-status');
+  const setStatus = (msg, color) => { statusEl.textContent = msg; statusEl.style.color = color || 'var(--dark)'; };
+  pickProject(async (proj) => {
+    const cv = prodDrawImage(d, proj);
+    const dataUri = cv.toDataURL('image/png');
+    const dateIso = new Date().toISOString().slice(0, 10);
+    const fileName = 'EBCC_' + (kind === 'cpy' ? 'Earthwork' : 'FlatWork') + '_Production_' + dateIso + '.png';
+    const subject = d.title + (proj ? ' — ' + proj.name : '') + ' — ' + dateIso;
+    const lines = ['EBCC Production Report — ' + d.title, 'Date: ' + dateIso + ' · State: ' + d.state];
+    if (proj) lines.push('Project: ' + proj.code + ' — ' + proj.name);
+    if (d.kind === 'cpy') {
+      lines.push('Yards/day: ' + d.totalYards.toLocaleString() + (d.processed ? ' · Processed/day: ' + d.processed.toLocaleString() : ''));
+      if (d.yardsToMove) lines.push('Yards to move: ' + d.yardsToMove.toLocaleString() + (d.days ? ' · ' + d.days + ' days' + (d.finish ? ' (est. ' + d.finish + ')' : '') : ''));
+    } else {
+      if (d.sqftPerDay) lines.push('Sq ft/day: ' + d.sqftPerDay.toLocaleString());
+      if (d.jobSqft) lines.push('Job sq ft: ' + d.jobSqft.toLocaleString() + (d.days ? ' · ' + d.days + ' days' + (d.finish ? ' (est. ' + d.finish + ')' : '') : ''));
+    }
+    lines.push('Hours/day: ' + d.hoursPerDay);
+    lines.push('', 'Equipment:');
+    d.rows.forEach(r => lines.push('  ' + r.qty + '× ' + r.name + (r.round ? ' — ' + r.round + ' min round' : '') + (r.cyday ? ' — ' + r.cyday.toLocaleString() + ' cy/day' : '')));
+    lines.push('', 'Production only — no pricing included.', '', '— Sent from EBCC Field Assistant');
+    const bodyText = lines.join('\n');
+    const recipients = prodGetRecipients(kind + '-recipient-chk', kind + '-extra-recipients');
+
+    setStatus(recipients.length ? 'Sending…' : 'Saving a copy…', 'var(--gray)');
+    try {
+      const r = await fetch('/api/send-production', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, text: bodyText, recipients, fileName, png: dataUri, kind: d.kind, date: dateIso }),
+      });
+      const res = r.ok ? await r.json() : null;
+      if (res && res.sent) {
+        setStatus('Emailed ✓ to ' + (res.recipients || recipients).join(', '), 'var(--green)');
+        return;
+      }
+      if (res && res.ok && !recipients.length) {
+        setStatus(res.archived ? 'Copy saved for the office. Check recipients to email it directly next time.' : '', 'var(--gray)');
+        return;
+      }
+      setStatus('Email service unavailable right now — opening the share sheet instead.', 'var(--gray)');
+    } catch (e) {
+      setStatus(navigator.onLine ? 'Email service unavailable right now — opening the share sheet instead.' : 'Offline — opening the share sheet instead.', 'var(--gray)');
+    }
+
+    // Fallback: share sheet with the image, then download + mailto
+    cv.toBlob(async (blob) => {
+      const file = new File([blob], fileName, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ title: subject, text: bodyText, files: [file] }); return; }
+        catch (e) { if (e.name === 'AbortError') return; }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      if (recipients.length) {
+        window.location.href = 'mailto:' + encodeURIComponent(recipients.join(','))
+          + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(bodyText);
+      }
+    }, 'image/png');
+  }, 'production report', 'Send');
+}
+
+prodRenderRecipients('cpy-recipients', 'cpy-recipient-chk');
+prodRenderRecipients('flat-recipients', 'flat-recipient-chk');
+document.getElementById('cpy-prod-preview').addEventListener('click', () => prodPreview('cpy'));
+document.getElementById('cpy-prod-send').addEventListener('click', () => prodSend('cpy'));
+document.getElementById('flat-prod-preview').addEventListener('click', () => prodPreview('flat'));
+document.getElementById('flat-prod-send').addEventListener('click', () => prodSend('flat'));
 
 // ============================================================
 // JHA (Job Hazard Analysis) — daily per-project JHAs with a
