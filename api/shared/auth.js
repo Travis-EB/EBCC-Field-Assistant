@@ -131,4 +131,4 @@ function json(context, status, body) {
   };
 }
 
-module.exports = { getContainers, getPrincipal, ensureUser, isAdmin, json, ADMIN_EMAILS };
+module.exports = { getContainers, getPrincipal, ensureUser, isAdmin, json, ADMIN_EMAILS, realName, contactName };

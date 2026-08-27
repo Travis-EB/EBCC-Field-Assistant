@@ -1,7 +1,7 @@
 // /api/users — ADMIN ONLY. List users and change roles/status.
 // GET   -> list all users (id, email, name, role, lastActiveAt, counts).
 // PATCH -> { userId, role } where role in { admin, user, disabled }.
-const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
+const { getContainers, getPrincipal, ensureUser, isAdmin, json, realName, contactName } = require('../shared/auth');
 
 const VALID_ROLES = new Set(['admin', 'user', 'disabled']);
 
@@ -23,11 +23,25 @@ module.exports = async function (context, req) {
 
   try {
     if (method === 'GET') {
-      const { resources } = await users.items
-        .query('SELECT c.id, c.email, c.name, c.role, c.createdAt, c.lastActiveAt, c.counts FROM c')
-        .fetchAll();
-      resources.sort((a, b) => (b.lastActiveAt || '').localeCompare(a.lastActiveAt || ''));
-      return json(context, 200, { users: resources });
+      const { resources } = await users.items.query('SELECT * FROM c').fetchAll();
+      // Heal names in one pass: any account still showing its email as the
+      // name gets the contact-list name NOW, instead of waiting for that
+      // user's next visit (ensureUser only fixes whoever is making a request).
+      for (const u of resources) {
+        if (u.nameSource === 'user') continue;
+        if (realName(u.name, u.email)) continue;
+        const listName = contactName(u.email);
+        if (!listName) continue;
+        u.name = listName;
+        u.nameSource = 'contacts';
+        try { await users.items.upsert(u); } catch (e) { context.log.warn('name heal failed for ' + u.email, e); }
+      }
+      const out = resources.map((u) => ({
+        id: u.id, email: u.email, name: u.name, role: u.role,
+        createdAt: u.createdAt, lastActiveAt: u.lastActiveAt, counts: u.counts,
+      }));
+      out.sort((a, b) => (b.lastActiveAt || '').localeCompare(a.lastActiveAt || ''));
+      return json(context, 200, { users: out });
     }
 
     if (method === 'PATCH') {
