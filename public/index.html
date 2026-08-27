@@ -7927,6 +7927,9 @@ const PROD_ORANGE = '#d97706';
 const PROD_INK = '#1f2937';
 const PROD_GRAY = '#6b7280';
 const PROD_LINE = '#e5e7eb';
+// EB logo for the report header — preloaded so the sync canvas draw can use it.
+const PROD_LOGO = new Image();
+PROD_LOGO.src = '/icons/logo.png';
 
 function prodCollectCpy() {
   const rows = [];
@@ -8009,14 +8012,21 @@ function prodDrawImage(d, proj) {
 
   // Page
   x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H);
-  // Header — bold orange band
+  // Header — bold orange band with the EB logo in a white chip
   x.fillStyle = PROD_ORANGE; x.fillRect(0, 0, W, 118);
+  let tx0 = PAD;
+  if (PROD_LOGO.complete && PROD_LOGO.naturalWidth) {
+    x.fillStyle = '#ffffff';
+    rr(PAD, 25, 68, 68, 16); x.fill();
+    x.drawImage(PROD_LOGO, PAD + 8, 33, 52, 52);
+    tx0 = PAD + 88;
+  }
   x.fillStyle = '#ffffff';
   x.font = '800 30px ' + F;
-  x.fillText('EBCC PRODUCTION REPORT', PAD, 52);
+  x.fillText('EBCC PRODUCTION REPORT', tx0, 52);
   x.font = '600 16px ' + F;
   x.globalAlpha = 0.95;
-  x.fillText(d.title + ' · ' + (d.state === 'TX' ? 'Texas' : 'California') + (proj ? ' · ' + proj.code + ' — ' + proj.name : ''), PAD, 82);
+  x.fillText(d.title + ' · ' + (d.state === 'TX' ? 'Texas' : 'California') + (proj ? ' · ' + proj.code + ' — ' + proj.name : ''), tx0, 82);
   x.globalAlpha = 1;
   x.font = '700 16px ' + F;
   const dateStr = new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
