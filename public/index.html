@@ -2457,20 +2457,23 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <div id="ewt-drafts-list"></div>
 </div>
 
+</section>
+
+<!-- Shared preview modal (EWT PDF, JHA PDF, production images). Lives at body
+     level — inside a .tab-content it inherits display:none on every other tab. -->
 <div class="ewt-modal" id="ewt-modal">
   <div class="ewt-modal-inner">
     <div class="ewt-modal-header">
-      <strong>Ticket Preview</strong>
+      <strong>Preview</strong>
       <button class="btn" id="ewt-modal-close">Close</button>
     </div>
-    <iframe id="ewt-pdf-frame" title="EWT PDF preview"></iframe>
+    <iframe id="ewt-pdf-frame" title="Preview"></iframe>
     <div class="ewt-modal-actions">
-      <a class="btn btn-primary" id="ewt-pdf-download" download="ewt.pdf">Download PDF</a>
+      <a class="btn btn-primary" id="ewt-pdf-download" download="ewt.pdf">Download</a>
     </div>
   </div>
 </div>
 
-</section>
 <section class="tab-content" id="tab-trucking">
 
 <div class="ewt-banner">
@@ -7897,18 +7900,35 @@ function pickProject(cb, what, okLabel) {
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
   ov.innerHTML = '<div style="background:var(--card);border-radius:14px;padding:18px;max-width:360px;width:100%">' +
     '<div style="font-weight:650;margin-bottom:10px;font-size:15px">What project is this ' + escHTML(what || 'spread') + ' for?</div>' +
-    '<select id="proj-pick" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px">' +
-      '<option value="">— No project —</option>' +
-      projs.map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.code + ' — ' + p.name) + '</option>').join('') +
-    '</select>' +
+    '<input type="search" id="proj-search" placeholder="Search projects — name or job #…" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;background:var(--card);color:var(--dark);margin-bottom:8px">' +
+    '<select id="proj-pick" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px"></select>' +
     '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">' +
       '<button class="btn" id="proj-cancel">Cancel</button>' +
       '<button class="btn btn-primary" id="proj-ok">' + escHTML(okLabel || 'Post') + '</button>' +
     '</div></div>';
   document.body.appendChild(ov);
+  const sel = ov.querySelector('#proj-pick');
+  const search = ov.querySelector('#proj-search');
+  // Search filters the dropdown by name or job # (same feel as the JHA picker);
+  // a single match auto-selects. The dropdown always stays usable.
+  function fill() {
+    const q = (search.value || '').trim().toLowerCase();
+    const match = q ? projs.filter(p => (String(p.name) + ' ' + String(p.code)).toLowerCase().includes(q)) : projs;
+    const keep = sel.value;
+    const head = !q ? '— No project —'
+      : match.length ? '— No project — (' + match.length + ' of ' + projs.length + ' match)'
+      : 'No projects match "' + q + '"';
+    sel.innerHTML = '<option value="">' + escHTML(head) + '</option>' +
+      match.map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.code + ' — ' + p.name) + '</option>').join('');
+    if (keep && match.some(p => p.code === keep)) sel.value = keep;
+    else if (q && match.length === 1) sel.value = match[0].code;
+    else sel.value = '';
+  }
+  fill();
+  search.addEventListener('input', fill);
   ov.querySelector('#proj-cancel').onclick = () => ov.remove();
   ov.querySelector('#proj-ok').onclick = () => {
-    const code = ov.querySelector('#proj-pick').value;
+    const code = sel.value;
     ov.remove();
     cb(projs.find(x => x.code === code) || null);
   };
