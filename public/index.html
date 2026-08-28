@@ -2169,6 +2169,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 <div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, round times, and yardage only. No rates or costs, so it's safe to send to PM's and superintendents. Pick a project and it tracks yards moved so far and yards remaining from your previously sent reports.</div>
 <div class="ewt-grid" style="margin-bottom:8px">
   <label>Report day <input type="date" id="cpy-prod-date"></label>
+  <label>Starting balance — cy already moved <input type="number" id="cpy-prod-baseline" min="0" step="1000" inputmode="numeric" placeholder="only needed once per project"></label>
 </div>
 <div class="ewt-recipients" id="cpy-recipients"></div>
 <input type="text" id="cpy-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
@@ -2278,6 +2279,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 <div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, and coverage only. No rates or costs, so it's safe to send to PM's and superintendents. Pick a project and it tracks coverage so far and remaining from your previously sent reports.</div>
 <div class="ewt-grid" style="margin-bottom:8px">
   <label>Report day <input type="date" id="flat-prod-date"></label>
+  <label>Starting balance — sq ft already covered <input type="number" id="flat-prod-baseline" min="0" step="1000" inputmode="numeric" placeholder="only needed once per project"></label>
 </div>
 <div class="ewt-recipients" id="flat-recipients"></div>
 <input type="text" id="flat-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
@@ -7970,32 +7972,47 @@ async function prodFetchSends() {
 }
 // Total production from days BEFORE the report day for this project + tab.
 // Re-sending a day's report replaces that day (latest send per date wins) —
-// it never double-counts.
+// it never double-counts. A stored starting balance (work done before
+// tracking began — latest one wins) is added on top.
 function prodPriorMoved(sends, kind, code, dateIso) {
   const latestByDate = {};
+  let baseline = null;
   (sends || []).forEach(s => {
     if (!s || s.kind !== kind || !s.projectCode || s.projectCode !== code) return;
+    if (s.baseline) {
+      if (!baseline || String(s.ts || '') > String(baseline.ts || '')) baseline = s;
+      return;
+    }
     if (!s.date || s.date >= dateIso) return;
     const cur = latestByDate[s.date];
     if (!cur || String(s.ts || '') > String(cur.ts || '')) latestByDate[s.date] = s;
   });
   let total = 0, days = 0;
   Object.keys(latestByDate).forEach(d => { total += (+latestByDate[d].amount || 0); days++; });
-  return { total: Math.round(total), days: days };
+  const base = baseline ? Math.max(0, Math.round(+baseline.amount || 0)) : 0;
+  return { total: Math.round(total) + base, days: days, base: base };
 }
 // Stamp the report day + job-progress numbers onto collected data. With a
 // project and a job total, days-to-finish switches to the REMAINING work.
-function prodAugment(d, proj, sends, dateIso) {
+// baselineOverride: a value typed in the starting-balance field replaces the
+// stored one for this report (and gets saved on send).
+function prodAugment(d, proj, sends, dateIso, baselineOverride) {
   d.reportDate = dateIso;
   if (!proj) return d;
   const prior = prodPriorMoved(sends, d.kind, proj.code, dateIso);
-  d.movedPrior = prior.total;
+  let total = prior.total, base = prior.base;
+  if (baselineOverride != null) {
+    total = total - base + baselineOverride;
+    base = baselineOverride;
+  }
+  d.movedPrior = total;
   d.movedDays = prior.days;
+  d.baseline = base;
   const jobTotal = d.kind === 'cpy' ? d.yardsToMove : d.jobSqft;
   const perDay = d.kind === 'cpy' ? d.totalYards : d.sqftPerDay;
   if (jobTotal > 0) {
-    d.movedTotal = Math.min(jobTotal, prior.total + perDay);
-    d.remaining = Math.max(0, jobTotal - prior.total - perDay);
+    d.movedTotal = Math.min(jobTotal, total + perDay);
+    d.remaining = Math.max(0, jobTotal - total - perDay);
     if (perDay > 0) {
       const days = d.remaining / perDay;
       d.days = days ? Math.round(days * 10) / 10 : 0;
@@ -8058,7 +8075,8 @@ function prodDrawImage(d, proj) {
   const showRound = d.kind === 'cpy';
   const rowH = 40;
   const tiles = [];
-  const progressSub = d.movedDays ? 'incl. this day · ' + (d.movedDays + 1) + ' report days' : 'first report day';
+  const progressSub = (d.baseline ? fmt(d.baseline) + ' start · ' : '') +
+    (d.movedDays ? (d.movedDays + 1) + ' report days' : 'first report day');
   if (d.kind === 'cpy') {
     tiles.push({ label: 'Yards / Day', value: fmt(d.totalYards),
       sub: (d.dirt && d.rock) ? 'dirt ' + fmt(d.dirt) + ' · rock ' + fmt(d.rock) : (d.rock ? 'rock' : 'dirt') });
@@ -8216,6 +8234,13 @@ function prodReportDate(kind) {
   const el = document.getElementById(kind + '-prod-date');
   return (el && el.value) || jhaToday();
 }
+// Starting-balance field: null when untouched, otherwise a rounded number
+// (0 is valid — it clears a stored balance).
+function prodBaselineTyped(kind) {
+  const el = document.getElementById(kind + '-prod-baseline');
+  if (!el || el.value === '') return null;
+  return Math.max(0, Math.round(+el.value || 0));
+}
 
 async function prodPreview(kind) {
   const d = kind === 'cpy' ? prodCollectCpy() : prodCollectFlat();
@@ -8223,7 +8248,7 @@ async function prodPreview(kind) {
   const sends = await prodFetchSends();
   pickProject((proj) => {
     const dateIso = prodReportDate(kind);
-    prodAugment(d, proj, sends, dateIso);
+    prodAugment(d, proj, sends, dateIso, prodBaselineTyped(kind));
     const cv = prodDrawImage(d, proj);
     cv.toBlob((blob) => {
       previewShow(URL.createObjectURL(blob), true,
@@ -8240,7 +8265,8 @@ async function prodSend(kind) {
   const sends = await prodFetchSends();
   pickProject(async (proj) => {
     const dateIso = prodReportDate(kind);
-    prodAugment(d, proj, sends, dateIso);
+    const typedBaseline = prodBaselineTyped(kind);
+    prodAugment(d, proj, sends, dateIso, typedBaseline);
     const amount = d.kind === 'cpy' ? d.totalYards : d.sqftPerDay;
     const cv = prodDrawImage(d, proj);
     const dataUri = cv.toDataURL('image/png');
@@ -8273,6 +8299,7 @@ async function prodSend(kind) {
         body: JSON.stringify({
           subject, text: bodyText, recipients, fileName, png: dataUri, kind: d.kind, date: dateIso,
           projectCode: proj ? proj.code : '', projectName: proj ? proj.name : '', amount: amount,
+          baseline: (proj && typedBaseline != null) ? typedBaseline : undefined,
         }),
       });
       const res = r.ok ? await r.json() : null;
@@ -8280,10 +8307,16 @@ async function prodSend(kind) {
         // Mirror the server's send record locally so the very next report's
         // moved-so-far is right even before the next server pull.
         try {
-          const cache = JSON.parse(localStorage.getItem(PROD_SENDS_CACHE) || '[]');
+          let cache = JSON.parse(localStorage.getItem(PROD_SENDS_CACHE) || '[]');
+          if (typedBaseline != null) {
+            cache = cache.filter(s => !(s && s.baseline && s.kind === d.kind && s.projectCode === proj.code));
+            cache.push({ ts: new Date().toISOString(), baseline: true, kind: d.kind, projectCode: proj.code, projectName: proj.name, amount: typedBaseline });
+          }
           cache.push({ ts: new Date().toISOString(), date: dateIso, kind: d.kind, projectCode: proj.code, projectName: proj.name, amount: amount, sent: !!res.sent });
           localStorage.setItem(PROD_SENDS_CACHE, JSON.stringify(cache.slice(-300)));
         } catch (e) {}
+        // Balance is saved with the project now — the field only needs it once.
+        if (typedBaseline != null) { const b = document.getElementById(kind + '-prod-baseline'); if (b) b.value = ''; }
       }
       if (res && res.sent) {
         setStatus('Emailed ✓ to ' + (res.recipients || recipients).join(', '), 'var(--green)');

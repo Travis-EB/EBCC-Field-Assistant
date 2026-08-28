@@ -87,6 +87,16 @@ module.exports = async function (context, req) {
     let doc = null;
     try { doc = (await records.item(docId, me.id).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
     let arr = (doc && Array.isArray(doc.data)) ? doc.data : [];
+    // Starting balance: work done before tracking began. One per project +
+    // tab — a new value replaces the old entry.
+    if (body.baseline != null && isFinite(+body.baseline) && rec.projectCode) {
+      arr = arr.filter((x) => !(x && x.baseline && x.kind === kind && x.projectCode === rec.projectCode));
+      arr.push({
+        ts: now, baseline: true, kind: kind,
+        projectCode: rec.projectCode, projectName: rec.projectName,
+        amount: Math.max(0, Math.round(+body.baseline)),
+      });
+    }
     arr.push(rec);
     if (arr.length > 300) arr = arr.slice(arr.length - 300);
     await records.items.upsert({ id: docId, ownerId: me.id, ownerEmail: me.email, type: 'production_sends', data: arr, updatedAt: now });
