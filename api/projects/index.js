@@ -107,6 +107,39 @@ module.exports = async function (context, req) {
 
       // ---- project links (Procore / Autodesk / etc.) ----
       const mode = String((body && body.mode) || '');
+
+      // ---- per-project fuel price (drives CA equipment rate escalation) ----
+      if (mode === 'setFuel') {
+        const code = String((body && body.code) || '').trim();
+        if (!code) return json(context, 400, { error: 'code required.' });
+        const raw = body && body.fuelRate;
+        const clearing = raw === '' || raw == null;
+        const f = Math.round(parseFloat(raw) * 100) / 100;
+        if (!clearing && !(isFinite(f) && f > 0 && f < 100)) {
+          return json(context, 400, { error: 'Enter a fuel price like 4.25 (or leave empty to clear).' });
+        }
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const doc = await readDoc(records);
+          if (!doc) return json(context, 404, { error: 'No projects.' });
+          const p = (doc.data || []).find((x) => x && String(x.code).toLowerCase() === code.toLowerCase());
+          if (!p) return json(context, 404, { error: 'Project not found.' });
+          if (clearing) {
+            delete p.fuelRate; delete p.fuelSetBy; delete p.fuelSetAt;
+          } else {
+            p.fuelRate = f;
+            p.fuelSetBy = me.email;
+            p.fuelSetAt = new Date().toISOString();
+          }
+          try {
+            await records.item(DOC_ID, DOC_PK).replace(doc, { accessCondition: { type: 'IfMatch', condition: doc._etag } });
+            return json(context, 200, { ok: true, fuelRate: clearing ? null : f });
+          } catch (e) {
+            if (e.code === 412) continue; // raced another writer — retry
+            throw e;
+          }
+        }
+        return json(context, 500, { error: 'Busy — try again.' });
+      }
       if (mode === 'addLink' || mode === 'removeLink') {
         if (mode === 'removeLink' && !isAdmin(me)) return json(context, 403, { error: 'Admin only.' });
         const code = String((body && body.code) || '').trim();
