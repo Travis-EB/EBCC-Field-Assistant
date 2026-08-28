@@ -197,12 +197,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 .adm-post > summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--dark); padding: 4px 0; }
 
 /* JHA (Job Hazard Analysis) */
-#jha-proj, #sssp-proj {
-  width: 100%; box-sizing: border-box; padding: 10px 12px;
-  border: 1px solid var(--border); border-radius: 8px;
-  font-family: inherit; font-size: 14px;
-  background: var(--card, #fff); color: inherit;
-}
 .jha-hazard-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 7px 0; border-bottom: 1px solid var(--light-gray); font-size: 13.5px;
@@ -1924,10 +1918,11 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 
 <div class="ewt-section" id="jha-picker">
   <h3>Project</h3>
-  <div class="ewt-hint">JHA's are organized by project — the same project list as Job Books. Search or pick a project to see its daily JHA's or start today's.</div>
-  <input type="search" id="jha-proj-search" placeholder="Search projects — name or job #…" autocomplete="off"
-    style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--card);color:var(--dark);margin-bottom:8px">
-  <select id="jha-proj"><option value="">Select a project…</option></select>
+  <div class="ewt-hint">JHA's are organized by project — the same project list as Job Books. Start typing a name or job # and pick from the list.</div>
+  <div class="search-bar" style="margin:8px 0 0">
+    <input type="text" id="jha-proj-combo" placeholder="Search projects — name or job #…" autocomplete="off">
+    <div class="search-results" id="jha-proj-results"></div>
+  </div>
   <div id="jha-list" style="margin-top:10px"></div>
 </div>
 
@@ -2005,10 +2000,11 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 <section class="tab-content" id="tab-sssp">
   <div class="ewt-section">
     <h3>Site-Specific Safety Plans</h3>
-    <div class="ewt-hint">SSSP's are organized by project — the same project list as Job Books. Search or pick a project.</div>
-    <input type="search" id="sssp-proj-search" placeholder="Search projects — name or job #…" autocomplete="off"
-      style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--card);color:var(--dark);margin-bottom:8px">
-    <select id="sssp-proj"><option value="">Select a project…</option></select>
+    <div class="ewt-hint">SSSP's are organized by project — the same project list as Job Books. Start typing a name or job # and pick from the list.</div>
+    <div class="search-bar" style="margin:8px 0 0">
+      <input type="text" id="sssp-proj-combo" placeholder="Search projects — name or job #…" autocomplete="off">
+      <div class="search-results" id="sssp-proj-results"></div>
+    </div>
     <div id="sssp-body" style="margin-top:10px"></div>
   </div>
 </section>
@@ -2170,7 +2166,10 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 </div>
 
 <div class="section-header">Send production report</div>
-<div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, round times, and yardage only. No rates or costs, so it's safe to send to PM's and superintendents.</div>
+<div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, round times, and yardage only. No rates or costs, so it's safe to send to PM's and superintendents. Pick a project and it tracks yards moved so far and yards remaining from your previously sent reports.</div>
+<div class="ewt-grid" style="margin-bottom:8px">
+  <label>Report day <input type="date" id="cpy-prod-date"></label>
+</div>
 <div class="ewt-recipients" id="cpy-recipients"></div>
 <input type="text" id="cpy-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
 <div class="controls" style="margin-top:8px">
@@ -2276,7 +2275,10 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 </div>
 
 <div class="section-header">Send production report</div>
-<div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, and coverage only. No rates or costs, so it's safe to send to PM's and superintendents.</div>
+<div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, and coverage only. No rates or costs, so it's safe to send to PM's and superintendents. Pick a project and it tracks coverage so far and remaining from your previously sent reports.</div>
+<div class="ewt-grid" style="margin-bottom:8px">
+  <label>Report day <input type="date" id="flat-prod-date"></label>
+</div>
 <div class="ewt-recipients" id="flat-recipients"></div>
 <input type="text" id="flat-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
 <div class="controls" style="margin-top:8px">
@@ -7905,39 +7907,24 @@ function pickProject(cb, what, okLabel) {
   if (!projs.length) { cb(null); return; }   // projects unknown (offline) — post without
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
-  ov.innerHTML = '<div style="background:var(--card);border-radius:14px;padding:18px;max-width:360px;width:100%">' +
-    '<div style="font-weight:650;margin-bottom:10px;font-size:15px">What project is this ' + escHTML(what || 'spread') + ' for?</div>' +
-    '<input type="search" id="proj-search" placeholder="Search projects — name or job #…" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;background:var(--card);color:var(--dark);margin-bottom:8px">' +
-    '<select id="proj-pick" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px"></select>' +
+  ov.innerHTML = '<div style="background:var(--card);border-radius:14px;padding:18px;max-width:380px;width:100%">' +
+    '<div style="font-weight:650;margin-bottom:2px;font-size:15px">What project is this ' + escHTML(what || 'spread') + ' for?</div>' +
+    '<div style="font-size:12px;color:var(--gray);margin-bottom:8px">Type to search, tap to pick — or leave empty for no project.</div>' +
+    '<div class="search-bar" style="margin:0">' +
+      '<input type="text" id="proj-combo" placeholder="Search projects — name or job #…" autocomplete="off">' +
+      '<div class="search-results" id="proj-combo-results"></div>' +
+    '</div>' +
     '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">' +
       '<button class="btn" id="proj-cancel">Cancel</button>' +
       '<button class="btn btn-primary" id="proj-ok">' + escHTML(okLabel || 'Post') + '</button>' +
     '</div></div>';
   document.body.appendChild(ov);
-  const sel = ov.querySelector('#proj-pick');
-  const search = ov.querySelector('#proj-search');
-  // Search filters the dropdown by name or job # (same feel as the JHA picker);
-  // a single match auto-selects. The dropdown always stays usable.
-  function fill() {
-    const q = (search.value || '').trim().toLowerCase();
-    const match = q ? projs.filter(p => (String(p.name) + ' ' + String(p.code)).toLowerCase().includes(q)) : projs;
-    const keep = sel.value;
-    const head = !q ? '— No project —'
-      : match.length ? '— No project — (' + match.length + ' of ' + projs.length + ' match)'
-      : 'No projects match "' + q + '"';
-    sel.innerHTML = '<option value="">' + escHTML(head) + '</option>' +
-      match.map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.code + ' — ' + p.name) + '</option>').join('');
-    if (keep && match.some(p => p.code === keep)) sel.value = keep;
-    else if (q && match.length === 1) sel.value = match[0].code;
-    else sel.value = '';
-  }
-  fill();
-  search.addEventListener('input', fill);
+  const combo = projCombo('proj-combo', 'proj-combo-results', () => {});
   ov.querySelector('#proj-cancel').onclick = () => ov.remove();
   ov.querySelector('#proj-ok').onclick = () => {
-    const code = sel.value;
+    const p = combo.get();
     ov.remove();
-    cb(projs.find(x => x.code === code) || null);
+    cb(p);
   };
 }
 
@@ -7962,6 +7949,61 @@ const PROD_STRIPE = '#171d24';       // alternating table rows
 // EB logo for the report header — preloaded so the sync canvas draw can use it.
 const PROD_LOGO = new Image();
 PROD_LOGO.src = '/icons/logo.png';
+
+// Previously sent reports (recorded server-side by /api/send-production) feed
+// the moved-so-far / remaining tiles. Freshest copy from the server when
+// online; the local cache covers offline and is updated after each send.
+const PROD_SENDS_CACHE = 'ebcc_production_sends_cache';
+async function prodFetchSends() {
+  try {
+    const r = await fetch('/api/records');
+    if (r.ok) {
+      const j = await r.json();
+      const arr = j && j.records && j.records.production_sends && j.records.production_sends.data;
+      if (Array.isArray(arr)) {
+        try { localStorage.setItem(PROD_SENDS_CACHE, JSON.stringify(arr)); } catch (e) {}
+        return arr;
+      }
+    }
+  } catch (e) {}
+  try { const v = JSON.parse(localStorage.getItem(PROD_SENDS_CACHE) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+}
+// Total production from days BEFORE the report day for this project + tab.
+// Re-sending a day's report replaces that day (latest send per date wins) —
+// it never double-counts.
+function prodPriorMoved(sends, kind, code, dateIso) {
+  const latestByDate = {};
+  (sends || []).forEach(s => {
+    if (!s || s.kind !== kind || !s.projectCode || s.projectCode !== code) return;
+    if (!s.date || s.date >= dateIso) return;
+    const cur = latestByDate[s.date];
+    if (!cur || String(s.ts || '') > String(cur.ts || '')) latestByDate[s.date] = s;
+  });
+  let total = 0, days = 0;
+  Object.keys(latestByDate).forEach(d => { total += (+latestByDate[d].amount || 0); days++; });
+  return { total: Math.round(total), days: days };
+}
+// Stamp the report day + job-progress numbers onto collected data. With a
+// project and a job total, days-to-finish switches to the REMAINING work.
+function prodAugment(d, proj, sends, dateIso) {
+  d.reportDate = dateIso;
+  if (!proj) return d;
+  const prior = prodPriorMoved(sends, d.kind, proj.code, dateIso);
+  d.movedPrior = prior.total;
+  d.movedDays = prior.days;
+  const jobTotal = d.kind === 'cpy' ? d.yardsToMove : d.jobSqft;
+  const perDay = d.kind === 'cpy' ? d.totalYards : d.sqftPerDay;
+  if (jobTotal > 0) {
+    d.movedTotal = Math.min(jobTotal, prior.total + perDay);
+    d.remaining = Math.max(0, jobTotal - prior.total - perDay);
+    if (perDay > 0) {
+      const days = d.remaining / perDay;
+      d.days = days ? Math.round(days * 10) / 10 : 0;
+      d.finish = d.days ? formatFinishDate(estFinishDate(d.days, d.state)) : '';
+    }
+  }
+  return d;
+}
 
 function prodCollectCpy() {
   const rows = [];
@@ -8016,17 +8058,28 @@ function prodDrawImage(d, proj) {
   const showRound = d.kind === 'cpy';
   const rowH = 40;
   const tiles = [];
+  const progressSub = d.movedDays ? 'incl. this day · ' + (d.movedDays + 1) + ' report days' : 'first report day';
   if (d.kind === 'cpy') {
     tiles.push({ label: 'Yards / Day', value: fmt(d.totalYards),
       sub: (d.dirt && d.rock) ? 'dirt ' + fmt(d.dirt) + ' · rock ' + fmt(d.rock) : (d.rock ? 'rock' : 'dirt') });
     if (d.processed) tiles.push({ label: 'Processed / Day', value: fmt(d.processed), sub: 'yd³ material' });
     tiles.push({ label: 'Hours / Day', value: String(d.hoursPerDay), sub: d.ydPerLoad ? d.ydPerLoad + ' yd/load' : '' });
     if (d.yardsToMove) tiles.push({ label: 'Yards To Move', value: fmt(d.yardsToMove), sub: 'total job' });
+    if (d.movedTotal != null) {
+      tiles.push({ label: 'Moved So Far', value: fmt(d.movedTotal), sub: progressSub });
+      tiles.push({ label: 'Yards Remaining', value: fmt(d.remaining),
+        sub: d.yardsToMove ? Math.min(100, Math.round(d.movedTotal / d.yardsToMove * 100)) + '% complete' : '' });
+    }
     if (d.days) tiles.push({ label: 'Days To Finish', value: String(d.days), sub: d.finish ? 'est. ' + d.finish : '' });
   } else {
     if (d.sqftPerDay) tiles.push({ label: 'Sq Ft / Day', value: fmt(d.sqftPerDay), sub: 'crew coverage' });
     tiles.push({ label: 'Hours / Day', value: String(d.hoursPerDay), sub: '' });
     if (d.jobSqft) tiles.push({ label: 'Job Sq Ft', value: fmt(d.jobSqft), sub: 'total job' });
+    if (d.movedTotal != null) {
+      tiles.push({ label: 'Covered So Far', value: fmt(d.movedTotal), sub: progressSub });
+      tiles.push({ label: 'Sq Ft Remaining', value: fmt(d.remaining),
+        sub: d.jobSqft ? Math.min(100, Math.round(d.movedTotal / d.jobSqft * 100)) + '% complete' : '' });
+    }
     if (d.days) tiles.push({ label: 'Days To Finish', value: String(d.days), sub: d.finish ? 'est. ' + d.finish : '' });
   }
   const tileRows = Math.ceil(tiles.length / 3) || 1;
@@ -8061,7 +8114,9 @@ function prodDrawImage(d, proj) {
   x.fillText(d.title + ' · ' + (d.state === 'TX' ? 'Texas' : 'California') + (proj ? ' · ' + proj.code + ' — ' + proj.name : ''), tx0, 82);
   x.globalAlpha = 1;
   x.font = '700 16px ' + F;
-  const dateStr = new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const dp = String(d.reportDate || '').split('-');
+  const rd = dp.length === 3 ? new Date(+dp[0], +dp[1] - 1, +dp[2]) : new Date();
+  const dateStr = rd.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   x.textAlign = 'right';
   x.fillText(dateStr, W - PAD, 52);
   x.textAlign = 'left';
@@ -8157,14 +8212,22 @@ function previewShow(url, isImage, downloadName) {
   document.getElementById('ewt-modal').classList.add('open');
 }
 
-function prodPreview(kind) {
+function prodReportDate(kind) {
+  const el = document.getElementById(kind + '-prod-date');
+  return (el && el.value) || jhaToday();
+}
+
+async function prodPreview(kind) {
   const d = kind === 'cpy' ? prodCollectCpy() : prodCollectFlat();
   if (!d.rows.length) { alert('Add at least one piece of equipment first.'); return; }
+  const sends = await prodFetchSends();
   pickProject((proj) => {
+    const dateIso = prodReportDate(kind);
+    prodAugment(d, proj, sends, dateIso);
     const cv = prodDrawImage(d, proj);
     cv.toBlob((blob) => {
       previewShow(URL.createObjectURL(blob), true,
-        'EBCC_' + (kind === 'cpy' ? 'Earthwork' : 'FlatWork') + '_Production_' + new Date().toISOString().slice(0, 10) + '.png');
+        'EBCC_' + (kind === 'cpy' ? 'Earthwork' : 'FlatWork') + '_Production_' + dateIso + '.png');
     }, 'image/png');
   }, 'production report', 'Continue');
 }
@@ -8174,20 +8237,27 @@ async function prodSend(kind) {
   if (!d.rows.length) { alert('Add at least one piece of equipment first.'); return; }
   const statusEl = document.getElementById(kind + '-prod-status');
   const setStatus = (msg, color) => { statusEl.textContent = msg; statusEl.style.color = color || 'var(--dark)'; };
+  const sends = await prodFetchSends();
   pickProject(async (proj) => {
+    const dateIso = prodReportDate(kind);
+    prodAugment(d, proj, sends, dateIso);
+    const amount = d.kind === 'cpy' ? d.totalYards : d.sqftPerDay;
     const cv = prodDrawImage(d, proj);
     const dataUri = cv.toDataURL('image/png');
-    const dateIso = new Date().toISOString().slice(0, 10);
     const fileName = 'EBCC_' + (kind === 'cpy' ? 'Earthwork' : 'FlatWork') + '_Production_' + dateIso + '.png';
     const subject = d.title + (proj ? ' — ' + proj.name : '') + ' — ' + dateIso;
     const lines = ['EBCC Production Report — ' + d.title, 'Date: ' + dateIso + ' · State: ' + d.state];
     if (proj) lines.push('Project: ' + proj.code + ' — ' + proj.name);
     if (d.kind === 'cpy') {
       lines.push('Yards/day: ' + d.totalYards.toLocaleString() + (d.processed ? ' · Processed/day: ' + d.processed.toLocaleString() : ''));
-      if (d.yardsToMove) lines.push('Yards to move: ' + d.yardsToMove.toLocaleString() + (d.days ? ' · ' + d.days + ' days' + (d.finish ? ' (est. ' + d.finish + ')' : '') : ''));
+      if (d.yardsToMove) lines.push('Yards to move: ' + d.yardsToMove.toLocaleString());
+      if (d.movedTotal != null) lines.push('Moved so far: ' + d.movedTotal.toLocaleString() + ' · Remaining: ' + d.remaining.toLocaleString() + (d.days ? ' · ' + d.days + ' days' + (d.finish ? ' (est. ' + d.finish + ')' : '') : ''));
+      else if (d.days) lines.push(d.days + ' days to finish' + (d.finish ? ' (est. ' + d.finish + ')' : ''));
     } else {
       if (d.sqftPerDay) lines.push('Sq ft/day: ' + d.sqftPerDay.toLocaleString());
-      if (d.jobSqft) lines.push('Job sq ft: ' + d.jobSqft.toLocaleString() + (d.days ? ' · ' + d.days + ' days' + (d.finish ? ' (est. ' + d.finish + ')' : '') : ''));
+      if (d.jobSqft) lines.push('Job sq ft: ' + d.jobSqft.toLocaleString());
+      if (d.movedTotal != null) lines.push('Covered so far: ' + d.movedTotal.toLocaleString() + ' · Remaining: ' + d.remaining.toLocaleString() + (d.days ? ' · ' + d.days + ' days' + (d.finish ? ' (est. ' + d.finish + ')' : '') : ''));
+      else if (d.days) lines.push(d.days + ' days to finish' + (d.finish ? ' (est. ' + d.finish + ')' : ''));
     }
     lines.push('Hours/day: ' + d.hoursPerDay);
     lines.push('', 'Equipment:');
@@ -8200,9 +8270,21 @@ async function prodSend(kind) {
     try {
       const r = await fetch('/api/send-production', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, text: bodyText, recipients, fileName, png: dataUri, kind: d.kind, date: dateIso }),
+        body: JSON.stringify({
+          subject, text: bodyText, recipients, fileName, png: dataUri, kind: d.kind, date: dateIso,
+          projectCode: proj ? proj.code : '', projectName: proj ? proj.name : '', amount: amount,
+        }),
       });
       const res = r.ok ? await r.json() : null;
+      if (res && res.ok && proj) {
+        // Mirror the server's send record locally so the very next report's
+        // moved-so-far is right even before the next server pull.
+        try {
+          const cache = JSON.parse(localStorage.getItem(PROD_SENDS_CACHE) || '[]');
+          cache.push({ ts: new Date().toISOString(), date: dateIso, kind: d.kind, projectCode: proj.code, projectName: proj.name, amount: amount, sent: !!res.sent });
+          localStorage.setItem(PROD_SENDS_CACHE, JSON.stringify(cache.slice(-300)));
+        } catch (e) {}
+      }
       if (res && res.sent) {
         setStatus('Emailed ✓ to ' + (res.recipients || recipients).join(', '), 'var(--green)');
         return;
@@ -8237,6 +8319,8 @@ async function prodSend(kind) {
 
 prodRenderRecipients('cpy-recipients', 'cpy-recipient-chk');
 prodRenderRecipients('flat-recipients', 'flat-recipient-chk');
+document.getElementById('cpy-prod-date').value = jhaToday();
+document.getElementById('flat-prod-date').value = jhaToday();
 document.getElementById('cpy-prod-preview').addEventListener('click', () => prodPreview('cpy'));
 document.getElementById('cpy-prod-send').addEventListener('click', () => prodSend('cpy'));
 document.getElementById('flat-prod-preview').addEventListener('click', () => prodPreview('flat'));
@@ -8286,37 +8370,57 @@ function jhaMutate(fn) {
 }
 function jhaCur() { return jhaRead().find(x => x.id === jhaCurrentId) || null; }
 
-// Search-plus-dropdown project picker (shared by JHA and SSSP): the search
-// box filters the dropdown's options by name or job # — like the Job Books
-// search — and a single match auto-selects. Rebuilds options, keeps a still-
-// matching selection, and fires 'change' when the selection had to move.
-function projPickerRefresh(searchId, selId) {
-  const sel = document.getElementById(selId);
-  const q = (document.getElementById(searchId).value || '').trim().toLowerCase();
-  const all = (window.EBCC_PROJECTS || []).slice()
+// Single-field project combobox (JHA, SSSP, and the pick-a-project dialog):
+// typing in the box drops a list of matching projects — same dropdown the
+// equipment search uses — and tapping one selects it. Typing again clears
+// the selection and searches fresh.
+function projCombo(inputId, resultsId, onSelect) {
+  const inp = document.getElementById(inputId);
+  const box = document.getElementById(resultsId);
+  let code = '';
+  const projects = () => (window.EBCC_PROJECTS || []).slice()
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  const match = q ? all.filter(p => (String(p.name) + ' ' + String(p.code)).toLowerCase().includes(q)) : all;
-  const head = !q ? 'Select a project…'
-    : match.length ? 'Select a project (' + match.length + ' of ' + all.length + ' match)…'
-    : 'No projects match "' + q + '"';
-  const keep = sel.value;
-  sel.innerHTML = '<option value="">' + escHTML(head) + '</option>' +
-    match.map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.name) + ' (' + escHTML(p.code) + ')</option>').join('');
-  if (keep && match.some(p => p.code === keep)) sel.value = keep;
-  else if (q && match.length === 1) sel.value = match[0].code;
-  else sel.value = '';
-  if (sel.value !== keep) sel.dispatchEvent(new Event('change'));
+  const close = () => { box.classList.remove('open'); box.innerHTML = ''; };
+  function openList(q) {
+    const all = projects();
+    if (!all.length) { jbLoadProjects().then(() => { if ((window.EBCC_PROJECTS || []).length) openList(q); }); }
+    const match = q ? all.filter(p => (String(p.name) + ' ' + String(p.code)).toLowerCase().includes(q)) : all;
+    box.innerHTML = match.length
+      ? match.slice(0, 15).map(p =>
+          '<div class="search-result" data-proj="' + escAttr(p.code) + '"><span>' + escHTML(p.name) + '</span><span class="rate">' + escHTML(p.code) + '</span></div>'
+        ).join('') + (match.length > 15 ? '<div class="search-result"><span style="color:var(--gray)">…' + (match.length - 15) + ' more — keep typing</span></div>' : '')
+      : '<div class="search-result"><span style="color:var(--gray)">No projects match' + (q ? ' "' + escHTML(q) + '"' : '') + '</span></div>';
+    box.classList.add('open');
+  }
+  inp.addEventListener('input', () => {
+    if (code) { code = ''; onSelect(null); }  // typing again = new search
+    openList(inp.value.trim().toLowerCase());
+  });
+  inp.addEventListener('focus', () => { if (!code) openList(inp.value.trim().toLowerCase()); });
+  box.addEventListener('mousedown', (e) => {
+    const el = e.target.closest('[data-proj]');
+    if (!el) { e.preventDefault(); return; }
+    e.preventDefault();
+    const p = projects().find(x => x.code === el.getAttribute('data-proj'));
+    close();
+    if (!p) return;
+    code = p.code;
+    inp.value = p.name + ' (' + p.code + ')';
+    inp.blur();
+    onSelect(p);
+  });
+  document.addEventListener('click', (e) => { if (!inp.contains(e.target) && !box.contains(e.target)) close(); });
+  return {
+    getCode: () => code,
+    get: () => projects().find(p => p.code === code) || null,
+    clear: () => { code = ''; inp.value = ''; close(); },
+  };
 }
-function wireProjPicker(searchId, selId) {
-  document.getElementById(searchId).addEventListener('input', () => projPickerRefresh(searchId, selId));
-}
-function jhaPopulateProjects() { projPickerRefresh('jha-proj-search', 'jha-proj'); }
-wireProjPicker('jha-proj-search', 'jha-proj');
+const jhaProjCombo = projCombo('jha-proj-combo', 'jha-proj-results', () => jhaRenderList());
 
 function jhaRenderList() {
-  const sel = document.getElementById('jha-proj');
   const list = document.getElementById('jha-list');
-  const code = sel.value;
+  const code = jhaProjCombo.getCode();
   if (!code) { list.innerHTML = ''; return; }
   const mine = jhaRead().filter(j => j.projectCode === code)
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -8343,8 +8447,7 @@ function jhaRenderList() {
 }
 
 function jhaNewForToday() {
-  const sel = document.getElementById('jha-proj');
-  const code = sel.value;
+  const code = jhaProjCombo.getCode();
   if (!code) return;
   const all = jhaRead();
   const today = jhaToday();
@@ -8470,7 +8573,6 @@ function jhaFlushFields() {
 }
 
 // ---- events ----
-document.getElementById('jha-proj').addEventListener('change', jhaRenderList);
 document.getElementById('jha-list').addEventListener('click', (e) => {
   if (e.target.closest('#jha-new-btn')) { jhaNewForToday(); return; }
   const open = e.target.closest('[data-jha-open]');
@@ -8925,8 +9027,7 @@ jhaRenderRecipients();
 
 // ---- tab wiring + cross-device updates ----
 document.querySelector('.tab[data-tab="jha"]').addEventListener('click', () => {
-  if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects().then(jhaPopulateProjects);
-  else jhaPopulateProjects();
+  if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
   jhaRenderList();
   try { window.dispatchEvent(new CustomEvent('ebcc-jha-pull')); } catch (e) {}
 });
@@ -8943,23 +9044,18 @@ window.addEventListener('ebcc-jha-updated', () => {
 });
 window.addEventListener('pagehide', jhaFlushFields);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') jhaFlushFields(); });
-jhaPopulateProjects();
 
 // === SSSP — project picker ready; content still to come ===
 function ssspRender() {
-  const code = document.getElementById('sssp-proj').value;
   const body = document.getElementById('sssp-body');
-  if (!code) { body.innerHTML = ''; return; }
-  const p = (window.EBCC_PROJECTS || []).find(x => x.code === code) || {};
-  body.innerHTML = '<div class="empty">SSSP’s for ' + escHTML(p.name || code) + ' will live here — this section is still being built out.</div>';
+  const p = ssspProjCombo.get();
+  if (!p) { body.innerHTML = ''; return; }
+  body.innerHTML = '<div class="empty">SSSP’s for ' + escHTML(p.name || p.code) + ' will live here — this section is still being built out.</div>';
 }
-document.getElementById('sssp-proj').addEventListener('change', ssspRender);
-wireProjPicker('sssp-proj-search', 'sssp-proj');
+const ssspProjCombo = projCombo('sssp-proj-combo', 'sssp-proj-results', () => ssspRender());
 document.querySelector('.tab[data-tab="sssp"]').addEventListener('click', () => {
-  if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects().then(() => projPickerRefresh('sssp-proj-search', 'sssp-proj'));
-  else projPickerRefresh('sssp-proj-search', 'sssp-proj');
+  if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
 });
-projPickerRefresh('sssp-proj-search', 'sssp-proj');
 
 </script>
 

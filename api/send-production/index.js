@@ -7,7 +7,7 @@
 // Body: { subject, text, recipients[], fileName, png (data URI or base64),
 //         kind ('cpy'|'flat'), date }
 // Reply: { ok:true, sent:true|false, reason?, archived:bool }
-const { getPrincipal, ensureUser, json } = require('../shared/auth');
+const { getContainers, getPrincipal, ensureUser, json } = require('../shared/auth');
 const { getEwtContainer, safeName } = require('../shared/blob');
 const { sendGraphMail } = require('../shared/mail');
 
@@ -64,6 +64,38 @@ module.exports = async function (context, req) {
       fromEmail: me.email, subject, text, recipients, fileName,
       pdfB64: pngB64, contentType: 'image/png',
     });
+  }
+
+  // ---- Record the send (never blocks the reply): the moved-so-far /
+  // remaining tiles on future reports sum these per project + day.
+  try {
+    const str = (v, n) => String(v == null ? '' : v).slice(0, n || 120);
+    const now = new Date().toISOString();
+    const rec = {
+      ts: now,
+      date: str(body.date, 20),
+      kind: kind,
+      projectCode: str(body.projectCode, 40),
+      projectName: str(body.projectName, 120),
+      amount: isFinite(+body.amount) ? Math.round(+body.amount) : 0,
+      emailedTo: recipients,
+      sent: !!mail.sent,
+      pdfBlob: blobPath,
+    };
+    const { records, users } = await getContainers();
+    const docId = me.id + ':production_sends';
+    let doc = null;
+    try { doc = (await records.item(docId, me.id).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
+    let arr = (doc && Array.isArray(doc.data)) ? doc.data : [];
+    arr.push(rec);
+    if (arr.length > 300) arr = arr.slice(arr.length - 300);
+    await records.items.upsert({ id: docId, ownerId: me.id, ownerEmail: me.email, type: 'production_sends', data: arr, updatedAt: now });
+    me.counts = me.counts || {};
+    me.counts.production_sends = arr.length;
+    me.lastActiveAt = now;
+    await users.items.upsert(me);
+  } catch (e) {
+    context.log.error('send-production record', e);
   }
 
   if (mail.sent) return json(context, 200, { ok: true, sent: true, recipients: recipients, archived: !!blobPath });

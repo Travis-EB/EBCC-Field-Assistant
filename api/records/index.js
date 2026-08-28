@@ -10,7 +10,7 @@ const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../s
 
 const ALLOWED_TYPES = new Set([
   'trucking_tickets', 'load_count', 'load_count_sends', 'ewt_records', 'ewt_drafts',
-  'jha_records',
+  'jha_records', 'production_sends',
   // Posted spreads (explicit snapshots for admin review)
   'cpy_posts', 'flat_posts', 'lime_posts', 'flexbase_posts',
   // Calculator tabs — synced so admins can review what's being priced out
