@@ -2187,7 +2187,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 <div id="cpy-prod-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
 
 <div class="footer">
-  CA rates anchor at $3.50/gal — select a job above and its Job Books fuel price escalates rates per the EB fuel worksheet (gal/hr &times; fuel difference, rounded up) &middot; Rates editable via Edit rates button.
+  Rates anchor at $3.50/gal (CA) and $2.75/gal (TX) — select a job above and its Job Books fuel price escalates rates per the EB fuel worksheets (gal/hr &times; fuel difference) &middot; Rates editable via Edit rates button.
 </div>
 </div>
 
@@ -2858,83 +2858,83 @@ const EQUIPMENT_LIBRARY_CA = [
 
 const EQUIPMENT_LIBRARY_TX = [
   // Yard producers (scrapers) — same EBCC field-data round time / cy / prodRate as CA
-  { name: 'Scraper: CAT613G', rate: 171, roundTime: 3,   cyPerLoad: 11, prodRate: 0.95, producer: true },
-  { name: 'Scraper: CAT623G', rate: 220, roundTime: 3,   cyPerLoad: 14, prodRate: 0.97, producer: true },
-  { name: 'Scraper: CAT637',  rate: 308, roundTime: 3.5, cyPerLoad: 22, prodRate: 0.85, producer: true },
+  { name: 'Scraper: CAT613G', rate: 171, galHr: 10, roundTime: 3,   cyPerLoad: 11, prodRate: 0.95, producer: true },
+  { name: 'Scraper: CAT623G', rate: 220, galHr: 19, roundTime: 3,   cyPerLoad: 14, prodRate: 0.97, producer: true },
+  { name: 'Scraper: CAT637',  rate: 308, galHr: 34, roundTime: 3.5, cyPerLoad: 22, prodRate: 0.85, producer: true },
   // CAT651: single-engine 657 (same bowl) — Travis: runs $80/hr under the 657 in both states
-  { name: 'Scraper: CAT651',  rate: 310, roundTime: 3,   cyPerLoad: 28, prodRate: 0.90, producer: true },
-  { name: 'Scraper: CAT657',  rate: 390, roundTime: 3,   cyPerLoad: 28, prodRate: 0.90, producer: true },
+  { name: 'Scraper: CAT651',  rate: 310, galHr: 28, roundTime: 3,   cyPerLoad: 28, prodRate: 0.90, producer: true },
+  { name: 'Scraper: CAT657',  rate: 390, galHr: 40, roundTime: 3,   cyPerLoad: 28, prodRate: 0.90, producer: true },
   // Material processors (Wirtgen) — real TX sheet rates ("Wirtgen SM220*" $618,
   // "Wirtgen WR240" $318.50). ydPerHr defaults are starting points; editable per card.
-  { name: 'Material Processor: Wirtgen SM220', rate: 591,    ydPerHr: 600, processor: true, producer: false },
-  { name: 'Material Processor: Wirtgen WR240', rate: 296, ydPerHr: 400, processor: true, producer: false },
+  { name: 'Material Processor: Wirtgen SM220', rate: 591, galHr: 12,    ydPerHr: 600, processor: true, producer: false },
+  { name: 'Material Processor: Wirtgen WR240', rate: 296, galHr: 10, ydPerHr: 400, processor: true, producer: false },
   // Rock trucks (articulated haulers) — fixed body capacity (fixedLoad; global Yd/Load
   // does not apply). Volvo A40 ($224) and Cat 777 ($502.50) rates are from the TX rate
   // sheet ("TODAY'S RATE/HR"); other rock-truck rates are estimates scaled by capacity
   // from the A40 — adjust via Edit Rates as needed.
-  { name: 'Rock Truck: CAT 725 (19.6 cy)',      rate: 138, roundTime: 4, cyPerLoad: 19.6, prodRate: 1, producer: true, fixedLoad: true },
-  { name: 'Rock Truck: CAT 730 (22.9 cy)',      rate: 155, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
-  { name: 'Rock Truck: CAT 740 (30 cy)',        rate: 197, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
-  { name: 'Rock Truck: JD 260E (19.6 cy)',      rate: 138, roundTime: 4, cyPerLoad: 19.6, prodRate: 1, producer: true, fixedLoad: true },
-  { name: 'Rock Truck: JD 310E (22.9 cy)',      rate: 155, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
-  { name: 'Rock Truck: JD 410E (29.7 cy)',      rate: 195, roundTime: 4, cyPerLoad: 29.7, prodRate: 1, producer: true, fixedLoad: true },
-  { name: 'Rock Truck: Volvo A30G (22.9 cy)',   rate: 155, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
-  { name: 'Rock Truck: Volvo A40 (30 cy)',      rate: 197, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
-  { name: 'Rock Truck: CAT 777 (60 cy)',        rate: 435, roundTime: 5, cyPerLoad: 60, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: CAT 725 (19.6 cy)',      rate: 138, galHr: 8, roundTime: 4, cyPerLoad: 19.6, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: CAT 730 (22.9 cy)',      rate: 155, galHr: 9, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: CAT 740 (30 cy)',        rate: 197, galHr: 12, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: JD 260E (19.6 cy)',      rate: 138, galHr: 8, roundTime: 4, cyPerLoad: 19.6, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: JD 310E (22.9 cy)',      rate: 155, galHr: 9, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: JD 410E (29.7 cy)',      rate: 195, galHr: 12, roundTime: 4, cyPerLoad: 29.7, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: Volvo A30G (22.9 cy)',   rate: 155, galHr: 9, roundTime: 4, cyPerLoad: 22.9, prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: Volvo A40 (30 cy)',      rate: 197, galHr: 12, roundTime: 4, cyPerLoad: 30,   prodRate: 1, producer: true, fixedLoad: true },
+  { name: 'Rock Truck: CAT 777 (60 cy)',        rate: 435, galHr: 30, roundTime: 5, cyPerLoad: 60, prodRate: 1, producer: true, fixedLoad: true },
   // Backhoes
-  { name: 'Backhoe: Cat 446',                          rate: 144, producer: false },
+  { name: 'Backhoe: Cat 446',                          rate: 144, galHr: 4, producer: false },
   { name: 'Backhoe: Compaction Wheel (160/330/450/460)', rate: 51.00, producer: false },
   // Bobcats
-  { name: 'Bobcat: Cat',              rate: 131, producer: false },
-  { name: 'Bobcat: Cat with Breaker', rate: 175, producer: false },
+  { name: 'Bobcat: Cat',              rate: 131, galHr: 3, producer: false },
+  { name: 'Bobcat: Cat with Breaker', rate: 175, galHr: 3, producer: false },
   // Bulldozers
-  { name: 'Bulldozer: JD 450J',                       rate: 172, producer: false },
-  { name: 'Bulldozer: Cat D4 w/Slope Board',          rate: 172, producer: false },
-  { name: 'Bulldozer: JD 650K',                       rate: 172, producer: false },
-  { name: 'Bulldozer: Cat D6 XE',                     rate: 226, producer: false },
-  { name: 'Bulldozer: Cat D6T w/dual slope boards',   rate: 233, producer: false },
-  { name: 'Bulldozer: JD 850K',                       rate: 217, producer: false },
-  { name: 'Bulldozer: Cat D8T',                       rate: 297, producer: false },
-  { name: 'Bulldozer: JD 1050K',                      rate: 278, producer: false },
-  { name: 'Bulldozer: Cat D9T',                       rate: 389.16, producer: false },
-  { name: 'Bulldozer: Cat D8T w/GPS',                 rate: 289.8, producer: false },
-  { name: 'Bulldozer: Cat D10N',                      rate: 525.76, producer: false },
-  { name: 'Bulldozer: Cat D10T',                      rate: 545.76, producer: false },
+  { name: 'Bulldozer: JD 450J',                       rate: 172, galHr: 5, producer: false },
+  { name: 'Bulldozer: Cat D4 w/Slope Board',          rate: 172, galHr: 5, producer: false },
+  { name: 'Bulldozer: JD 650K',                       rate: 172, galHr: 5, producer: false },
+  { name: 'Bulldozer: Cat D6 XE',                     rate: 226, galHr: 10, producer: false },
+  { name: 'Bulldozer: Cat D6T w/dual slope boards',   rate: 233, galHr: 10, producer: false },
+  { name: 'Bulldozer: JD 850K',                       rate: 217, galHr: 11, producer: false },
+  { name: 'Bulldozer: Cat D8T',                       rate: 297, galHr: 11, producer: false },
+  { name: 'Bulldozer: JD 1050K',                      rate: 278, galHr: 18, producer: false },
+  { name: 'Bulldozer: Cat D9T',                       rate: 389.16, galHr: 23, producer: false },
+  { name: 'Bulldozer: Cat D8T w/GPS',                 rate: 289.8, galHr: 11, producer: false },
+  { name: 'Bulldozer: Cat D10N',                      rate: 525.76, galHr: 31, producer: false },
+  { name: 'Bulldozer: Cat D10T',                      rate: 545.76, galHr: 31, producer: false },
   // Compactors
-  { name: 'Compactor: Cat 815',                       rate: 235, producer: false },
-  { name: 'Compactor: Cat 824',                       rate: 176, producer: false },
-  { name: 'Compactor: Cat 834',                       rate: 240, producer: false },
-  { name: 'Compactor: 36" Smooth Drum Roller',        rate: 78,  producer: false },
-  { name: 'Compactor: 48" Smooth Drum Roller',        rate: 93, producer: false },
-  { name: 'Compactor: 66" Smooth/Padfoot Drum Roller',rate: 81.25, producer: false },
-  { name: 'Compactor: 84" Smooth/Padfoot Drum Roller',rate: 100, producer: false },
+  { name: 'Compactor: Cat 815',                       rate: 235, galHr: 11.8, producer: false },
+  { name: 'Compactor: Cat 824',                       rate: 176, galHr: 17.8, producer: false },
+  { name: 'Compactor: Cat 834',                       rate: 240, galHr: 20, producer: false },
+  { name: 'Compactor: 36" Smooth Drum Roller',        rate: 78, galHr: 5,  producer: false },
+  { name: 'Compactor: 48" Smooth Drum Roller',        rate: 93, galHr: 5, producer: false },
+  { name: 'Compactor: 66" Smooth/Padfoot Drum Roller',rate: 81.25, galHr: 6, producer: false },
+  { name: 'Compactor: 84" Smooth/Padfoot Drum Roller',rate: 100, galHr: 8, producer: false },
   { name: 'Compactor: 5x5 Towable',                   rate: 118,  producer: false },
   // Disc
   { name: "Disk: 14' Disk", rate: 112.50, producer: false },
   // Dump Trucks
-  { name: 'Dumptruck: Tandem (10 wheeler)', rate: 85,  producer: false },
-  { name: 'Dumptruck: Semi End Dump',       rate: 80, producer: false },
+  { name: 'Dumptruck: Tandem (10 wheeler)', rate: 85, galHr: 5,  producer: false },
+  { name: 'Dumptruck: Semi End Dump',       rate: 80, galHr: 5, producer: false },
   // Excavators
-  { name: 'Excavator: JD 60D Mini',                       rate: 129, producer: false },
-  { name: 'Excavator: Volvo 160',                         rate: 190, producer: false },
-  { name: 'Excavator: Volvo 220',                         rate: 218, producer: false },
-  { name: 'Excavator: Cat 325F L',                        rate: 204, producer: false },
-  { name: 'Excavator: Volvo 340',                         rate: 236, producer: false },
-  { name: 'Excavator: JD 350G',                           rate: 237, producer: false },
-  { name: 'Excavator: JD 470G',                           rate: 256, producer: false },
-  { name: 'Excavator: Cat 345C L',                        rate: 256, producer: false },
-  { name: 'Excavator: Volvo 460',                         rate: 265, producer: false },
-  { name: 'Excavator: Cat 345C w/Pulverizer',             rate: 321, producer: false },
-  { name: 'Excavator: Cat 345C w/Compaction Wheel',       rate: 321, producer: false },
-  { name: 'Excavator: JD 350G w/8,500 lb Breaker',        rate: 342, producer: false },
-  { name: 'Excavator: Case 800',                          rate: 336, producer: false },
-  { name: 'Excavator: Cat 345C w/10,000 lb Breaker',      rate: 356, producer: false },
-  { name: 'Excavator: Volvo 460 w/10,000 lb Breaker',     rate: 366, producer: false },
-  { name: 'Excavator: Hitachi 670',                       rate: 375, producer: false },
-  { name: 'Excavator: JD 870G',                           rate: 418, producer: false },
-  { name: 'Excavator: Hitachi 1200',                      rate: 530, producer: false },
+  { name: 'Excavator: JD 60D Mini',                       rate: 129, galHr: 2, producer: false },
+  { name: 'Excavator: Volvo 160',                         rate: 190, galHr: 7, producer: false },
+  { name: 'Excavator: Volvo 220',                         rate: 218, galHr: 9, producer: false },
+  { name: 'Excavator: Cat 325F L',                        rate: 204, galHr: 10, producer: false },
+  { name: 'Excavator: Volvo 340',                         rate: 236, galHr: 16, producer: false },
+  { name: 'Excavator: JD 350G',                           rate: 237, galHr: 16, producer: false },
+  { name: 'Excavator: JD 470G',                           rate: 256, galHr: 18, producer: false },
+  { name: 'Excavator: Cat 345C L',                        rate: 256, galHr: 19, producer: false },
+  { name: 'Excavator: Volvo 460',                         rate: 265, galHr: 18, producer: false },
+  { name: 'Excavator: Cat 345C w/Pulverizer',             rate: 321, galHr: 19, producer: false },
+  { name: 'Excavator: Cat 345C w/Compaction Wheel',       rate: 321, galHr: 19, producer: false },
+  { name: 'Excavator: JD 350G w/8,500 lb Breaker',        rate: 342, galHr: 16, producer: false },
+  { name: 'Excavator: Case 800',                          rate: 336, galHr: 19, producer: false },
+  { name: 'Excavator: Cat 345C w/10,000 lb Breaker',      rate: 356, galHr: 19, producer: false },
+  { name: 'Excavator: Volvo 460 w/10,000 lb Breaker',     rate: 366, galHr: 19, producer: false },
+  { name: 'Excavator: Hitachi 670',                       rate: 375, galHr: 20, producer: false },
+  { name: 'Excavator: JD 870G',                           rate: 418, galHr: 24, producer: false },
+  { name: 'Excavator: Hitachi 1200',                      rate: 530, galHr: 39, producer: false },
   // Farm Tractor
-  { name: 'Farm Tractor: JD 9570 Tracks', rate: 167, producer: false },
+  { name: 'Farm Tractor: JD 9570 Tracks', rate: 167, galHr: 14, producer: false },
   // Disk
   { name: "Disk: 14' Disk", rate: 50.00, producer: false },
   // GPS
@@ -2949,111 +2949,121 @@ const EQUIPMENT_LIBRARY_TX = [
   { name: 'Labor: Mechanic with Service Truck',   rate: 125, producer: false },
   { name: 'Labor: Superintendent',                rate: 125.00, producer: false },
   // Loaders
-  { name: 'Loader: JD 544k w/Forks',                rate: 187, producer: false },
-  { name: 'Loader: JD 644 w/Forks',                 rate: 220, producer: false },
-  { name: 'Loader: Volvo 110G w/Forks',             rate: 220, producer: false },
-  { name: 'Loader: Volvo 120G w/Forks',             rate: 177, producer: false },
-  { name: 'Loader: JD 744k w/Loadrite Scale & Forks', rate: 182, producer: false },
-  { name: 'Loader: Cat 950',                        rate: 220, producer: false },
-  { name: 'Loader: Cat 966',                        rate: 212, producer: false },
-  { name: 'Loader: Cat 980',                        rate: 237, producer: false },
-  { name: 'Loader: Cat 992G',                       rate: 437, producer: false },
+  { name: 'Loader: JD 544k w/Forks',                rate: 187, galHr: 8, producer: false },
+  { name: 'Loader: JD 644 w/Forks',                 rate: 220, galHr: 9, producer: false },
+  { name: 'Loader: Volvo 110G w/Forks',             rate: 220, galHr: 8, producer: false },
+  { name: 'Loader: Volvo 120G w/Forks',             rate: 177, galHr: 8, producer: false },
+  { name: 'Loader: JD 744k w/Loadrite Scale & Forks', rate: 182, galHr: 12, producer: false },
+  { name: 'Loader: Cat 950',                        rate: 220, galHr: 8, producer: false },
+  { name: 'Loader: Cat 966',                        rate: 212, galHr: 8, producer: false },
+  { name: 'Loader: Cat 980',                        rate: 237, galHr: 12, producer: false },
+  { name: 'Loader: Cat 992G',                       rate: 437, galHr: 42, producer: false },
   // Mixers
-  { name: 'Mixer: Cat RM300',     rate: 258, producer: false },
-  { name: 'Mixer: Cat RM500',     rate: 329, producer: false },
-  { name: 'Mixer: Bomag 446/460', rate: 321, producer: false },
+  { name: 'Mixer: Cat RM300',     rate: 258, galHr: 15, producer: false },
+  { name: 'Mixer: Cat RM500',     rate: 329, galHr: 20, producer: false },
+  { name: 'Mixer: Bomag 446/460', rate: 321, galHr: 17, producer: false },
   // (Wirtgen WR240 + SM220 live in the Material Processor entries above — no duplicates)
   // Mobilization (lowbeds)
   { name: 'Mobilization: Peterbilt 5 Axle Lowbed', rate: 145.00, producer: false },
   { name: 'Mobilization: Peterbilt 7 Axle Lowbed', rate: 175.00, producer: false },
   { name: 'Mobilization: Peterbilt 9 Axle Lowbed', rate: 250.00, producer: false },
   // Motor Grader
-  { name: 'Blade: JD 772D/Cat 140', rate: 198, producer: false },
-  { name: 'Blade: JD 872GP/Cat 14', rate: 211, producer: false },
+  { name: 'Blade: JD 772D/Cat 140', rate: 198, galHr: 11, producer: false },
+  { name: 'Blade: JD 872GP/Cat 14', rate: 211, galHr: 13, producer: false },
   // Rock Truck
   // Skidsteers
-  { name: 'Skid Steer: CAT 299', rate: 85.63, producer: false },
-  { name: 'Skid Steer: CAT 289', rate: 85.63, producer: false },
-  { name: 'Skid Steer: CAT 259', rate: 61.88, producer: false },
+  { name: 'Skid Steer: CAT 299', rate: 85.63, galHr: 3, producer: false },
+  { name: 'Skid Steer: CAT 289', rate: 85.63, galHr: 3, producer: false },
+  { name: 'Skid Steer: CAT 259', rate: 61.88, galHr: 3, producer: false },
   // Sweeping
-  { name: 'Sweeper: Street Sweeper', rate: 37.5, producer: false },
+  { name: 'Sweeper: Street Sweeper', rate: 37.5, galHr: 1, producer: false },
   // Track Loaders
-  { name: 'Track Loader: Cat 953', rate: 243, producer: false },
-  { name: 'Track Loader: Cat 963 w/Rippers & 4n1', rate: 243, producer: false },
-  { name: 'Track Loader: Cat 973 w/Rippers & 4n1', rate: 265, producer: false },
+  { name: 'Track Loader: Cat 953', rate: 243, galHr: 10, producer: false },
+  { name: 'Track Loader: Cat 963 w/Rippers & 4n1', rate: 243, galHr: 10, producer: false },
+  { name: 'Track Loader: Cat 973 w/Rippers & 4n1', rate: 265, galHr: 14, producer: false },
   // Water Pulls
-  { name: 'Water Pull: Cat 631', rate: 185, producer: false },
-  { name: 'Water Pull: Cat 637', rate: 275,  producer: false },
-  { name: 'Water Pull: Cat 657', rate: 332,  producer: false },
+  { name: 'Water Pull: Cat 631', rate: 185, galHr: 21.5, producer: false },
+  { name: 'Water Pull: Cat 637', rate: 275, galHr: 30,  producer: false },
+  { name: 'Water Pull: Cat 657', rate: 332, galHr: 35,  producer: false },
   // Water Towers / Trucks
   { name: 'Water Tower: 12,000 Gallon', rate: 17.05,  producer: false },
-  { name: 'Water Truck: 2500 Gal',      rate: 142, producer: false },
+  { name: 'Water Truck: 2500 Gal',      rate: 142, galHr: 12, producer: false },
 ];
 
 // Active state — persisted across sessions
-// === CA fuel escalation ===
-// From "CA 2023 EB-Bid Rates - FUEL ESCALATION WORKSHEET": today's rate =
-// ROUNDUP(base rate + gal/hr × (today's fuel − baseline fuel)). The app's CA
-// rates are its baseline at the $3.50/gal assumption, so here:
-//   rate(fuel) = ROUNDUP(anchor rate + galHr × (fuel − 3.50))
-// galHr comes from the sheet's fuel-consumption column (estimates for the few
-// machines the sheet doesn't carry: CAT651, Wirtgens, CAT777, CAT308).
-// Fuel is set per job on the calculator tabs; TX items carry no galHr.
-const CA_FUEL_ANCHOR = 3.50;
-let caFuel = (function () {
-  try { const v = parseFloat(localStorage.getItem('ebcc_ca_fuel_v1')); return isFinite(v) && v > 0 ? v : CA_FUEL_ANCHOR; }
-  catch (_) { return CA_FUEL_ANCHOR; }
+// === Fuel escalation (CA + TX) ===
+// CA — "CA 2023 EB-Bid Rates - FUEL ESCALATION WORKSHEET":
+//   today's rate = ROUNDUP(base rate + gal/hr × (fuel − $3.70))
+// TX — "EARTH BASICS PROPOSAL TEMPLATE" BID RATES sheet:
+//   today's rate = operated rate + gal/hr × (fuel − $2.75)   (no rounding)
+// The app's libraries are the baseline at each state's anchor, so:
+//   CA: rate(fuel) = ROUNDUP(anchor rate + galHr × (fuel − 3.50))
+//   TX: rate(fuel) = anchor rate + galHr × (fuel − 2.75)
+// galHr comes from each sheet's fuel-consumption column (estimates flagged in
+// the libraries for machines the sheets don't carry). The fuel price comes
+// from the selected job's Job Books entry; no job / no rate = the anchor.
+const FUEL_ANCHOR = { CA: 3.50, TX: 2.75 };
+let jobFuel = (function () {
+  try { const v = parseFloat(localStorage.getItem('ebcc_job_fuel_v1')); return isFinite(v) && v > 0 ? v : null; }
+  catch (_) { return null; }
 })();
 EQUIPMENT_LIBRARY_CA.forEach(eq => { eq.baseRate = eq.rate; });
-function fuelAdjRate(baseRate, galHr) {
-  if (!galHr || !isFinite(caFuel) || caFuel === CA_FUEL_ANCHOR) return baseRate;
-  return Math.ceil(baseRate + galHr * (caFuel - CA_FUEL_ANCHOR));
+EQUIPMENT_LIBRARY_TX.forEach(eq => { eq.baseRate = eq.rate; });
+function fuelAdjRate(baseRate, galHr, state) {
+  const anchor = FUEL_ANCHOR[state];
+  const fuel = (jobFuel != null && isFinite(jobFuel)) ? jobFuel : anchor;
+  if (!galHr || fuel === anchor) return baseRate;
+  const adj = baseRate + galHr * (fuel - anchor);
+  // CA sheet ROUNDUPs the total; TX sheet keeps it exact (round to cents).
+  return state === 'CA' ? Math.ceil(adj) : Math.round(adj * 100) / 100;
 }
-// Recompute the CA library from anchors (cheap; safe before first render).
+// Recompute both libraries from anchors (cheap; safe before first render).
 function caFuelRecalcLibrary() {
-  EQUIPMENT_LIBRARY_CA.forEach(eq => { eq.rate = fuelAdjRate(eq.baseRate, eq.galHr); });
+  EQUIPMENT_LIBRARY_CA.forEach(eq => { eq.rate = fuelAdjRate(eq.baseRate, eq.galHr, 'CA'); });
+  EQUIPMENT_LIBRARY_TX.forEach(eq => { eq.rate = fuelAdjRate(eq.baseRate, eq.galHr, 'TX'); });
 }
 caFuelRecalcLibrary();
-// Full refresh after a fuel change: library, items already on both jobs
+// Full refresh after a fuel change: libraries, items already on both jobs
 // (library items only — custom stays put), and every dependent render.
 function applyCaFuel() {
   caFuelRecalcLibrary();
-  if (activeState === 'CA') {
-    [typeof job !== 'undefined' ? job : [], typeof flatJob !== 'undefined' ? flatJob : []].forEach(arr => {
-      arr.forEach(it => {
-        if (!it || it.custom) return;
-        const eq = EQUIPMENT_LIBRARY_CA.find(x => x.name === it.name);
-        if (eq) { it.rate = eq.rate; it.baseRate = eq.baseRate; it.galHr = eq.galHr; }
-      });
+  const lib = getLibrary();
+  [typeof job !== 'undefined' ? job : [], typeof flatJob !== 'undefined' ? flatJob : []].forEach(arr => {
+    arr.forEach(it => {
+      if (!it || it.custom) return;
+      const eq = lib.find(x => x.name === it.name);
+      if (eq) { it.rate = eq.rate; it.baseRate = eq.baseRate; it.galHr = eq.galHr; }
     });
-  }
+  });
   if (typeof render === 'function') render();
   if (typeof renderFlat === 'function') renderFlat();
   if (typeof renderAdmin === 'function') renderAdmin();
 }
 function setCaFuel(v) {
   const f = parseFloat(v);
-  const next = isFinite(f) && f > 0 ? Math.round(f * 100) / 100 : CA_FUEL_ANCHOR;
-  if (next === caFuel) return;
-  caFuel = next;
-  try { localStorage.setItem('ebcc_ca_fuel_v1', String(caFuel)); } catch (_) {}
+  const next = isFinite(f) && f > 0 ? Math.round(f * 100) / 100 : null;
+  if (next === jobFuel) return;
+  jobFuel = next;
+  try { localStorage.setItem('ebcc_job_fuel_v1', next == null ? '' : String(next)); } catch (_) {}
   applyCaFuel();
 }
 function syncCaFuelUi() {
-  document.querySelectorAll('[data-ca-fuel]').forEach(el => { el.style.display = activeState === 'CA' ? '' : 'none'; });
+  // The job/fuel selector applies to both states now.
+  document.querySelectorAll('[data-ca-fuel]').forEach(el => { el.style.display = ''; });
 }
 // The job selected on the calculators (shared by both tabs) supplies the fuel
-// price from Job Books; no job or no rate set = $3.50 default with a warning.
+// price from Job Books; no job or no rate set = the state's anchor + warning.
 function applyJobFuel() {
   const projs = window.EBCC_PROJECTS || [];
   const code = (typeof currentJobCode !== 'undefined') ? currentJobCode : '';
   const p = code ? projs.find(x => x.code === code) : null;
-  let fuel = CA_FUEL_ANCHOR, msg, color;
+  const anchorStr = '$' + FUEL_ANCHOR[activeState].toFixed(2) + '/gal';
+  let fuel = null, msg, color;
   if (!p) {
-    msg = '⚠ No job selected — CA rates default to $3.50/gal. Select a job above to use its fuel rate.';
+    msg = '⚠ No job selected — ' + activeState + ' rates default to ' + anchorStr + '. Select a job above to use its fuel rate.';
     color = '#d97706';
   } else if (p.fuelRate == null) {
-    msg = '⚠ ' + p.name + ': no fuel rate has been input in Job Books — using $3.50/gal.';
+    msg = '⚠ ' + p.name + ': no fuel rate has been input in Job Books — using ' + anchorStr + '.';
     color = '#d97706';
   } else {
     fuel = +p.fuelRate;
@@ -3400,7 +3410,9 @@ document.addEventListener('input', (e) => {
     eq.rate = newRate;
     // A manual edit means "this is the rate at the CURRENT fuel price" — move
     // the anchor so future fuel changes escalate from the edited value.
-    if (activeState === 'CA') eq.baseRate = newRate - (eq.galHr || 0) * (caFuel - CA_FUEL_ANCHOR);
+    const anchor = FUEL_ANCHOR[activeState];
+    const fuelNow = (jobFuel != null && isFinite(jobFuel)) ? jobFuel : anchor;
+    eq.baseRate = newRate - (eq.galHr || 0) * (fuelNow - anchor);
     job.forEach(j => { if (!j.custom && j.name === eq.name) j.rate = newRate; });
     render();
   }
@@ -6510,8 +6522,9 @@ const TRK_DEFAULT_CUSTOMER = 'Earth Basics Contracting';
     // Sync all state dropdowns
     document.querySelectorAll('[data-state-select]').forEach(sel => { sel.value = next; });
 
-    // Fuel input applies to CA only — show/hide with the state
+    // Refresh the job/fuel status for the new state's anchor + formula
     if (typeof syncCaFuelUi === 'function') syncCaFuelUi();
+    if (typeof applyJobFuel === 'function') applyJobFuel();
 
     // Re-render everything that depends on the library / job
     if (typeof renderAdmin === 'function') renderAdmin();
