@@ -7627,6 +7627,9 @@ function jbRenderFolders() {
 function jbRenderFiles() {
   const wrap = document.getElementById('jb-files');
   if (!wrap) return;
+  // The fuel-rate panel belongs to the Contract folder
+  const fp = document.getElementById('jb-fuel-panel');
+  if (fp) fp.style.display = jbActiveFolder === 'Contract' ? '' : 'none';
   const showLinks = (jbActiveFolder === 'ALL' || jbActiveFolder === JB_LINKS_ID) ? jbCurrentLinks : [];
   const files = jbActiveFolder === 'ALL'
     ? jbCurrentFiles
@@ -7745,18 +7748,22 @@ function jbOpenProject(code) {
       '<div id="jb-upstatus" style="margin-top:8px;font-weight:600;color:var(--dark)"></div>' +
     '</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;align-items:center">' +
-      '<span style="font-size:12px;font-weight:600;color:var(--gray)">Fuel $/gal</span>' +
-      '<input type="number" id="jb-fuel" min="0" step="0.05" inputmode="decimal" placeholder="e.g. 4.25" value="' + (p.fuelRate != null ? escAttr(String(p.fuelRate)) : '') + '" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;width:110px;background:var(--card);color:var(--dark)">' +
-      '<button class="btn" id="jb-fuel-save">Save fuel rate</button>' +
-      '<span id="jb-fuel-status" style="font-size:12px;font-weight:600;color:var(--gray)">' + (p.fuelRate != null ? 'CA rates on this job use $' + (+p.fuelRate).toFixed(2) + '/gal' : 'No fuel rate set — calculators default to $3.50') + '</span>' +
-    '</div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;align-items:center">' +
       '<span style="font-size:12px;font-weight:600;color:var(--gray);display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:' + JB_LINKS_COLOR + ';flex-shrink:0"></span>Links</span>' +
       '<input type="text" id="jb-link-name" placeholder="Name (e.g. Procore)" autocomplete="off" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;width:150px;background:var(--card);color:var(--dark)">' +
       '<input type="url" id="jb-link-url" placeholder="Paste Procore / Autodesk link — https://…" autocomplete="off" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;flex:1;min-width:200px;background:var(--card);color:var(--dark)">' +
       '<button class="btn" id="jb-link-add">Add link</button>' +
     '</div>' +
     '<div id="jb-folderbar" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0"></div>' +
+    // Fuel price lives with the Contract folder — shown when that chip is active.
+    '<div id="jb-fuel-panel" style="display:none;margin:10px 0;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--card)">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
+        '<span style="font-size:12px;font-weight:600;color:var(--gray);display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:' + jbFolderColor('Contract') + ';flex-shrink:0"></span>Fuel $/gal</span>' +
+        '<input type="number" id="jb-fuel" min="0" step="0.05" inputmode="decimal" placeholder="e.g. 4.25" value="' + (p.fuelRate != null ? escAttr(String(p.fuelRate)) : '') + '" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;width:110px;background:var(--card);color:var(--dark)">' +
+        '<button class="btn" id="jb-fuel-save">Save fuel rate</button>' +
+        '<span id="jb-fuel-status" style="font-size:12px;font-weight:600;color:var(--gray)">' + (p.fuelRate != null ? 'Calculator rates on this job use $' + (+p.fuelRate).toFixed(2) + '/gal' : 'No fuel rate set — calculators default to $3.50 (CA) / $2.75 (TX)') + '</span>' +
+      '</div>' +
+      '<div style="font-size:11.5px;color:var(--gray);margin-top:6px">Escalates CA and TX equipment rates on Cost Per Yard and Flat Work for this job, per the EB fuel worksheets.</div>' +
+    '</div>' +
     '<div class="section-header">Files</div>' +
     '<div id="jb-files"><div class="empty">Loading files…</div></div>';
   window.scrollTo(0, 0);
@@ -7777,8 +7784,8 @@ function jbOpenProject(code) {
       if (out && out.ok) {
         if (out.fuelRate == null) delete p.fuelRate; else p.fuelRate = out.fuelRate;
         st.textContent = out.fuelRate != null
-          ? 'Saved — CA rates on this job use $' + out.fuelRate.toFixed(2) + '/gal'
-          : 'Cleared — calculators default to $3.50';
+          ? 'Saved — calculator rates on this job use $' + out.fuelRate.toFixed(2) + '/gal'
+          : 'Cleared — calculators default to $3.50 (CA) / $2.75 (TX)';
         st.style.color = 'var(--green)';
         if (typeof applyJobFuel === 'function') applyJobFuel();
       } else {
