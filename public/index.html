@@ -1901,6 +1901,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     <div class="nav-group-label">Safety</div>
     <button class="tab" data-tab="jha" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.3 17.2a1 1 0 0 1 1-1.2h15.4a1 1 0 0 1 1 1.2l-.2 1.3a1 1 0 0 1-1 .8H4.5a1 1 0 0 1-1-.8z"/><path d="M10 10.5V6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4.5"/><path d="M5.2 16v-2.3a6.8 6.8 0 0 1 4.8-6.5"/><path d="M14 7.2a6.8 6.8 0 0 1 4.8 6.5V16"/></svg>JHA's</button>
     <button class="tab" data-tab="sssp" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16"/><path d="M13.6 5.2 18 19.5H6L10.4 5.2a1.7 1.7 0 0 1 3.2 0z"/><path d="M8.9 10.3h6.2"/><path d="M7.6 14.6h8.8"/></svg>SSSP's</button>
+    <button class="tab" data-tab="incident" role="tab" aria-selected="false">Incident Report</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-label">Settings</div>
@@ -2007,6 +2008,60 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     </div>
     <div id="sssp-body" style="margin-top:10px"></div>
   </div>
+</section>
+
+<section class="tab-content" id="tab-incident">
+
+<div class="ewt-banner">
+  <div><strong>Incident Report</strong></div>
+  <div class="ewt-license">Report it the day it happens</div>
+</div>
+
+<div class="ewt-section" id="ir-picker">
+  <h3>Project</h3>
+  <div class="ewt-hint">Incident reports are organized by project — the same project list as Job Books. Start typing a name or job # and pick from the list.</div>
+  <div class="search-bar" style="margin:8px 0 0">
+    <input type="text" id="ir-proj-combo" placeholder="Search projects — name or job #…" autocomplete="off">
+    <div class="search-results" id="ir-proj-results"></div>
+  </div>
+  <div id="ir-list" style="margin-top:10px"></div>
+</div>
+
+<div id="ir-editor" style="display:none">
+  <div class="ewt-section">
+    <h3 id="ir-ed-title">Incident Report</h3>
+    <div class="ewt-grid">
+      <label>Date <input type="date" id="ir-date"></label>
+      <label>Time <input type="time" id="ir-time"></label>
+      <label>Reported by <input type="text" id="ir-reporter"></label>
+      <label>Person(s) involved <input type="text" id="ir-involved" placeholder="Names"></label>
+      <label class="ewt-grid-wide">Location on site <input type="text" id="ir-location" placeholder="e.g. north pad, haul road near the scale"></label>
+    </div>
+  </div>
+
+  <div class="ewt-section">
+    <h3>Incident Type</h3>
+    <div class="jha-yn" id="ir-types" style="flex-wrap:wrap"></div>
+  </div>
+
+  <div class="ewt-section">
+    <h3>What Happened</h3>
+    <div class="ewt-grid">
+      <label class="ewt-grid-wide">Description <textarea id="ir-desc" rows="4" placeholder="What happened, step by step…"></textarea></label>
+      <label class="ewt-grid-wide">Injuries &amp; medical treatment (if any) <textarea id="ir-injury" rows="2" placeholder="Leave empty if none"></textarea></label>
+      <label class="ewt-grid-wide">Immediate action taken <textarea id="ir-action" rows="2" placeholder="First aid, area secured, equipment shut down…"></textarea></label>
+      <label class="ewt-grid-wide">Witnesses <input type="text" id="ir-witnesses" placeholder="Names"></label>
+    </div>
+  </div>
+
+  <div class="ewt-section">
+    <div class="ewt-actions">
+      <button class="btn" id="ir-back">&larr; Back to reports</button>
+    </div>
+    <div class="ewt-hint" style="margin-top:6px">Saves automatically and syncs to your account — admins see it in Manage Users.</div>
+  </div>
+</div>
+
 </section>
 
 <section class="tab-content" id="tab-profile">
@@ -9263,6 +9318,161 @@ const ssspProjCombo = projCombo('sssp-proj-combo', 'sssp-proj-results', () => ss
 document.querySelector('.tab[data-tab="sssp"]').addEventListener('click', () => {
   if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
 });
+
+// ============================================================
+// Incident Reports — a simple per-project form. Autosaves like
+// JHA's, syncs as incident_reports (same by-id merge), and shows
+// in the admin drill-down under Safety.
+// ============================================================
+const IR_KEY = 'ebcc_incident_reports_v1';
+const IR_TYPES = ['Injury', 'Near Miss', 'Property Damage', 'Vehicle / Equipment', 'Environmental / Spill', 'Other'];
+let irCurrentId = null;
+let irSaveTimer = null;
+
+function irRead() {
+  try { const v = JSON.parse(localStorage.getItem(IR_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+  catch (e) { return []; }
+}
+function irWriteAll(list) { localStorage.setItem(IR_KEY, JSON.stringify(list)); }
+function irMutate(fn) {
+  const all = irRead();
+  const r = all.find(x => x.id === irCurrentId);
+  if (!r) return null;
+  fn(r);
+  r.updatedAt = new Date().toISOString();
+  irWriteAll(all);
+  return r;
+}
+function irCur() { return irRead().find(x => x.id === irCurrentId) || null; }
+
+const irProjCombo = projCombo('ir-proj-combo', 'ir-proj-results', () => irRenderList());
+
+function irRenderList() {
+  const list = document.getElementById('ir-list');
+  const code = irProjCombo.getCode();
+  if (!code) { list.innerHTML = ''; return; }
+  const mine = irRead().filter(r => r.projectCode === code)
+    .sort((a, b) => String(b.date + (b.time || '')).localeCompare(String(a.date + (a.time || ''))));
+  let html = '<div class="controls" style="margin-bottom:10px"><button class="btn btn-primary" id="ir-new-btn">New incident report</button></div>';
+  if (!mine.length) {
+    html += '<div class="empty">No incident reports for this project.</div>';
+  } else {
+    html += mine.map(r => {
+      const snippet = String(r.desc || '').slice(0, 70);
+      return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-ir-open="' + escAttr(r.id) + '">' +
+        '<div><div class="name">' + escHTML(jhaFmtDate(r.date)) + (r.time ? ' · ' + escHTML(r.time) : '') + (r.type ? ' · ' + escHTML(r.type) : '') + '</div>' +
+        '<div class="rate">' + escHTML(r.reporter || '') + (snippet ? ' · ' + escHTML(snippet) : '') + '</div></div>' +
+        '<button class="btn" data-ir-open="' + escAttr(r.id) + '">Open</button>' +
+      '</div>';
+    }).join('');
+  }
+  list.innerHTML = html;
+}
+
+function irNew() {
+  const code = irProjCombo.getCode();
+  if (!code) return;
+  const proj = (window.EBCC_PROJECTS || []).find(p => p.code === code) || {};
+  const now = new Date();
+  const rec = {
+    id: 'ir_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    projectCode: code,
+    projectName: proj.name || code,
+    date: jhaToday(),
+    time: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
+    reporter: (window.EBCC_ME && (window.EBCC_ME.name || window.EBCC_ME.email)) || '',
+    type: '', involved: '', location: '', desc: '', injury: '', action: '', witnesses: '',
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+  const all = irRead();
+  all.push(rec);
+  irWriteAll(all);
+  irOpenEditor(rec.id);
+}
+
+function irOpenEditor(id) {
+  const r = irRead().find(x => x.id === id);
+  if (!r) return;
+  irCurrentId = id;
+  document.getElementById('ir-picker').style.display = 'none';
+  document.getElementById('ir-editor').style.display = '';
+  document.getElementById('ir-ed-title').textContent = 'Incident Report — ' + (r.projectName || r.projectCode);
+  document.getElementById('ir-date').value = r.date || '';
+  document.getElementById('ir-time').value = r.time || '';
+  document.getElementById('ir-reporter').value = r.reporter || '';
+  document.getElementById('ir-involved').value = r.involved || '';
+  document.getElementById('ir-location').value = r.location || '';
+  document.getElementById('ir-desc').value = r.desc || '';
+  document.getElementById('ir-injury').value = r.injury || '';
+  document.getElementById('ir-action').value = r.action || '';
+  document.getElementById('ir-witnesses').value = r.witnesses || '';
+  irRenderTypes(r);
+  window.scrollTo({ top: 0 });
+}
+
+function irCloseEditor() {
+  irFlushFields();
+  irCurrentId = null;
+  document.getElementById('ir-editor').style.display = 'none';
+  document.getElementById('ir-picker').style.display = '';
+  irRenderList();
+}
+
+function irRenderTypes(r) {
+  document.getElementById('ir-types').innerHTML = IR_TYPES.map(t =>
+    '<button type="button" data-ir-type="' + escAttr(t) + '" class="' + (r.type === t ? 'on-yes' : '') + '">' + escHTML(t) + '</button>'
+  ).join('');
+}
+
+function irFieldsSoon() {
+  clearTimeout(irSaveTimer);
+  irSaveTimer = setTimeout(irFlushFields, 450);
+}
+function irFlushFields() {
+  clearTimeout(irSaveTimer);
+  if (!irCurrentId) return;
+  irMutate(r => {
+    r.date = document.getElementById('ir-date').value || r.date;
+    r.time = document.getElementById('ir-time').value;
+    r.reporter = document.getElementById('ir-reporter').value;
+    r.involved = document.getElementById('ir-involved').value;
+    r.location = document.getElementById('ir-location').value;
+    r.desc = document.getElementById('ir-desc').value;
+    r.injury = document.getElementById('ir-injury').value;
+    r.action = document.getElementById('ir-action').value;
+    r.witnesses = document.getElementById('ir-witnesses').value;
+  });
+}
+
+// ---- events ----
+document.getElementById('ir-list').addEventListener('click', (e) => {
+  if (e.target.closest('#ir-new-btn')) { irNew(); return; }
+  const open = e.target.closest('[data-ir-open]');
+  if (open) irOpenEditor(open.getAttribute('data-ir-open'));
+});
+document.getElementById('ir-back').addEventListener('click', irCloseEditor);
+['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses'].forEach(id => {
+  document.getElementById(id).addEventListener('input', irFieldsSoon);
+});
+document.getElementById('ir-types').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ir-type]');
+  if (!b) return;
+  const t = b.getAttribute('data-ir-type');
+  const r = irMutate(x => { x.type = x.type === t ? '' : t; });
+  if (r) irRenderTypes(r);
+});
+document.querySelector('.tab[data-tab="incident"]').addEventListener('click', () => {
+  if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
+  irRenderList();
+  try { window.dispatchEvent(new CustomEvent('ebcc-ir-pull')); } catch (e) {}
+});
+window.addEventListener('ebcc-ir-updated', () => {
+  if (!document.getElementById('tab-incident').classList.contains('active')) return;
+  if (!irCurrentId) irRenderList();
+});
+window.addEventListener('pagehide', irFlushFields);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') irFlushFields(); });
 
 </script>
 

@@ -15,6 +15,8 @@
     // Daily per-project JHAs — created on one device, signed on another,
     // so they merge both directions like EWT drafts.
     'ebcc_jha_records_v1': 'jha_records',
+    // Incident reports — same by-id merge as JHAs
+    'ebcc_incident_reports_v1': 'incident_reports',
     // Posted spreads (explicit snapshots for admin review)
     'ebcc_cpy_posts_v1': 'cpy_posts',
     'ebcc_flat_posts_v1': 'flat_posts',
@@ -29,6 +31,7 @@
   var EWT_KEY = 'ebcc_ewt_records_v1';
   var DRAFTS_KEY = 'ebcc_ewt_drafts_v1';
   var JHA_KEY = 'ebcc_jha_records_v1';
+  var IR_KEY = 'ebcc_incident_reports_v1';
   var PENDING_KEY = 'ebcc_sync_pending';
   var HYDRATED_FLAG = 'ebcc_hydrated_once';
 
@@ -366,6 +369,32 @@
   }
   window.addEventListener('ebcc-jha-pull', function () { pullJha(); });
 
+  // ---------- Incident reports merge/pull (same shape as JHAs) ----------
+  function readIrLocal() {
+    try { var v = JSON.parse(localStorage.getItem(IR_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+  function adoptIr(merged) {
+    var before = localStorage.getItem(IR_KEY) || '[]';
+    var after = JSON.stringify(merged);
+    if (after === before) return false;
+    origSetItem(IR_KEY, after);
+    try { window.dispatchEvent(new CustomEvent('ebcc-ir-updated')); } catch (e) {}
+    return true;
+  }
+  var pullingIr = false;
+  function pullIr() {
+    if (!ME || pullingIr) return Promise.resolve();
+    pullingIr = true;
+    return apiFetch('/api/records').then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
+      var server = res && res.records && res.records.incident_reports;
+      var serverArr = server && Array.isArray(server.data) ? server.data : [];
+      var merged = mergeJha(serverArr, readIrLocal());
+      adoptIr(merged);
+      if (JSON.stringify(merged) !== JSON.stringify(serverArr)) queuePush(IR_KEY);
+    }).catch(function () {}).then(function () { pullingIr = false; });
+  }
+  window.addEventListener('ebcc-ir-pull', function () { pullIr(); });
+
   // ---------- hydrate local from server (first device / cross-device) ----------
   function hydrateFromServer() {
     return apiFetch('/api/records').then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
@@ -379,6 +408,7 @@
         // laptop and needs them on the phone even after the phone has its own.
         if (lsKey === DRAFTS_KEY) { adoptDrafts(mergeDrafts(server.data, readDraftsLocal())); return; }
         if (lsKey === JHA_KEY) { adoptJha(mergeJha(server.data, readJhaLocal())); return; }
+        if (lsKey === IR_KEY) { adoptIr(mergeJha(server.data, readIrLocal())); return; }
         var local = localStorage.getItem(lsKey);
         var localEmpty = !local || local === '[]' || local === '{}' || local === 'null';
         // Only hydrate when local is empty — never clobber unsynced local edits.
@@ -417,7 +447,7 @@
       // Coming BACK from the share sheet / mail app: retry anything the
       // phone killed while the app was backgrounded — including PDF offloads —
       // and pick up drafts written on another device in the meantime.
-      if (document.visibilityState === 'visible') { flushPending(); offloadPendingEwtPdfs(); pullDrafts(); pullJha(); }
+      if (document.visibilityState === 'visible') { flushPending(); offloadPendingEwtPdfs(); pullDrafts(); pullJha(); pullIr(); }
     });
   }
 
@@ -492,6 +522,11 @@
           if (lsKey === JHA_KEY) {
             r.json().then(function (j) {
               if (j && Array.isArray(j.data)) adoptJha(mergeJha(j.data, readJhaLocal()));
+            }).catch(function () {});
+          }
+          if (lsKey === IR_KEY) {
+            r.json().then(function (j) {
+              if (j && Array.isArray(j.data)) adoptIr(mergeJha(j.data, readIrLocal()));
             }).catch(function () {});
           }
         } else {
@@ -707,7 +742,7 @@
         // Only chips with something in them — zeros are noise.
         var chip = function (label, v) { return v ? '<span class="adm-chip">' + label + ' <b>' + v + '</b></span>' : ''; };
         var chips = chip('Tickets', c.trucking_tickets) + chip('Load counts', c.load_count_sends) +
-          chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) +
+          chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) + chip('Incidents', c.incident_reports) +
           chip('Spreads', (c.cpy_posts || 0) + (c.flat_posts || 0)) +
           chip('Calcs', (c.lime_posts || 0) + (c.flexbase_posts || 0));
         return '<div class="adm-user-card">' +
@@ -770,6 +805,10 @@
         section('Extra Work Tickets (' + ewt.length + ')', ewtHtml(ewt), !ewt.length) +
         '<div class="adm-group-label">Safety</div>' +
         section('JHA’s (' + jhas.length + ')' + updatedTag(rec.jha_records), jhaAdminHtml(jhas), !jhas.length) +
+        (function () {
+          var irs = (rec.incident_reports && rec.incident_reports.data) || [];
+          return section('Incident Reports (' + irs.length + ')' + updatedTag(rec.incident_reports), irAdminHtml(irs), !irs.length);
+        })() +
         '<div class="adm-group-label">Posted Spreads &amp; Calcs</div>' +
         section('Cost Per Yard (' + cpyP.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(cpyP), !cpyP.length) +
         section('Flat Work (' + flatP.length + ')' + updatedTag(rec.flat_posts), flatPostsHtml(flatP), !flatP.length) +
@@ -1079,6 +1118,34 @@
         return postDetails(head, body);
       }).join('');
       return '<div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + days.length + ')</div>' + inner;
+    }).join('');
+  }
+
+  // Incident reports — grouped by project, one collapsible per report.
+  function irAdminHtml(arr) {
+    if (!Array.isArray(arr) || !arr.length) return none();
+    var byProj = {};
+    arr.forEach(function (r) {
+      if (!r) return;
+      var k = r.projectName || r.projectCode || 'Unknown project';
+      (byProj[k] = byProj[k] || []).push(r);
+    });
+    return Object.keys(byProj).sort().map(function (proj) {
+      var reps = byProj[proj].slice().sort(function (a, b) {
+        return String((b.date || '') + (b.time || '')).localeCompare(String((a.date || '') + (a.time || '')));
+      });
+      var inner = reps.map(function (r) {
+        var head = esc(r.date || '—') + (r.time ? ' ' + esc(r.time) : '') + ' · ' + esc(r.type || 'untyped') + (r.involved ? ' · ' + esc(r.involved) : '');
+        var line = function (label, v) { return v ? '<div style="padding:2px 0"><span style="color:var(--gray)">' + label + ':</span> ' + esc(v) + '</div>' : ''; };
+        var body =
+          '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">Reported by ' + esc(r.reporter || '—') + (r.location ? ' · ' + esc(r.location) : '') + '</div>' +
+          (r.desc ? '<div style="margin-bottom:6px;white-space:pre-wrap">' + esc(r.desc) + '</div>' : '') +
+          line('Injuries / treatment', r.injury) +
+          line('Immediate action', r.action) +
+          line('Witnesses', r.witnesses);
+        return postDetails(head, body);
+      }).join('');
+      return '<div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + reps.length + ')</div>' + inner;
     }).join('');
   }
 

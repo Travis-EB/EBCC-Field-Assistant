@@ -10,7 +10,7 @@ const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../s
 
 const ALLOWED_TYPES = new Set([
   'trucking_tickets', 'load_count', 'load_count_sends', 'ewt_records', 'ewt_drafts',
-  'jha_records', 'production_sends',
+  'jha_records', 'production_sends', 'incident_reports',
   // Posted spreads (explicit snapshots for admin review)
   'cpy_posts', 'flat_posts', 'lime_posts', 'flexbase_posts',
   // Calculator tabs — synced so admins can review what's being priced out
@@ -153,15 +153,15 @@ module.exports = async function (context, req) {
         return json(context, 400, { error: 'Body must be { type, data } with a valid type.' });
       }
       let merged = null; // returned to the client so it can adopt the merged view
-      if ((body.type === 'ewt_records' || body.type === 'ewt_drafts' || body.type === 'jha_records') && Array.isArray(body.data)) {
+      if ((body.type === 'ewt_records' || body.type === 'ewt_drafts' || body.type === 'jha_records' || body.type === 'incident_reports') && Array.isArray(body.data)) {
         try {
           let existing = null;
           try { existing = (await records.item(me.id + ':' + body.type, me.id).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
           const prev = existing && Array.isArray(existing.data) ? existing.data : [];
           body.data = body.type === 'ewt_records' ? mergeEwtRecords(prev, body.data)
-            : body.type === 'jha_records' ? mergeJhaRecords(prev, body.data)
+            : (body.type === 'jha_records' || body.type === 'incident_reports') ? mergeJhaRecords(prev, body.data)
             : mergeEwtDrafts(prev, body.data);
-          if (body.type === 'ewt_drafts' || body.type === 'jha_records') merged = body.data;
+          if (body.type === 'ewt_drafts' || body.type === 'jha_records' || body.type === 'incident_reports') merged = body.data;
         } catch (e) { context.log.warn(body.type + ' merge failed', e); }
       }
       const now = new Date().toISOString();
