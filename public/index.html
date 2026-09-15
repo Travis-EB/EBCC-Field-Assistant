@@ -2058,6 +2058,13 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   </div>
 
   <div class="ewt-section">
+    <h3>Photos <span id="ir-photo-count" style="font-weight:500;color:var(--gray);font-size:13px"></span></h3>
+    <div class="ewt-hint">Add photos of the scene, damage, or injury — they go in the PDF and the email, and the originals are saved for the office.</div>
+    <div id="ir-photos" style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0"></div>
+    <label class="btn btn-primary" id="ir-photo-add" style="cursor:pointer;display:inline-block">+ Add photos<input type="file" id="ir-photo-input" accept="image/*" multiple style="display:none"></label>
+  </div>
+
+  <div class="ewt-section">
     <h3>Email the report</h3>
     <div class="ewt-hint">Submitting emails a PDF of this report to <strong>amber@earthbasics.net</strong> automatically. Add the PM, safety manager, or anyone else who should get a copy.</div>
     <div class="ewt-recipients" id="ir-recipients"></div>
@@ -9493,6 +9500,8 @@ function irOpenEditor(id) {
   st.style.color = locked ? 'var(--green)' : '';
   // Email box: drafts send on Submit; submitted reports can be re-sent to more people.
   document.getElementById('ir-resend-wrap').style.display = locked ? '' : 'none';
+  document.getElementById('ir-photo-add').style.display = locked ? 'none' : '';
+  irRenderPhotos(r);
   irRenderSendStatus(r);
   window.scrollTo({ top: 0 });
 }
@@ -9577,8 +9586,9 @@ function irFormatText(r) {
   lines.push('', 'Full report attached as PDF.', '', '— Submitted via EBCC Field Assistant');
   return lines.join('\n');
 }
-// One-page (or more) incident report in the app's paper-form style.
-function irBuildPDF(r) {
+// Incident report in the app's paper-form style; photos (when supplied)
+// are laid out two per row after the write-up.
+async function irBuildPDF(r, photoData) {
   if (typeof window.jspdf === 'undefined') throw new Error('PDF library not loaded — check your internet connection.');
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
@@ -9643,17 +9653,43 @@ function irBuildPDF(r) {
   band('IMMEDIATE ACTION TAKEN');
   para(r.action);
 
+  const photos = Array.isArray(photoData) ? photoData.filter(Boolean) : [];
+  if (photos.length) {
+    band('PHOTOS (' + photos.length + ')');
+    const colW = (CW - 10) / 2;
+    let col = 0, rowH = 0;
+    for (const d of photos) {
+      const dim = await new Promise(res => {
+        const im = new Image();
+        im.onload = () => res({ w: im.width, h: im.height });
+        im.onerror = () => res(null);
+        im.src = d;
+      });
+      if (!dim || !dim.w || !dim.h) continue;
+      const h = Math.min(220, colW * dim.h / dim.w);
+      const w = h * dim.w / dim.h;
+      if (col === 0) ensure(232);
+      try { doc.addImage(d, 'JPEG', M + col * (colW + 10), y, w, h); } catch (e) { continue; }
+      rowH = Math.max(rowH, h);
+      col++;
+      if (col === 2) { y += rowH + 10; col = 0; rowH = 0; }
+    }
+    if (col !== 0) y += rowH + 10;
+  }
+
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
   doc.text('Submitted ' + (r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '') + ' via EBCC Field Assistant', M, H - M + 12);
   return doc;
 }
-// Email the PDF from the foreman's mailbox (server archives it for the office).
-// Stamps the submitted record with the result; returns the status text.
+// Email the PDF (with photos) from the foreman's mailbox; the server archives
+// the PDF and the original photos for the office. Stamps the submitted record.
 async function irSendPdf(rec, recipients) {
   const el = document.getElementById('ir-send-status');
   const setStatus = (msg, color) => { if (el) { el.textContent = msg; el.style.color = color || 'var(--dark)'; } };
+  const pending = irPendingGet(rec.id);   // full-size photos still on this device
+  const pdfPhotos = pending.length ? pending : (rec.photos || []).map(p => p.thumb || p.data).filter(Boolean);
   let doc;
-  try { doc = irBuildPDF(rec); }
+  try { doc = await irBuildPDF(rec, pdfPhotos); }
   catch (e) { setStatus('Could not build the PDF: ' + (e && e.message ? e.message : e), 'var(--red)'); return; }
   const fileName = 'Incident_' + String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (rec.date || '') + '.pdf';
   const subject = 'Incident Report - ' + (rec.projectName || rec.projectCode || '') + ' - ' + jhaFmtDate(rec.date) + (rec.type ? ' - ' + rec.type : '');
@@ -9664,6 +9700,8 @@ async function irSendPdf(rec, recipients) {
       body: JSON.stringify({
         subject, text: irFormatText(rec), recipients, fileName, pdf: doc.output('datauristring'),
         summary: { reportId: rec.id, date: rec.date, projectCode: rec.projectCode, projectName: rec.projectName, type: rec.type },
+        photos: pending,                                              // originals to archive + attach
+        photoBlobs: (rec.photoBlobs || []).map(p => p && p.path).filter(Boolean),   // already archived — re-attach from the store
       }),
     });
     const res = r.ok ? await r.json() : null;
@@ -9673,7 +9711,11 @@ async function irSendPdf(rec, recipients) {
         x.sent = !!res.sent;
         x.sentTs = new Date().toISOString();
         if (res.pdfBlob) x.pdfBlob = res.pdfBlob;
+        if (Array.isArray(res.photoBlobs) && res.photoBlobs.length) x.photoBlobs = res.photoBlobs;
       });
+      // Originals reached the store — the device copy is no longer needed.
+      if (res.archived && Array.isArray(res.photoBlobs) && res.photoBlobs.length >= pending.length) irPendingSet(rec.id, null);
+      if (stamped && irCurrentId === rec.id) irRenderPhotos(Object.assign({}, stamped, { status: 'submitted' }));
       if (res.sent) { irRenderSendStatus(stamped); return; }
       setStatus('Email service unavailable (' + (res.reason || 'unknown') + ') — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
       return;
@@ -9688,16 +9730,102 @@ document.getElementById('ir-resend').addEventListener('click', () => {
   if (!r || r.status !== 'submitted') return;
   irSendPdf(r, irGetRecipients());
 });
-document.getElementById('ir-preview').addEventListener('click', () => {
+document.getElementById('ir-preview').addEventListener('click', async () => {
   const r = irCur();
   if (!r) return;
   try {
-    const doc = irBuildPDF(r);
+    const doc = await irBuildPDF(r, irPhotosForPdf(r));
     previewShow(URL.createObjectURL(doc.output('blob')), false,
       'Incident_' + String(r.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (r.date || '') + '.pdf');
   } catch (e) { alert(e && e.message ? e.message : 'Could not build the PDF.'); }
 });
 irRenderRecipients();
+
+// ---- photos ----
+const IR_PENDING_KEY = 'ebcc_incident_photos_pending_v1';   // full-size photos awaiting upload, by report id
+const IR_MAX_PHOTOS = 12;
+function irPendingAll() { try { const v = JSON.parse(localStorage.getItem(IR_PENDING_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch (e) { return {}; } }
+function irPendingSet(id, list) { const all = irPendingAll(); if (list && list.length) all[id] = list; else delete all[id]; try { localStorage.setItem(IR_PENDING_KEY, JSON.stringify(all)); } catch (e) {} }
+function irPendingGet(id) { return irPendingAll()[id] || []; }
+// Small JPEG for the synced record / list (originals go to blob storage).
+function irThumb(dataUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 220, s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/jpeg', 0.6));
+    };
+    img.onerror = () => resolve('');
+    img.src = dataUrl;
+  });
+}
+// Best available images for the PDF: full-size while they're still on the
+// device (draft, or submitted-but-not-yet-uploaded), otherwise thumbnails.
+function irPhotosForPdf(r) {
+  if (r.status === 'draft') return (r.photos || []).map(p => p.data).filter(Boolean);
+  const pend = irPendingGet(r.id);
+  if (pend.length) return pend;
+  return (r.photos || []).map(p => p.thumb || p.data).filter(Boolean);
+}
+function irRenderPhotos(r) {
+  const wrap = document.getElementById('ir-photos');
+  const photos = r.photos || [];
+  const locked = r.status === 'submitted';
+  document.getElementById('ir-photo-count').textContent = photos.length ? '(' + photos.length + ')' : '';
+  wrap.innerHTML = photos.map((p, i) =>
+    '<div style="position:relative">' +
+      '<img src="' + escAttr(p.thumb || p.data || '') + '" alt="photo" data-ir-photo-open="' + i + '" style="width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--border);cursor:pointer;display:block">' +
+      (locked ? '' : '<button type="button" class="jha-x" data-ir-photo-del="' + i + '" title="Remove" style="position:absolute;top:-6px;right:-6px;background:var(--card);border:1px solid var(--border);border-radius:50%;width:24px;height:24px;line-height:20px;padding:0;font-size:13px">&#10005;</button>') +
+    '</div>'
+  ).join('') || (locked ? '<div class="empty" style="flex:1">No photos.</div>' : '');
+}
+document.getElementById('ir-photo-input').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  const cur = irCur();
+  if (!cur || cur.status !== 'draft' || !files.length) return;
+  const room = IR_MAX_PHOTOS - (cur.photos || []).length;
+  if (room <= 0) { alert('Up to ' + IR_MAX_PHOTOS + ' photos per report.'); return; }
+  const added = [];
+  for (const f of files.slice(0, room)) {
+    try { added.push({ id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), data: await trkCompressPhoto(f) }); }
+    catch (err) { console.warn('photo skipped', err); }
+  }
+  if (!added.length) { alert('Could not read those photos.'); return; }
+  const r = irMutate(x => { x.photos = (x.photos || []).concat(added); });
+  if (r) irRenderPhotos(Object.assign({}, r, { status: 'draft' }));
+  if (files.length > room) alert('Only ' + room + ' more photo' + (room === 1 ? '' : 's') + ' fit — the limit is ' + IR_MAX_PHOTOS + ' per report.');
+});
+document.getElementById('ir-photos').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-ir-photo-del]');
+  if (del) {
+    const r = irMutate(x => { x.photos.splice(Number(del.getAttribute('data-ir-photo-del')), 1); });
+    if (r) irRenderPhotos(Object.assign({}, r, { status: 'draft' }));
+    return;
+  }
+  const open = e.target.closest('[data-ir-photo-open]');
+  if (!open) return;
+  const r = irCur();
+  if (!r) return;
+  const i = Number(open.getAttribute('data-ir-photo-open'));
+  const p = (r.photos || [])[i];
+  const pend = r.status === 'submitted' ? irPendingGet(r.id)[i] : null;
+  const blob = r.status === 'submitted' && Array.isArray(r.photoBlobs) ? r.photoBlobs[i] : null;
+  const showData = (d) => { if (d) window.open(d, '_blank'); };
+  if (r.status === 'draft' || pend) { showData(r.status === 'draft' ? p.data : pend); return; }
+  if (blob && blob.path) {
+    // Original lives in the private store — stream it (own files need no user param).
+    fetch('/api/ewt-pdf?name=' + encodeURIComponent(String(blob.path).split('/').slice(1).join('/')))
+      .then(x => { if (!x.ok) throw new Error(x.status); return x.blob(); })
+      .then(b => window.open(URL.createObjectURL(b), '_blank'))
+      .catch(() => showData(p.thumb));
+    return;
+  }
+  showData(p.thumb || p.data);
+});
 
 // ---- events ----
 document.getElementById('ir-list').addEventListener('click', (e) => {
@@ -9715,18 +9843,25 @@ document.getElementById('ir-submit').addEventListener('click', () => {
   if (!r.type) { alert('Pick an incident type before submitting.'); return; }
   if (!String(r.desc || '').trim()) { alert('Describe what happened before submitting.'); document.getElementById('ir-desc').focus(); return; }
   if (!confirm('Submit this incident report? It will sync to your account and be visible to the office.')) return;
-  const rec = Object.assign({}, r);
-  delete rec.status;
-  rec.submittedAt = new Date().toISOString();
-  rec.updatedAt = rec.submittedAt;
-  const submitted = irReadSubmitted();
-  submitted.push(rec);
-  irWriteSubmitted(submitted);
-  irWriteDrafts(irReadDrafts().filter(x => x.id !== r.id));
-  // Recipients are read before the editor re-renders in locked mode.
-  const recipients = irGetRecipients();
-  irOpenEditor(rec.id);          // reopens locked with the "Submitted" stamp
-  irSendPdf(rec, recipients);    // auto-email: amber + anyone added
+  const recipients = irGetRecipients();   // read before the editor re-renders locked
+  (async () => {
+    const rec = Object.assign({}, r);
+    delete rec.status;
+    rec.submittedAt = new Date().toISOString();
+    rec.updatedAt = rec.submittedAt;
+    // Full-size photos stay on this device (pending upload) — the synced
+    // record carries small thumbnails so the account doc stays light.
+    const fulls = (r.photos || []).map(p => p.data).filter(Boolean);
+    rec.photos = [];
+    for (const d of fulls) rec.photos.push({ thumb: await irThumb(d) });
+    if (fulls.length) irPendingSet(rec.id, fulls);
+    const submitted = irReadSubmitted();
+    submitted.push(rec);
+    irWriteSubmitted(submitted);
+    irWriteDrafts(irReadDrafts().filter(x => x.id !== r.id));
+    irOpenEditor(rec.id);          // reopens locked with the "Submitted" stamp
+    irSendPdf(rec, recipients);    // auto-email: amber + anyone added
+  })();
 });
 ['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses'].forEach(id => {
   document.getElementById(id).addEventListener('input', irFieldsSoon);

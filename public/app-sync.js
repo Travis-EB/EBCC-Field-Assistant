@@ -1186,15 +1186,33 @@
   // the emailed PDF openable from the private store.
   var ADMIN_IR_CACHE = [];
   document.addEventListener('click', function (ev) {
-    var b = ev.target && ev.target.closest ? ev.target.closest('[data-ir-pdf]') : null;
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-ir-pdf],[data-ir-photo]') : null;
     if (!b) return;
-    var rec = ADMIN_IR_CACHE[+b.getAttribute('data-ir-pdf')];
-    if (!rec || !rec.pdfBlob) return;
-    var name = String(rec.pdfBlob).split('/').slice(1).join('/');
+    var rec, path, isImg = false;
+    if (b.hasAttribute('data-ir-pdf')) {
+      rec = ADMIN_IR_CACHE[+b.getAttribute('data-ir-pdf')];
+      path = rec && rec.pdfBlob;
+    } else {
+      var parts = b.getAttribute('data-ir-photo').split(':');
+      rec = ADMIN_IR_CACHE[+parts[0]];
+      var pb = rec && Array.isArray(rec.photoBlobs) ? rec.photoBlobs[+parts[1]] : null;
+      path = pb && pb.path;
+      isImg = true;
+      if (!path) { // not archived (send never reached the store) — show the thumbnail
+        var th = rec && rec.photos && rec.photos[+parts[1]];
+        if (th && (th.thumb || th.data)) window.open(th.thumb || th.data, '_blank');
+        return;
+      }
+    }
+    if (!path) return;
+    var name = String(path).split('/').slice(1).join('/');
     apiFetch('/api/ewt-pdf?user=' + encodeURIComponent(ADMIN_EWT_OWNER) + '&name=' + encodeURIComponent(name))
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
-      .then(function (buf) { openPdfBytes(buf); })
-      .catch(function () { alert('Could not load this PDF.'); });
+      .then(function (buf) {
+        if (!isImg) return openPdfBytes(buf);
+        window.open(URL.createObjectURL(new Blob([buf], { type: /\.png$/i.test(name) ? 'image/png' : 'image/jpeg' })), '_blank');
+      })
+      .catch(function () { alert('Could not load this file.'); });
   });
   function irAdminHtml(arr) {
     ADMIN_IR_CACHE = Array.isArray(arr) ? arr : [];
@@ -1221,7 +1239,13 @@
         var pdfBtn = r.pdfBlob
           ? '<button type="button" data-ir-pdf="' + r.__idx + '" style="padding:4px 12px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;margin-bottom:8px">Open PDF</button>'
           : '';
-        var body = sentLine + pdfBtn +
+        var thumbs = (Array.isArray(r.photos) && r.photos.length)
+          ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px">' + r.photos.map(function (p, j) {
+              var src = p && (p.thumb || p.data);
+              return src ? '<img src="' + esc(src) + '" alt="photo" data-ir-photo="' + r.__idx + ':' + j + '" title="Open original" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer">' : '';
+            }).join('') + '</div>'
+          : '';
+        var body = sentLine + pdfBtn + thumbs +
           '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">Reported by ' + esc(r.reporter || '—') + (r.location ? ' · ' + esc(r.location) : '') + '</div>' +
           (r.desc ? '<div style="margin-bottom:6px;white-space:pre-wrap">' + esc(r.desc) + '</div>' : '') +
           line('Injuries / treatment', r.injury) +
