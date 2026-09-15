@@ -2058,6 +2058,18 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   </div>
 
   <div class="ewt-section">
+    <h3>Email the report</h3>
+    <div class="ewt-hint">Submitting emails a PDF of this report to <strong>amber@earthbasics.net</strong> automatically. Add the PM, safety manager, or anyone else who should get a copy.</div>
+    <div class="ewt-recipients" id="ir-recipients"></div>
+    <input type="text" id="ir-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
+    <div class="ewt-actions" id="ir-resend-wrap" style="display:none;margin-top:8px">
+      <button class="btn btn-primary" id="ir-resend">Email PDF again</button>
+      <button class="btn" id="ir-preview">Preview PDF</button>
+    </div>
+    <div id="ir-send-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
+  </div>
+
+  <div class="ewt-section">
     <div class="ewt-actions">
       <button class="btn btn-primary" id="ir-submit">Submit report</button>
       <button class="btn" id="ir-back">&larr; Back to reports</button>
@@ -9479,6 +9491,9 @@ function irOpenEditor(id) {
     ? 'Submitted ' + new Date(r.submittedAt || r.updatedAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' — on your account and visible to the office.'
     : '';
   st.style.color = locked ? 'var(--green)' : '';
+  // Email box: drafts send on Submit; submitted reports can be re-sent to more people.
+  document.getElementById('ir-resend-wrap').style.display = locked ? '' : 'none';
+  irRenderSendStatus(r);
   window.scrollTo({ top: 0 });
 }
 
@@ -9516,6 +9531,174 @@ function irFlushFields() {
   });
 }
 
+// ---- email / PDF ----
+const IR_ALWAYS_TO = ['amber@earthbasics.net'];
+function irRenderRecipients() {
+  document.getElementById('ir-recipients').innerHTML = EWT_SAVED_CONTACTS.map(email =>
+    '<label class="chip"><input type="checkbox" class="ir-recipient-chk" value="' + escAttr(email) + '"> ' + escHTML(email) + '</label>'
+  ).join('');
+}
+function irGetRecipients() {
+  const chips = Array.from(document.querySelectorAll('.ir-recipient-chk:checked')).map(c => c.value);
+  const extra = document.getElementById('ir-extra-recipients').value.split(',').map(s => s.trim()).filter(Boolean);
+  return Array.from(new Set([...IR_ALWAYS_TO, ...chips, ...extra]));
+}
+function irRenderSendStatus(r) {
+  const el = document.getElementById('ir-send-status');
+  if (!el) return;
+  if (r && r.sentTs) {
+    const when = new Date(r.sentTs).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    el.textContent = (r.sent ? 'Emailed ✓ ' : 'Copy saved ') + when + (r.emailedTo && r.emailedTo.length ? ' to ' + r.emailedTo.join(', ') : '');
+    el.style.color = r.sent ? 'var(--green)' : 'var(--gray)';
+  } else {
+    el.textContent = '';
+  }
+}
+function irStampSubmitted(id, fn) {
+  const all = irReadSubmitted();
+  const r = all.find(x => x.id === id);
+  if (!r) return null;
+  fn(r);
+  r.updatedAt = new Date().toISOString();
+  irWriteSubmitted(all);
+  return r;
+}
+function irFormatText(r) {
+  const lines = ['EBCC INCIDENT REPORT'];
+  lines.push('Project: ' + (r.projectName || '') + ' (' + (r.projectCode || '') + ')');
+  lines.push('Date: ' + jhaFmtDate(r.date) + (r.time ? ' ' + r.time : '') + ' · Reported by: ' + (r.reporter || '—'));
+  lines.push('Type: ' + (r.type || '—'));
+  if (r.involved) lines.push('Person(s) involved: ' + r.involved);
+  if (r.location) lines.push('Location: ' + r.location);
+  lines.push('', 'WHAT HAPPENED', r.desc || '—');
+  if (r.injury) lines.push('', 'INJURIES / MEDICAL TREATMENT', r.injury);
+  if (r.action) lines.push('', 'IMMEDIATE ACTION TAKEN', r.action);
+  if (r.witnesses) lines.push('', 'Witnesses: ' + r.witnesses);
+  lines.push('', 'Full report attached as PDF.', '', '— Submitted via EBCC Field Assistant');
+  return lines.join('\n');
+}
+// One-page (or more) incident report in the app's paper-form style.
+function irBuildPDF(r) {
+  if (typeof window.jspdf === 'undefined') throw new Error('PDF library not loaded — check your internet connection.');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 34, CW = W - 2 * M;
+  const PEACH = [249, 206, 187], BAND_TEXT = [122, 62, 22], INK = [31, 41, 55], GRAY = [120, 128, 138], RED = [220, 38, 38];
+  let y = M;
+  const ensure = need => { if (y + need > H - M) { doc.addPage(); y = M; } };
+  const band = label => {
+    ensure(30);
+    doc.setFillColor(...PEACH); doc.rect(M, y, CW, 16, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...BAND_TEXT);
+    doc.text(label, M + 6, y + 11);
+    doc.setTextColor(...INK); y += 22;
+  };
+  const para = (text) => {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
+    const lines = doc.splitTextToSize(String(text || '—'), CW);
+    for (let i = 0; i < lines.length; i += 40) {
+      const chunk = lines.slice(i, i + 40);
+      ensure(chunk.length * 12 + 6);
+      doc.text(chunk, M, y);
+      y += chunk.length * 12;
+    }
+    y += 6;
+  };
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...INK);
+  doc.text('Incident Report', M, y + 4);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...GRAY);
+  doc.text('EBCC Field Assistant', W - M, y + 4, { align: 'right' });
+  y += 24;
+
+  doc.setFontSize(9.5); doc.setTextColor(...INK);
+  [
+    ['Project', (r.projectName || '') + '  (' + (r.projectCode || '') + ')'],
+    ['Date / Time', jhaFmtDate(r.date) + (r.time ? '  ' + r.time : '')],
+    ['Reported By', r.reporter || '—'],
+    ['Incident Type', r.type || '—'],
+    ['Person(s) Involved', r.involved || '—'],
+    ['Location', r.location || '—'],
+    ['Witnesses', r.witnesses || '—'],
+  ].forEach(pair => {
+    ensure(14);
+    doc.setFont('helvetica', 'bold'); doc.text(pair[0] + ':', M, y);
+    doc.setFont('helvetica', 'normal');
+    const t = doc.splitTextToSize(pair[1], CW - 110);
+    doc.text(t, M + 104, y);
+    y += Math.max(1, t.length) * 12 + 2;
+  });
+  y += 4;
+
+  band('WHAT HAPPENED');
+  para(r.desc);
+  band('INJURIES & MEDICAL TREATMENT');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...RED);
+  ensure(14);
+  doc.text('For all Life Threatening Injuries Call 911, for all other injuries call 1-844-334-6470', M, y);
+  y += 14;
+  para(r.injury || 'None reported');
+  band('IMMEDIATE ACTION TAKEN');
+  para(r.action);
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+  doc.text('Submitted ' + (r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '') + ' via EBCC Field Assistant', M, H - M + 12);
+  return doc;
+}
+// Email the PDF from the foreman's mailbox (server archives it for the office).
+// Stamps the submitted record with the result; returns the status text.
+async function irSendPdf(rec, recipients) {
+  const el = document.getElementById('ir-send-status');
+  const setStatus = (msg, color) => { if (el) { el.textContent = msg; el.style.color = color || 'var(--dark)'; } };
+  let doc;
+  try { doc = irBuildPDF(rec); }
+  catch (e) { setStatus('Could not build the PDF: ' + (e && e.message ? e.message : e), 'var(--red)'); return; }
+  const fileName = 'Incident_' + String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (rec.date || '') + '.pdf';
+  const subject = 'Incident Report - ' + (rec.projectName || rec.projectCode || '') + ' - ' + jhaFmtDate(rec.date) + (rec.type ? ' - ' + rec.type : '');
+  setStatus('Emailing…', 'var(--gray)');
+  try {
+    const r = await fetch('/api/send-incident', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subject, text: irFormatText(rec), recipients, fileName, pdf: doc.output('datauristring'),
+        summary: { reportId: rec.id, date: rec.date, projectCode: rec.projectCode, projectName: rec.projectName, type: rec.type },
+      }),
+    });
+    const res = r.ok ? await r.json() : null;
+    if (res && res.ok) {
+      const stamped = irStampSubmitted(rec.id, x => {
+        x.emailedTo = res.recipients || recipients;
+        x.sent = !!res.sent;
+        x.sentTs = new Date().toISOString();
+        if (res.pdfBlob) x.pdfBlob = res.pdfBlob;
+      });
+      if (res.sent) { irRenderSendStatus(stamped); return; }
+      setStatus('Email service unavailable (' + (res.reason || 'unknown') + ') — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
+      return;
+    }
+    setStatus('Email service unavailable — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
+  } catch (e) {
+    setStatus((navigator.onLine ? 'Email service unavailable' : 'Offline') + ' — the report is saved on your account; use "Email PDF again" when you\'re back online.', 'var(--red)');
+  }
+}
+document.getElementById('ir-resend').addEventListener('click', () => {
+  const r = irCur();
+  if (!r || r.status !== 'submitted') return;
+  irSendPdf(r, irGetRecipients());
+});
+document.getElementById('ir-preview').addEventListener('click', () => {
+  const r = irCur();
+  if (!r) return;
+  try {
+    const doc = irBuildPDF(r);
+    previewShow(URL.createObjectURL(doc.output('blob')), false,
+      'Incident_' + String(r.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (r.date || '') + '.pdf');
+  } catch (e) { alert(e && e.message ? e.message : 'Could not build the PDF.'); }
+});
+irRenderRecipients();
+
 // ---- events ----
 document.getElementById('ir-list').addEventListener('click', (e) => {
   if (e.target.closest('#ir-new-btn')) { irNew(); return; }
@@ -9540,13 +9723,10 @@ document.getElementById('ir-submit').addEventListener('click', () => {
   submitted.push(rec);
   irWriteSubmitted(submitted);
   irWriteDrafts(irReadDrafts().filter(x => x.id !== r.id));
-  irCloseEditor();
-  const note = document.createElement('div');
-  note.className = 'ewt-hint';
-  note.style.cssText = 'color:var(--green);font-weight:600;margin-bottom:8px';
-  note.textContent = 'Submitted ✓ — syncing to your account.';
-  document.getElementById('ir-list').prepend(note);
-  setTimeout(() => note.remove(), 5000);
+  // Recipients are read before the editor re-renders in locked mode.
+  const recipients = irGetRecipients();
+  irOpenEditor(rec.id);          // reopens locked with the "Submitted" stamp
+  irSendPdf(rec, recipients);    // auto-email: amber + anyone added
 });
 ['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses'].forEach(id => {
   document.getElementById(id).addEventListener('input', irFieldsSoon);

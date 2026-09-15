@@ -58,6 +58,8 @@ while ($listener.IsListening) {
         $json = '{"ok":true,"sent":true,"recipients":["travis@earthbasics.net"],"archived":true}'
       } elseif ($path -eq '/api/send-jha') {
         $json = '{"ok":true,"sent":true,"recipients":["travis@earthbasics.net"],"archived":true,"pdfBlob":"dev-admin/jha-26-292-03-2026-08-26-999.pdf"}'
+      } elseif ($path -eq '/api/send-incident') {
+        $json = '{"ok":true,"sent":true,"recipients":["amber@earthbasics.net","travis@earthbasics.net"],"archived":true,"pdfBlob":"dev-admin/incident-26-292-03-2026-09-15-1.pdf"}'
       } elseif ($path -eq '/api/send-trucking') {
         $json = '{"ok":true,"sent":true,"recipients":["travis@earthbasics.net"],"archived":true,"photosArchived":2,"photosAttached":2}'
       } elseif ($path -eq '/api/send-load-count') {

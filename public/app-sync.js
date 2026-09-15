@@ -1182,12 +1182,27 @@
     }).join('');
   }
 
-  // Incident reports — grouped by project, one collapsible per report.
+  // Incident reports — grouped by project, one collapsible per report, with
+  // the emailed PDF openable from the private store.
+  var ADMIN_IR_CACHE = [];
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-ir-pdf]') : null;
+    if (!b) return;
+    var rec = ADMIN_IR_CACHE[+b.getAttribute('data-ir-pdf')];
+    if (!rec || !rec.pdfBlob) return;
+    var name = String(rec.pdfBlob).split('/').slice(1).join('/');
+    apiFetch('/api/ewt-pdf?user=' + encodeURIComponent(ADMIN_EWT_OWNER) + '&name=' + encodeURIComponent(name))
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(function (buf) { openPdfBytes(buf); })
+      .catch(function () { alert('Could not load this PDF.'); });
+  });
   function irAdminHtml(arr) {
-    if (!Array.isArray(arr) || !arr.length) return none();
+    ADMIN_IR_CACHE = Array.isArray(arr) ? arr : [];
+    if (!ADMIN_IR_CACHE.length) return none();
     var byProj = {};
-    arr.forEach(function (r) {
+    ADMIN_IR_CACHE.forEach(function (r, idx) {
       if (!r) return;
+      r.__idx = idx;
       var k = r.projectName || r.projectCode || 'Unknown project';
       (byProj[k] = byProj[k] || []).push(r);
     });
@@ -1198,7 +1213,15 @@
       var inner = reps.map(function (r) {
         var head = esc(r.date || '—') + (r.time ? ' ' + esc(r.time) : '') + ' · ' + esc(r.type || 'untyped') + (r.involved ? ' · ' + esc(r.involved) : '');
         var line = function (label, v) { return v ? '<div style="padding:2px 0"><span style="color:var(--gray)">' + label + ':</span> ' + esc(v) + '</div>' : ''; };
-        var body =
+        var sentLine = r.sentTs
+          ? '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">' + (r.sent ? 'Emailed ' : 'Email failed ') +
+              esc(new Date(r.sentTs).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' })) +
+              (r.emailedTo && r.emailedTo.length ? ' to ' + esc(r.emailedTo.join(', ')) : '') + '</div>'
+          : '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">Not emailed yet</div>';
+        var pdfBtn = r.pdfBlob
+          ? '<button type="button" data-ir-pdf="' + r.__idx + '" style="padding:4px 12px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;margin-bottom:8px">Open PDF</button>'
+          : '';
+        var body = sentLine + pdfBtn +
           '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">Reported by ' + esc(r.reporter || '—') + (r.location ? ' · ' + esc(r.location) : '') + '</div>' +
           (r.desc ? '<div style="margin-bottom:6px;white-space:pre-wrap">' + esc(r.desc) + '</div>' : '') +
           line('Injuries / treatment', r.injury) +
