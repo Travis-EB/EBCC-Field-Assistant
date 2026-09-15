@@ -2056,9 +2056,11 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 
   <div class="ewt-section">
     <div class="ewt-actions">
+      <button class="btn btn-primary" id="ir-submit">Submit report</button>
       <button class="btn" id="ir-back">&larr; Back to reports</button>
     </div>
-    <div class="ewt-hint" style="margin-top:6px">Saves automatically and syncs to your account — admins see it in Manage Users.</div>
+    <div id="ir-submit-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
+    <div class="ewt-hint" id="ir-submit-hint" style="margin-top:6px">This draft stays on this device until you submit. Submitting sends the report to your account so the office can see it in Manage Users.</div>
   </div>
 </div>
 
@@ -9364,23 +9366,33 @@ document.querySelector('.tab[data-tab="sssp"]').addEventListener('click', () => 
 // JHA's, syncs as incident_reports (same by-id merge), and shows
 // in the admin drill-down under Safety.
 // ============================================================
-const IR_KEY = 'ebcc_incident_reports_v1';
+const IR_KEY = 'ebcc_incident_reports_v1';       // submitted reports — synced to the account
+const IR_DRAFT_KEY = 'ebcc_incident_drafts_v1';  // drafts — this device only, until Submit
 const IR_TYPES = ['Injury', 'Near Miss', 'Property Damage', 'Vehicle / Equipment', 'Environmental / Spill', 'Other'];
 let irCurrentId = null;
 let irSaveTimer = null;
 
-function irRead() {
-  try { const v = JSON.parse(localStorage.getItem(IR_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+function irReadKey(k) {
+  try { const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; }
   catch (e) { return []; }
 }
-function irWriteAll(list) { localStorage.setItem(IR_KEY, JSON.stringify(list)); }
+function irReadDrafts() { return irReadKey(IR_DRAFT_KEY); }
+function irReadSubmitted() { return irReadKey(IR_KEY); }
+// Everything for listing, tagged with where it lives.
+function irRead() {
+  return irReadDrafts().map(r => Object.assign({}, r, { status: 'draft' }))
+    .concat(irReadSubmitted().map(r => Object.assign({}, r, { status: 'submitted' })));
+}
+function irWriteDrafts(list) { localStorage.setItem(IR_DRAFT_KEY, JSON.stringify(list)); }
+function irWriteSubmitted(list) { localStorage.setItem(IR_KEY, JSON.stringify(list)); }
+// Edits only ever touch drafts — a submitted report is locked.
 function irMutate(fn) {
-  const all = irRead();
+  const all = irReadDrafts();
   const r = all.find(x => x.id === irCurrentId);
   if (!r) return null;
   fn(r);
   r.updatedAt = new Date().toISOString();
-  irWriteAll(all);
+  irWriteDrafts(all);
   return r;
 }
 function irCur() { return irRead().find(x => x.id === irCurrentId) || null; }
@@ -9401,8 +9413,12 @@ function irRenderList() {
       const snippet = String(r.desc || '').slice(0, 70);
       return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-ir-open="' + escAttr(r.id) + '">' +
         '<div><div class="name">' + escHTML(jhaFmtDate(r.date)) + (r.time ? ' · ' + escHTML(r.time) : '') + (r.type ? ' · ' + escHTML(r.type) : '') + '</div>' +
-        '<div class="rate">' + escHTML(r.reporter || '') + (snippet ? ' · ' + escHTML(snippet) : '') + '</div></div>' +
-        '<button class="btn" data-ir-open="' + escAttr(r.id) + '">Open</button>' +
+        '<div class="rate">' +
+          (r.status === 'draft'
+            ? '<span style="color:#d97706;font-weight:700">Draft — not submitted</span> · '
+            : '<span style="color:var(--green);font-weight:700">Submitted</span> · ') +
+          escHTML(r.reporter || '') + (snippet ? ' · ' + escHTML(snippet) : '') + '</div></div>' +
+        '<button class="btn" data-ir-open="' + escAttr(r.id) + '">' + (r.status === 'draft' ? 'Continue' : 'View') + '</button>' +
       '</div>';
     }).join('');
   }
@@ -9425,9 +9441,9 @@ function irNew() {
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   };
-  const all = irRead();
-  all.push(rec);
-  irWriteAll(all);
+  const drafts = irReadDrafts();
+  drafts.push(rec);
+  irWriteDrafts(drafts);
   irOpenEditor(rec.id);
 }
 
@@ -9448,6 +9464,18 @@ function irOpenEditor(id) {
   document.getElementById('ir-action').value = r.action || '';
   document.getElementById('ir-witnesses').value = r.witnesses || '';
   irRenderTypes(r);
+  // Submitted reports are read-only; drafts are editable and can be submitted.
+  const locked = r.status === 'submitted';
+  ['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses']
+    .forEach(id => { document.getElementById(id).disabled = locked; });
+  document.getElementById('ir-types').style.pointerEvents = locked ? 'none' : '';
+  document.getElementById('ir-submit').style.display = locked ? 'none' : '';
+  document.getElementById('ir-submit-hint').style.display = locked ? 'none' : '';
+  const st = document.getElementById('ir-submit-status');
+  st.textContent = locked
+    ? 'Submitted ' + new Date(r.submittedAt || r.updatedAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' — on your account and visible to the office.'
+    : '';
+  st.style.color = locked ? 'var(--green)' : '';
   window.scrollTo({ top: 0 });
 }
 
@@ -9492,6 +9520,31 @@ document.getElementById('ir-list').addEventListener('click', (e) => {
   if (open) irOpenEditor(open.getAttribute('data-ir-open'));
 });
 document.getElementById('ir-back').addEventListener('click', irCloseEditor);
+// Submit: the draft moves from this device's draft list onto the synced
+// key, which is what pushes it to the account (and the admin view).
+document.getElementById('ir-submit').addEventListener('click', () => {
+  irFlushFields();
+  const r = irCur();
+  if (!r || r.status !== 'draft') return;
+  if (!r.type) { alert('Pick an incident type before submitting.'); return; }
+  if (!String(r.desc || '').trim()) { alert('Describe what happened before submitting.'); document.getElementById('ir-desc').focus(); return; }
+  if (!confirm('Submit this incident report? It will sync to your account and be visible to the office.')) return;
+  const rec = Object.assign({}, r);
+  delete rec.status;
+  rec.submittedAt = new Date().toISOString();
+  rec.updatedAt = rec.submittedAt;
+  const submitted = irReadSubmitted();
+  submitted.push(rec);
+  irWriteSubmitted(submitted);
+  irWriteDrafts(irReadDrafts().filter(x => x.id !== r.id));
+  irCloseEditor();
+  const note = document.createElement('div');
+  note.className = 'ewt-hint';
+  note.style.cssText = 'color:var(--green);font-weight:600;margin-bottom:8px';
+  note.textContent = 'Submitted ✓ — syncing to your account.';
+  document.getElementById('ir-list').prepend(note);
+  setTimeout(() => note.remove(), 5000);
+});
 ['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses'].forEach(id => {
   document.getElementById(id).addEventListener('input', irFieldsSoon);
 });
