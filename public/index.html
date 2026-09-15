@@ -2681,13 +2681,14 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 
 <div class="ewt-section">
   <h3>Send Batch to PMs</h3>
-  <div class="ewt-hint">Pick recipients for the fallback email. On iOS, the Share dialog opens the Mail app with photos attached — you'll pick the recipient there from your contacts.</div>
+  <div class="ewt-hint">Pick recipients and send — the report PDF and the original ticket photos go out from your own mailbox, and both are saved for the office (Manage Users). If email is unavailable, the share sheet opens instead.</div>
   <div class="ewt-recipients" id="trk-recipients"></div>
   <input type="text" id="trk-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
   <div class="ewt-actions">
-    <button class="btn btn-primary" id="trk-share-btn">Share batch</button>
+    <button class="btn btn-primary" id="trk-share-btn">Send batch</button>
     <button class="btn" id="trk-clear-all-btn">Clear all tickets</button>
   </div>
+  <div id="trk-share-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
 </div>
 
 </section>
@@ -6318,6 +6319,46 @@ trkShareBatch = async function () {
   bodyParts.push('');
   bodyParts.push('— Submitted via EBCC Field Assistant');
   const bodyText = bodyParts.join('\n');
+  const recipients = trkGetRecipients();
+
+  // 1) Best path: the server emails the report + original ticket photos from
+  //    YOUR mailbox and archives both for the office (Manage Users). With no
+  //    recipients it still archives, then hands off to the share sheet.
+  const statusEl = document.getElementById('trk-share-status');
+  const setStatus = (msg, color) => { if (statusEl) { statusEl.textContent = msg; statusEl.style.color = color || 'var(--dark)'; } };
+  setStatus(recipients.length ? 'Sending…' : 'Saving a copy…', 'var(--gray)');
+  try {
+    const r = await fetch('/api/send-trucking', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subject, text: bodyText, recipients, fileName, pdf: doc.output('datauristring'), date: dateStr,
+        tickets: tickets.map(t => ({
+          id: t.id, pitTicketNo: t.pitTicketNo, truckNum: t.truckNum, commodity: t.commodity,
+          commodityType: t.commodityType, tons: t.tons, yards: t.yards, truckingCo: t.truckingCo,
+          jobNum: t.jobNum, date: t.date, photo: t.photo || '',
+        })),
+      }),
+    });
+    const res = r.ok ? await r.json() : null;
+    if (res && res.ok) {
+      const saved = res.archived
+        ? ' · report' + (res.photosArchived ? ' + ' + res.photosArchived + ' photo' + (res.photosArchived === 1 ? '' : 's') : '') + ' saved for the office'
+        : '';
+      if (res.sent) {
+        setStatus('Emailed ✓ to ' + (res.recipients || recipients).join(', ') + saved, 'var(--green)');
+        return;
+      }
+      if (!recipients.length) {
+        setStatus((saved ? 'Copy' + saved.replace(' · report', ': report') : '') + ' Check recipients to email it directly next time.', 'var(--gray)');
+        return;
+      }
+      console.warn('Trucking email not sent (' + res.reason + ') — falling back to share sheet');
+    }
+    setStatus('Email service unavailable right now — opening the share sheet instead.', 'var(--gray)');
+  } catch (e) {
+    console.warn('send-trucking failed, falling back to share sheet', e);
+    setStatus(navigator.onLine ? 'Email service unavailable right now — opening the share sheet instead.' : 'Offline — opening the share sheet instead.', 'var(--gray)');
+  }
 
   const pdfFile = new File([blob], fileName, { type: 'application/pdf' });
 
@@ -6341,7 +6382,6 @@ trkShareBatch = async function () {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-  const recipients = trkGetRecipients();
   const mailto = 'mailto:' + encodeURIComponent(recipients.join(','))
     + '?subject=' + encodeURIComponent(subject)
     + '&body=' + encodeURIComponent(bodyText + '\n\n(PDF "' + fileName + '" was downloaded to your device — attach it from your Downloads or Files app.)');

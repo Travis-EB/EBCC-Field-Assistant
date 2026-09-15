@@ -741,7 +741,7 @@
         }).join('');
         // Only chips with something in them — zeros are noise.
         var chip = function (label, v) { return v ? '<span class="adm-chip">' + label + ' <b>' + v + '</b></span>' : ''; };
-        var chips = chip('Tickets', c.trucking_tickets) + chip('Load counts', c.load_count_sends) +
+        var chips = chip('Tickets', c.trucking_tickets) + chip('Ticket reports', c.trucking_sends) + chip('Load counts', c.load_count_sends) +
           chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) + chip('Incidents', c.incident_reports) +
           chip('Spreads', (c.cpy_posts || 0) + (c.flat_posts || 0)) +
           chip('Calcs', (c.lime_posts || 0) + (c.flexbase_posts || 0));
@@ -800,6 +800,10 @@
         '</div>' +
         '<div class="adm-group-label">Project Communications</div>' +
         section('Truck Tickets (' + tickets.length + ')', ticketsHtml(tickets), !tickets.length) +
+        (function () {
+          var sends = (rec.trucking_sends && rec.trucking_sends.data) || [];
+          return section('Truck Tickets — sent reports (' + sends.length + ')', truckingSendsHtml(sends), !sends.length);
+        })() +
         section('Load Count — current day' + updatedTag(rec.load_count), loadCountHtml(loadCount), !loadCount) +
         section('Load Count — sent days (' + sends.length + ')', loadCountSendsHtml(sends), !sends.length) +
         section('Extra Work Tickets (' + ewt.length + ')', ewtHtml(ewt), !ewt.length) +
@@ -893,6 +897,63 @@
       .then(function (buf) { openPdfBytes(buf); })
       .catch(function () { alert('Could not load this PDF.'); });
   });
+  // Truck Tickets — sent batches: the report PDF plus every original ticket
+  // photo, both archived at send time. Buttons stream from the private store.
+  var ADMIN_TRK_CACHE = [];
+  var admBtn = 'padding:4px 12px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer';
+  function truckingSendsHtml(arr) {
+    ADMIN_TRK_CACHE = Array.isArray(arr) ? arr : [];
+    if (!ADMIN_TRK_CACHE.length) return none();
+    return ADMIN_TRK_CACHE.map(function (x, i) { return { x: x, i: i }; }).reverse().map(function (it) {
+      var x = it.x;
+      var when = x.ts ? new Date(x.ts).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' }) : '';
+      var photos = Array.isArray(x.photoBlobs) ? x.photoBlobs : [];
+      var meta = '<div style="font-size:10.5px;color:var(--gray);margin:0 0 6px">' + esc(when) +
+        (x.emailedTo && x.emailedTo.length ? (x.sent ? ' · emailed to ' : ' · email failed, shared from device · ') + esc(x.emailedTo.join(', ')) : ' · shared from device (no recipients checked)') +
+        (photos.length ? ' · ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' archived' + (x.sent && x.photosAttached != null && x.photosAttached < photos.length ? ' (' + x.photosAttached + ' attached to the email)' : '') : '') + '</div>';
+      var pdf = x.pdfBlob
+        ? '<button type="button" data-trk-pdf="' + it.i + '" style="' + admBtn + ';margin-bottom:8px">Open report PDF</button>'
+        : '<div style="font-size:11px;color:var(--gray);margin-bottom:8px">Report PDF not archived (storage was unavailable when this was sent)</div>';
+      var thumbs = photos.length
+        ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px">' + photos.map(function (p, j) {
+            return '<button type="button" data-trk-photo="' + it.i + ':' + j + '" style="' + admBtn + '">Photo · #' + esc(p.pitTicketNo || (j + 1)) + '</button>';
+          }).join('') + '</div>'
+        : '';
+      var rows = (x.tickets || []).map(function (t) {
+        return '<div style="padding:4px 0;border-top:1px solid var(--light-gray)">#' + esc(t.pitTicketNo || t.truckNum || '—') +
+          ' · ' + esc(t.commodity || t.commodityType || '') + ' · ' + esc(t.tons || '') + 't / ' + esc(t.yards || '') + 'cy · ' + esc(t.truckingCo || '') +
+          (t.hasPhoto ? '' : ' <span style="color:var(--gray)">(no photo)</span>') + '</div>';
+      }).join('');
+      var n = x.ticketCount || (x.tickets || []).length;
+      var head = (x.date || when) + ' · ' + n + ' ticket' + (n === 1 ? '' : 's') + (x.tons ? ' · ' + x.tons + ' t' : '') + (photos.length ? ' · ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') : '');
+      return postDetails(head, meta + pdf + thumbs + rows);
+    }).join('');
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-trk-pdf],[data-trk-photo]') : null;
+    if (!b) return;
+    var rec, path, isImg = false;
+    if (b.hasAttribute('data-trk-pdf')) {
+      rec = ADMIN_TRK_CACHE[+b.getAttribute('data-trk-pdf')];
+      path = rec && rec.pdfBlob;
+    } else {
+      var parts = b.getAttribute('data-trk-photo').split(':');
+      rec = ADMIN_TRK_CACHE[+parts[0]];
+      var ph = rec && Array.isArray(rec.photoBlobs) ? rec.photoBlobs[+parts[1]] : null;
+      path = ph && ph.path;
+      isImg = true;
+    }
+    if (!path) return;
+    var name = String(path).split('/').slice(1).join('/');
+    apiFetch('/api/ewt-pdf?user=' + encodeURIComponent(ADMIN_EWT_OWNER) + '&name=' + encodeURIComponent(name))
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(function (buf) {
+        var type = isImg ? (/\.png$/i.test(name) ? 'image/png' : 'image/jpeg') : 'application/pdf';
+        window.open(URL.createObjectURL(new Blob([buf], { type: type })), '_blank');
+      })
+      .catch(function () { alert('Could not load this file.'); });
+  });
+
   // Open an archived JHA PDF (admin drill-down) — same private store as EWT PDFs
   var ADMIN_JHA_CACHE = [];
   document.addEventListener('click', function (ev) {

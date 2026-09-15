@@ -47,10 +47,13 @@ module.exports = async function (context, req) {
       const bc = container.getBlockBlobClient(user + '/' + name);
       if (!(await bc.exists())) return json(context, 404, { error: 'Not found.' });
       const buf = await bc.downloadToBuffer();
+      // The store also holds archived ticket photos and production images.
+      const ext = name.toLowerCase().split('.').pop();
+      const type = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : ext === 'png' ? 'image/png' : 'application/pdf';
       context.res = {
         status: 200,
         isRaw: true,
-        headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'private, max-age=300' },
+        headers: { 'Content-Type': type, 'Cache-Control': 'private, max-age=300' },
         body: buf,
       };
       return;

@@ -6,7 +6,11 @@
 // so callers can fall back to the device share sheet.
 const TENANT_ID = process.env.AAD_TENANT_ID || 'f95ee318-b7d4-49aa-b795-b188b614caca';
 
-async function sendGraphMail(context, { fromEmail, subject, text, recipients, fileName, pdfB64, contentType }) {
+// One primary attachment (fileName/pdfB64/contentType) plus optional extra
+// `attachments`: [{ name, contentType, b64 }] — e.g. ticket photos.
+async function sendGraphMail(context, { fromEmail, subject, text, recipients, fileName, pdfB64, contentType, attachments }) {
+  const files = (Array.isArray(attachments) ? attachments : []).filter((a) => a && a.b64);
+  if (pdfB64) files.unshift({ name: fileName, contentType: contentType || 'application/pdf', b64: pdfB64 });
   const clientId = process.env.AAD_CLIENT_ID;
   const clientSecret = process.env.AAD_CLIENT_SECRET;
   if (!clientId || !clientSecret) return { ok: false, reason: 'mail-not-configured' };
@@ -40,12 +44,12 @@ async function sendGraphMail(context, { fromEmail, subject, text, recipients, fi
           subject: subject,
           body: { contentType: 'Text', content: text },
           toRecipients: recipients.map((r) => ({ emailAddress: { address: r } })),
-          attachments: pdfB64 ? [{
+          attachments: files.map((a) => ({
             '@odata.type': '#microsoft.graph.fileAttachment',
-            name: fileName,
-            contentType: contentType || 'application/pdf',
-            contentBytes: pdfB64,
-          }] : [],
+            name: a.name,
+            contentType: a.contentType || 'application/octet-stream',
+            contentBytes: a.b64,
+          })),
         },
         saveToSentItems: true,
       }),
