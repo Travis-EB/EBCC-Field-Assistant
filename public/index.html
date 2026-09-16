@@ -234,6 +234,32 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   background: var(--card, #fff); border-radius: 14px; padding: 16px;
   width: 100%; max-width: 520px; box-shadow: 0 18px 50px rgba(0,0,0,.3);
 }
+/* Toolbox Talk sign-in overlay (pass-the-device crew sign-in) */
+#tb-signin {
+  position: fixed; inset: 0; z-index: 1300;
+  background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+#tb-signin .ewt-signature-pad { height: 180px; }
+.tb-topic-row {
+  display: flex; align-items: flex-start; gap: 10px; padding: 8px 6px;
+  border-bottom: 1px solid var(--light-gray); font-size: 13.5px; cursor: pointer; user-select: none;
+}
+.tb-topic-row:last-child { border-bottom: none; }
+.tb-topic-row .box {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; margin-top: 1px;
+  border: 2px solid var(--border); display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800; color: #fff;
+}
+.tb-topic-row.on .box { background: var(--blue); border-color: var(--blue); }
+.tb-topic-row.on { color: var(--dark); font-weight: 600; }
+.tb-att-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--light-gray); flex-wrap: wrap; }
+.tb-att-row .nm { font-weight: 600; font-size: 14px; flex: 1; min-width: 110px; }
+.tb-att-row img { height: 34px; background: #fff; border: 1px solid var(--border); border-radius: 6px; }
+.tb-recent-chip {
+  font-family: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 99px;
+  border: 1px solid var(--border); background: var(--card, #fff); color: var(--dark); cursor: pointer;
+}
 .tab:hover { color: var(--dark); background: var(--light-gray); }
 .tab.active {
   color: var(--dark);
@@ -1902,6 +1928,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     <button class="tab" data-tab="jha" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.3 17.2a1 1 0 0 1 1-1.2h15.4a1 1 0 0 1 1 1.2l-.2 1.3a1 1 0 0 1-1 .8H4.5a1 1 0 0 1-1-.8z"/><path d="M10 10.5V6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4.5"/><path d="M5.2 16v-2.3a6.8 6.8 0 0 1 4.8-6.5"/><path d="M14 7.2a6.8 6.8 0 0 1 4.8 6.5V16"/></svg>JHA's</button>
     <button class="tab" data-tab="sssp" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16"/><path d="M13.6 5.2 18 19.5H6L10.4 5.2a1.7 1.7 0 0 1 3.2 0z"/><path d="M8.9 10.3h6.2"/><path d="M7.6 14.6h8.8"/></svg>SSSP's</button>
     <button class="tab" data-tab="incident" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="3" width="7" height="3.4" rx="1"/><path d="M15.5 4.7h2A1.5 1.5 0 0 1 19 6.2v13.3a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5V6.2a1.5 1.5 0 0 1 1.5-1.5h2"/><path d="M12 9.6v4.6"/><path d="M12 17h.01"/></svg>Incident Report</button>
+    <button class="tab" data-tab="toolbox" role="tab" aria-selected="false">Toolbox Talk</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-label">Settings</div>
@@ -2083,6 +2110,103 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     </div>
     <div id="ir-submit-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
     <div class="ewt-hint" id="ir-submit-hint" style="margin-top:6px">This draft stays on this device until you submit. Submitting sends the report to your account so the office can see it in Manage Users.</div>
+  </div>
+</div>
+
+</section>
+
+<section class="tab-content" id="tab-toolbox">
+
+<div class="ewt-banner">
+  <div><strong>Toolbox Talk</strong></div>
+  <div class="ewt-license">Safety Meeting Attendance Record</div>
+</div>
+
+<div class="ewt-section" id="tb-picker">
+  <h3>Project</h3>
+  <div class="ewt-hint">Toolbox talks are organized by project — the same project list as Job Books. Start typing a name or job # and pick from the list.</div>
+  <div class="search-bar" style="margin:8px 0 0">
+    <input type="text" id="tb-proj-combo" placeholder="Search projects — name or job #…" autocomplete="off">
+    <div class="search-results" id="tb-proj-results"></div>
+  </div>
+  <div id="tb-list" style="margin-top:10px"></div>
+</div>
+
+<div id="tb-editor" style="display:none">
+  <div class="ewt-section">
+    <h3 id="tb-ed-title">Toolbox Talk</h3>
+    <div class="ewt-grid">
+      <label>Date <input type="date" id="tb-date"></label>
+      <label>Superintendent / Foreman <input type="text" id="tb-leader"></label>
+      <label class="ewt-grid-wide">Nearest emergency / medical center location <input type="text" id="tb-medical" placeholder="Name and address"></label>
+    </div>
+  </div>
+
+  <div class="ewt-section">
+    <h3>Topics <span id="tb-topic-count" style="font-weight:500;color:var(--gray);font-size:13px"></span></h3>
+    <div class="ewt-hint">Tap each topic covered in today's meeting.</div>
+    <div id="tb-topics"></div>
+    <div class="ewt-grid" style="margin-top:10px">
+      <label class="ewt-grid-wide">Other topics covered <textarea id="tb-other" rows="2" placeholder="Anything else discussed today…"></textarea></label>
+    </div>
+  </div>
+
+  <div class="ewt-section">
+    <h3>Comments or Suggestions</h3>
+    <div class="ewt-grid">
+      <label class="ewt-grid-wide"><textarea id="tb-comments" rows="3" placeholder="Crew comments or suggestions…"></textarea></label>
+    </div>
+  </div>
+
+  <div class="ewt-section">
+    <h3>Attendees <span id="tb-att-count" style="font-weight:500;color:var(--gray);font-size:13px"></span></h3>
+    <div class="ewt-hint">Pass the device around — each person prints their name and signs. <em>By signing, you have understood the safety meeting as provided by your supervisor or instructor.</em></div>
+    <div id="tb-attendees"></div>
+    <div class="ewt-actions" style="margin-top:10px">
+      <button class="btn btn-primary" id="tb-signin-open">Sign in crew</button>
+    </div>
+  </div>
+
+  <div class="ewt-section">
+    <h3>Email the record</h3>
+    <div class="ewt-hint">Submitting emails a PDF of this attendance record to <strong>amber@earthbasics.net</strong> automatically. Add the PM, safety manager, or anyone else who should get a copy.</div>
+    <div class="ewt-recipients" id="tb-recipients"></div>
+    <input type="text" id="tb-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
+    <div class="ewt-actions" id="tb-resend-wrap" style="display:none;margin-top:8px">
+      <button class="btn btn-primary" id="tb-resend">Email PDF again</button>
+      <button class="btn" id="tb-preview">Preview PDF</button>
+    </div>
+    <div id="tb-send-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
+  </div>
+
+  <div class="ewt-section">
+    <div class="ewt-actions">
+      <button class="btn btn-primary" id="tb-submit">Submit record</button>
+      <button class="btn" id="tb-back">&larr; Back to talks</button>
+    </div>
+    <div id="tb-submit-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
+    <div class="ewt-hint" id="tb-submit-hint" style="margin-top:6px">This draft stays on this device until you submit. Submitting sends the record to your account so the office can see it in Manage Users.</div>
+  </div>
+</div>
+
+<div id="tb-signin" style="display:none">
+  <div class="jha-sig-card" style="max-width:640px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="font-weight:700;font-size:16px">Sign in — then pass it to the next person</div>
+      <span id="tb-signin-count" style="color:var(--gray);font-size:13px;font-weight:600;white-space:nowrap"></span>
+    </div>
+    <input type="text" id="tb-signin-name" placeholder="Print your name" autocomplete="off" autocapitalize="words" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:18px;border:1px solid var(--border);border-radius:10px;font-family:inherit;background:var(--card);color:var(--dark)">
+    <div id="tb-signin-recent" style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px"></div>
+    <div class="ewt-signature-wrap" style="margin-top:6px">
+      <canvas id="tb-sig-canvas" class="ewt-signature-pad" aria-label="Attendee signature"></canvas>
+      <span class="ewt-signature-hint" id="tb-sig-hint">Sign here with your finger</span>
+    </div>
+    <div class="ewt-actions" style="margin-top:10px">
+      <button class="btn btn-primary" id="tb-signin-add" style="font-size:16px;padding:12px 18px">Add &amp; next person</button>
+      <button class="btn" id="tb-sig-clear">Clear signature</button>
+      <button class="btn" id="tb-signin-done">Done</button>
+    </div>
+    <div id="tb-signin-msg" style="margin-top:6px;font-size:12.5px;font-weight:600;min-height:16px;color:var(--gray)"></div>
   </div>
 </div>
 
@@ -9834,6 +9958,465 @@ document.getElementById('ir-photos').addEventListener('click', (e) => {
   }
   showData(p.thumb || p.data);
 });
+
+// ============================================================
+// Toolbox Talks — Safety Meeting Attendance Record. Project
+// first, tap the topics covered, then pass the device around
+// so each attendee prints and signs. Drafts stay on the device;
+// Submit syncs (toolbox_records) and emails the PDF to Amber +
+// anyone added.
+// ============================================================
+const TB_KEY = 'ebcc_toolbox_records_v1';       // submitted — synced
+const TB_DRAFT_KEY = 'ebcc_toolbox_drafts_v1';  // drafts — this device only
+const TB_ALWAYS_TO = ['amber@earthbasics.net'];
+const TB_TOPICS = [
+  'Never position yourself behind or in a blind spot of equipment without operators knowledge.',
+  'Slippery surfaces: wet equipment, pads, roads, etc.',
+  'Caution working around other trades: hard hats to be worn around roofers.',
+  'Have eye to eye contact with operator when working near/behind equipment.',
+  'Never position yourself between moving equipment, and another stationary object.',
+  'Unsafe equipment: tire damage, faulty alarms, seat belts, etc.',
+  'Check all equipment for back-up alarms.',
+  'Keep jobsite free of debris, and trash.',
+  'Block equipment tires before maintenance.',
+  'Caution handling fuels: drain pans, flames, skin/eye contact, etc.',
+  'Be aware of underground utilities.',
+  'Caution working around gas lines. (Hand dig within three feet).',
+  'Be aware of surroundings.',
+  'Caution on "street work".',
+  'Caution on slopes: loose rocks, steep surface, etc.',
+  'Lift with legs, not your back.',
+  'Review "Code of Safe Practices".',
+];
+let tbCurrentId = null;
+let tbSaveTimer = null;
+
+function tbReadKey(k) { try { const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+function tbReadDrafts() { return tbReadKey(TB_DRAFT_KEY); }
+function tbReadSubmitted() { return tbReadKey(TB_KEY); }
+function tbRead() {
+  return tbReadDrafts().map(r => Object.assign({}, r, { status: 'draft' }))
+    .concat(tbReadSubmitted().map(r => Object.assign({}, r, { status: 'submitted' })));
+}
+function tbWriteDrafts(list) { localStorage.setItem(TB_DRAFT_KEY, JSON.stringify(list)); }
+function tbWriteSubmitted(list) { localStorage.setItem(TB_KEY, JSON.stringify(list)); }
+function tbMutate(fn) {
+  const all = tbReadDrafts();
+  const r = all.find(x => x.id === tbCurrentId);
+  if (!r) return null;
+  fn(r);
+  r.updatedAt = new Date().toISOString();
+  tbWriteDrafts(all);
+  return r;
+}
+function tbStampSubmitted(id, fn) {
+  const all = tbReadSubmitted();
+  const r = all.find(x => x.id === id);
+  if (!r) return null;
+  fn(r);
+  r.updatedAt = new Date().toISOString();
+  tbWriteSubmitted(all);
+  return r;
+}
+function tbCur() { return tbRead().find(x => x.id === tbCurrentId) || null; }
+
+const tbProjCombo = projCombo('tb-proj-combo', 'tb-proj-results', () => tbRenderList());
+
+function tbRenderList() {
+  const list = document.getElementById('tb-list');
+  const code = tbProjCombo.getCode();
+  if (!code) { list.innerHTML = ''; return; }
+  const mine = tbRead().filter(r => r.projectCode === code).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  let html = '<div class="controls" style="margin-bottom:10px"><button class="btn btn-primary" id="tb-new-btn">New toolbox talk (' + jhaFmtDate(jhaToday()) + ')</button></div>';
+  if (!mine.length) html += '<div class="empty">No toolbox talks for this project yet.</div>';
+  else html += mine.map(r => {
+    const n = (r.signoffs || []).length;
+    const topics = Object.keys(r.topics || {}).filter(k => r.topics[k]).length;
+    return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-tb-open="' + escAttr(r.id) + '">' +
+      '<div><div class="name">' + escHTML(jhaFmtDate(r.date)) + ' · ' + n + ' signed' + '</div>' +
+      '<div class="rate">' + (r.status === 'draft'
+        ? '<span style="color:#d97706;font-weight:700">Draft — not submitted</span>'
+        : '<span style="color:var(--green);font-weight:700">Submitted</span>') +
+        ' · ' + topics + ' topic' + (topics === 1 ? '' : 's') + (r.leader ? ' · ' + escHTML(r.leader) : '') + '</div></div>' +
+      '<button class="btn" data-tb-open="' + escAttr(r.id) + '">' + (r.status === 'draft' ? 'Continue' : 'View') + '</button>' +
+    '</div>';
+  }).join('');
+  list.innerHTML = html;
+}
+
+function tbNew() {
+  const code = tbProjCombo.getCode();
+  if (!code) return;
+  const proj = (window.EBCC_PROJECTS || []).find(p => p.code === code) || {};
+  const prev = tbRead().filter(r => r.projectCode === code).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+  const now = new Date();
+  const rec = {
+    id: 'tb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    projectCode: code, projectName: proj.name || code,
+    date: jhaToday(),
+    leader: (window.EBCC_ME && (window.EBCC_ME.name || window.EBCC_ME.email)) || '',
+    medical: prev ? (prev.medical || '') : '',     // nearest medical center carries over per project
+    topics: {}, other: '', comments: '',
+    signoffs: [],
+    createdAt: now.toISOString(), updatedAt: now.toISOString(),
+  };
+  const drafts = tbReadDrafts();
+  drafts.push(rec);
+  tbWriteDrafts(drafts);
+  tbOpenEditor(rec.id);
+}
+
+function tbOpenEditor(id) {
+  const r = tbRead().find(x => x.id === id);
+  if (!r) return;
+  tbCurrentId = id;
+  document.getElementById('tb-picker').style.display = 'none';
+  document.getElementById('tb-editor').style.display = '';
+  document.getElementById('tb-ed-title').textContent = 'Toolbox Talk — ' + (r.projectName || r.projectCode) + ' — ' + jhaFmtDate(r.date);
+  document.getElementById('tb-date').value = r.date || '';
+  document.getElementById('tb-leader').value = r.leader || '';
+  document.getElementById('tb-medical').value = r.medical || '';
+  document.getElementById('tb-other').value = r.other || '';
+  document.getElementById('tb-comments').value = r.comments || '';
+  tbRenderTopics(r);
+  tbRenderAttendees(r);
+  const locked = r.status === 'submitted';
+  ['tb-date', 'tb-leader', 'tb-medical', 'tb-other', 'tb-comments'].forEach(i => { document.getElementById(i).disabled = locked; });
+  document.getElementById('tb-topics').style.pointerEvents = locked ? 'none' : '';
+  document.getElementById('tb-signin-open').style.display = locked ? 'none' : '';
+  document.getElementById('tb-submit').style.display = locked ? 'none' : '';
+  document.getElementById('tb-submit-hint').style.display = locked ? 'none' : '';
+  document.getElementById('tb-resend-wrap').style.display = locked ? '' : 'none';
+  const st = document.getElementById('tb-submit-status');
+  st.textContent = locked
+    ? 'Submitted ' + new Date(r.submittedAt || r.updatedAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' — on your account and visible to the office.'
+    : '';
+  st.style.color = locked ? 'var(--green)' : '';
+  tbRenderSendStatus(r);
+  window.scrollTo({ top: 0 });
+}
+function tbCloseEditor() {
+  tbFlushFields();
+  tbCurrentId = null;
+  document.getElementById('tb-editor').style.display = 'none';
+  document.getElementById('tb-picker').style.display = '';
+  tbRenderList();
+}
+function tbRenderTopics(r) {
+  const on = r.topics || {};
+  const n = TB_TOPICS.filter(t => on[t]).length;
+  document.getElementById('tb-topic-count').textContent = n ? '(' + n + ' covered)' : '';
+  document.getElementById('tb-topics').innerHTML = TB_TOPICS.map((t, i) =>
+    '<div class="tb-topic-row' + (on[t] ? ' on' : '') + '" data-tb-topic="' + i + '"><span class="box">' + (on[t] ? '&#10003;' : '') + '</span><span>' + escHTML(t) + '</span></div>'
+  ).join('');
+}
+function tbRenderAttendees(r) {
+  const rows = r.signoffs || [];
+  const locked = r.status === 'submitted';
+  document.getElementById('tb-att-count').textContent = rows.length ? '(' + rows.length + ')' : '';
+  document.getElementById('tb-attendees').innerHTML = rows.length ? rows.map((s, i) =>
+    '<div class="tb-att-row"><span class="nm">' + (i + 1) + '. ' + escHTML(s.name) + '</span>' +
+      (s.sig ? '<img src="' + escAttr(s.sig) + '" alt="signature">' : '<span style="color:var(--gray);font-size:12px">no signature</span>') +
+      (locked ? '' : '<button type="button" class="jha-x" data-tb-att-del="' + i + '" title="Remove">Remove</button>') +
+    '</div>'
+  ).join('') : '<div class="empty">No one signed in yet — tap "Sign in crew" and pass the device around.</div>';
+}
+function tbFieldsSoon() { clearTimeout(tbSaveTimer); tbSaveTimer = setTimeout(tbFlushFields, 450); }
+function tbFlushFields() {
+  clearTimeout(tbSaveTimer);
+  if (!tbCurrentId) return;
+  tbMutate(r => {
+    r.date = document.getElementById('tb-date').value || r.date;
+    r.leader = document.getElementById('tb-leader').value;
+    r.medical = document.getElementById('tb-medical').value;
+    r.other = document.getElementById('tb-other').value;
+    r.comments = document.getElementById('tb-comments').value;
+  });
+}
+
+// ---- sign-in overlay: print name + sign, "Add & next" clears for the next person ----
+(function () {
+  const ov = document.getElementById('tb-signin');
+  const canvas = document.getElementById('tb-sig-canvas');
+  const wrap = canvas.parentElement;
+  const ctx = canvas.getContext('2d');
+  const nameEl = document.getElementById('tb-signin-name');
+  const msg = document.getElementById('tb-signin-msg');
+  let drawing = false, lastX = 0, lastY = 0, has = false;
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr); canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.scale(dpr, dpr);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 2;
+  }
+  const pt = e => { const r = canvas.getBoundingClientRect(); const s = (e.touches && e.touches[0]) ? e.touches[0] : e; return { x: s.clientX - r.left, y: s.clientY - r.top }; };
+  canvas.addEventListener('mousedown', e => { drawing = true; const p = pt(e); lastX = p.x; lastY = p.y; has = true; wrap.classList.add('signed'); e.preventDefault(); });
+  canvas.addEventListener('touchstart', e => { drawing = true; const p = pt(e); lastX = p.x; lastY = p.y; has = true; wrap.classList.add('signed'); e.preventDefault(); }, { passive: false });
+  const move = e => { if (!drawing) return; const p = pt(e); ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke(); lastX = p.x; lastY = p.y; e.preventDefault(); };
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('touchmove', move, { passive: false });
+  ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach(ev => canvas.addEventListener(ev, () => { drawing = false; }));
+  function clearPad() { ctx.clearRect(0, 0, canvas.width, canvas.height); has = false; wrap.classList.remove('signed'); }
+  function counter() { const r = tbCur(); const n = r ? (r.signoffs || []).length : 0; document.getElementById('tb-signin-count').textContent = n + ' signed in'; }
+  function recentNames() {
+    const r = tbCur();
+    if (!r) return [];
+    const already = new Set((r.signoffs || []).map(s => s.name.toLowerCase()));
+    const names = [];
+    const push = n => { const k = String(n || '').trim(); if (k && !already.has(k.toLowerCase()) && !names.some(x => x.toLowerCase() === k.toLowerCase())) names.push(k); };
+    tbRead().filter(x => x.projectCode === r.projectCode && x.id !== r.id).sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .forEach(x => (x.signoffs || []).forEach(s => push(s.name)));
+    if (typeof jhaRead === 'function') jhaRead().filter(x => x.projectCode === r.projectCode).sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .forEach(x => (x.signoffs || []).forEach(s => push(s.name)));
+    return names.slice(0, 24);
+  }
+  function renderRecent() {
+    const wrapEl = document.getElementById('tb-signin-recent');
+    const names = recentNames();
+    wrapEl.innerHTML = names.length
+      ? '<span style="font-size:11px;color:var(--gray);align-self:center">Tap your name:</span>' + names.map(n => '<button type="button" class="tb-recent-chip" data-tb-recent="' + escAttr(n) + '">' + escHTML(n) + '</button>').join('')
+      : '';
+  }
+  window.tbOpenSignin = function () {
+    const r = tbCur();
+    if (!r || r.status !== 'draft') return;
+    ov.style.display = 'flex';
+    nameEl.value = ''; msg.textContent = '';
+    resize(); clearPad(); counter(); renderRecent();
+    setTimeout(() => { try { nameEl.focus(); } catch (e) {} }, 50);
+  };
+  document.getElementById('tb-signin-recent').addEventListener('click', e => {
+    const b = e.target.closest('[data-tb-recent]');
+    if (b) { nameEl.value = b.getAttribute('data-tb-recent'); msg.textContent = 'Now sign below.'; }
+  });
+  document.getElementById('tb-sig-clear').addEventListener('click', clearPad);
+  document.getElementById('tb-signin-done').addEventListener('click', () => { ov.style.display = 'none'; const r = tbCur(); if (r) tbRenderAttendees(r); });
+  document.getElementById('tb-signin-add').addEventListener('click', () => {
+    const name = nameEl.value.replace(/\s+/g, ' ').trim();
+    if (!name) { msg.textContent = 'Print your name first.'; msg.style.color = 'var(--red)'; nameEl.focus(); return; }
+    if (!has) { msg.textContent = 'Sign in the box.'; msg.style.color = 'var(--red)'; return; }
+    const rect = canvas.getBoundingClientRect();
+    const out = document.createElement('canvas');
+    const w = 360, h = Math.max(1, Math.round(rect.height * (360 / Math.max(1, rect.width))));
+    out.width = w; out.height = h;
+    out.getContext('2d').drawImage(canvas, 0, 0, w, h);
+    const sig = out.toDataURL('image/png');
+    const r = tbMutate(x => { x.signoffs = x.signoffs || []; x.signoffs.push({ name: name, sig: sig, ts: new Date().toISOString() }); });
+    if (!r) return;
+    tbRenderAttendees(Object.assign({}, r, { status: 'draft' }));
+    nameEl.value = ''; clearPad(); counter(); renderRecent();
+    msg.textContent = name + ' added — pass it to the next person.'; msg.style.color = 'var(--green)';
+    setTimeout(() => { try { nameEl.focus(); } catch (e) {} }, 50);
+  });
+  nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); } });
+  window.addEventListener('resize', () => { if (ov.style.display !== 'none') resize(); });
+})();
+
+// ---- email / PDF ----
+function tbRenderRecipients() {
+  document.getElementById('tb-recipients').innerHTML = EWT_SAVED_CONTACTS.map(email =>
+    '<label class="chip"><input type="checkbox" class="tb-recipient-chk" value="' + escAttr(email) + '"> ' + escHTML(email) + '</label>'
+  ).join('');
+}
+function tbGetRecipients() {
+  const chips = Array.from(document.querySelectorAll('.tb-recipient-chk:checked')).map(c => c.value);
+  const extra = document.getElementById('tb-extra-recipients').value.split(',').map(s => s.trim()).filter(Boolean);
+  return Array.from(new Set([...TB_ALWAYS_TO, ...chips, ...extra]));
+}
+function tbRenderSendStatus(r) {
+  const el = document.getElementById('tb-send-status');
+  if (!el) return;
+  if (r && r.sentTs) {
+    const when = new Date(r.sentTs).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    el.textContent = (r.sent ? 'Emailed ✓ ' : 'Copy saved ') + when + (r.emailedTo && r.emailedTo.length ? ' to ' + r.emailedTo.join(', ') : '');
+    el.style.color = r.sent ? 'var(--green)' : 'var(--gray)';
+  } else el.textContent = '';
+}
+function tbFormatText(r) {
+  const on = TB_TOPICS.filter(t => (r.topics || {})[t]);
+  const lines = ['EBCC SAFETY MEETING ATTENDANCE RECORD (TOOLBOX TALK)'];
+  lines.push('Job: ' + (r.projectName || '') + ' (' + (r.projectCode || '') + ')');
+  lines.push('Date: ' + jhaFmtDate(r.date) + ' · Superintendent/Foreman: ' + (r.leader || '—'));
+  lines.push('', 'TOPICS COVERED (' + on.length + ')');
+  on.forEach(t => lines.push('  • ' + t));
+  if (r.other) lines.push('  • ' + r.other);
+  if (r.medical) lines.push('', 'Nearest emergency/medical center: ' + r.medical);
+  if (r.comments) lines.push('', 'COMMENTS OR SUGGESTIONS', r.comments);
+  lines.push('', 'ATTENDEES (' + (r.signoffs || []).length + '): ' + (r.signoffs || []).map(s => s.name).join(', '));
+  lines.push('', 'Signatures are on the attached PDF.', '', '— Submitted via EBCC Field Assistant');
+  return lines.join('\n');
+}
+// Replica of the paper Safety Meeting Attendance Record.
+function tbBuildPDF(r) {
+  if (typeof window.jspdf === 'undefined') throw new Error('PDF library not loaded — check your internet connection.');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+  const M = 40, CW = W - 2 * M;
+  const INK = [31, 41, 55], GRAY = [120, 128, 138], PEACH = [249, 206, 187], BAND_TEXT = [122, 62, 22];
+  let y = M;
+  const ensure = need => { if (y + need > H - M - 30) { doc.addPage(); y = M; } };
+  const band = label => { ensure(30); doc.setFillColor(...PEACH); doc.rect(M, y, CW, 16, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...BAND_TEXT); doc.text(label, M + 6, y + 11); doc.setTextColor(...INK); y += 22; };
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...INK);
+  doc.text('SAFETY MEETING ATTENDANCE RECORD', W / 2, y + 4, { align: 'center' });
+  y += 26;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold'); doc.text('DATE:', M, y); doc.setFont('helvetica', 'normal'); doc.text(jhaFmtDate(r.date), M + 40, y);
+  doc.setFont('helvetica', 'bold'); doc.text('JOB:', M + 150, y); doc.setFont('helvetica', 'normal');
+  doc.text(doc.splitTextToSize((r.projectName || '') + ' (' + (r.projectCode || '') + ')', CW - 190), M + 180, y);
+  y += 16;
+  doc.setFont('helvetica', 'bold'); doc.text('SUPERINTENDENT:', M, y); doc.setFont('helvetica', 'normal'); doc.text(r.leader || '—', M + 100, y);
+  y += 18;
+
+  band('TOPICS');
+  doc.setFontSize(9);
+  const on = r.topics || {};
+  TB_TOPICS.forEach(t => {
+    const lines = doc.splitTextToSize(t, CW - 24);
+    ensure(lines.length * 11 + 4);
+    doc.setDrawColor(...INK); doc.setLineWidth(0.8);
+    doc.rect(M + 2, y - 7.5, 8.5, 8.5);
+    if (on[t]) { doc.setFont('helvetica', 'bold'); doc.text('X', M + 4.2, y - 0.6); }
+    doc.setFont('helvetica', on[t] ? 'bold' : 'normal');
+    doc.text(lines, M + 18, y);
+    y += lines.length * 11 + 3;
+  });
+  if (r.other) {
+    const lines = doc.splitTextToSize('Other: ' + r.other, CW - 24);
+    ensure(lines.length * 11 + 4);
+    doc.setFont('helvetica', 'bold'); doc.text(lines, M + 18, y); y += lines.length * 11 + 3;
+  }
+  y += 2;
+  doc.setFont('helvetica', 'bold'); doc.text('Nearest emergency/ medical center location:', M, y);
+  doc.setFont('helvetica', 'normal');
+  const med = doc.splitTextToSize(r.medical || '—', CW - 230);
+  doc.text(med, M + 228, y);
+  y += Math.max(1, med.length) * 11 + 8;
+
+  band('COMMENTS OR SUGGESTIONS');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+  const cm = doc.splitTextToSize(r.comments || '—', CW);
+  ensure(cm.length * 12 + 6);
+  doc.text(cm, M, y); y += cm.length * 12 + 10;
+
+  band('ATTENDEES');
+  const sos = r.signoffs || [];
+  doc.setFontSize(9.5);
+  if (!sos.length) { doc.setTextColor(...GRAY); doc.text('No attendees signed in.', M, y); doc.setTextColor(...INK); y += 14; }
+  const colW = CW / 2, rowH = 40;
+  sos.forEach((s, i) => {
+    const col = i % 2;
+    if (col === 0) ensure(rowH + 4);
+    const x = M + col * colW;
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(...INK);
+    doc.text(String(i + 1) + '. ' + String(s.name || '—').slice(0, 30), x, y + 12);
+    if (s.sig && s.sig.indexOf('data:image') === 0) { try { doc.addImage(s.sig, 'PNG', x + 120, y - 6, 110, 30); } catch (e) {} }
+    doc.setDrawColor(...GRAY); doc.setLineWidth(0.5); doc.line(x + 120, y + 26, x + colW - 14, y + 26);
+    if (col === 1 || i === sos.length - 1) y += rowH;
+  });
+
+  const foot = (txt, yy, size) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(size); doc.setTextColor(...GRAY); doc.text(txt, W / 2, yy, { align: 'center' }); };
+  const pages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    foot('*By signing above, you have understood the safety meeting as provided by your supervisor or instructor.', H - M - 4, 7.5);
+    foot('CALIFORNIA 3010 E. MIRALOMA AVENUE, ANAHEIM, CA 92806 | 714.701.9100 | WWW.EARTH-BASICS.COM | TEXAS 912 ENTERTAINMENT WAY, GRAND PRAIRIE, TX 75050', H - M + 8, 6.5);
+  }
+  return doc;
+}
+async function tbSendPdf(rec, recipients) {
+  const el = document.getElementById('tb-send-status');
+  const setStatus = (m, c) => { if (el) { el.textContent = m; el.style.color = c || 'var(--dark)'; } };
+  let doc;
+  try { doc = tbBuildPDF(rec); } catch (e) { setStatus('Could not build the PDF: ' + (e && e.message ? e.message : e), 'var(--red)'); return; }
+  const fileName = 'ToolboxTalk_' + String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (rec.date || '') + '.pdf';
+  const subject = 'Toolbox Talk - ' + (rec.projectName || rec.projectCode || '') + ' - ' + jhaFmtDate(rec.date);
+  setStatus('Emailing…', 'var(--gray)');
+  try {
+    const r = await fetch('/api/send-toolbox', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject, text: tbFormatText(rec), recipients, fileName, pdf: doc.output('datauristring'),
+        summary: { recordId: rec.id, date: rec.date, projectCode: rec.projectCode, projectName: rec.projectName, attendees: (rec.signoffs || []).length } }),
+    });
+    const res = r.ok ? await r.json() : null;
+    if (res && res.ok) {
+      const stamped = tbStampSubmitted(rec.id, x => { x.emailedTo = res.recipients || recipients; x.sent = !!res.sent; x.sentTs = new Date().toISOString(); if (res.pdfBlob) x.pdfBlob = res.pdfBlob; });
+      if (res.sent) { tbRenderSendStatus(stamped); return; }
+      setStatus('Email service unavailable (' + (res.reason || 'unknown') + ') — the record is saved on your account; use "Email PDF again" later.', 'var(--red)');
+      return;
+    }
+    setStatus('Email service unavailable — the record is saved on your account; use "Email PDF again" later.', 'var(--red)');
+  } catch (e) {
+    setStatus((navigator.onLine ? 'Email service unavailable' : 'Offline') + ' — the record is saved on your account; use "Email PDF again" when you\'re back online.', 'var(--red)');
+  }
+}
+
+// ---- events ----
+document.getElementById('tb-list').addEventListener('click', (e) => {
+  if (e.target.closest('#tb-new-btn')) { tbNew(); return; }
+  const open = e.target.closest('[data-tb-open]');
+  if (open) tbOpenEditor(open.getAttribute('data-tb-open'));
+});
+document.getElementById('tb-back').addEventListener('click', tbCloseEditor);
+['tb-date', 'tb-leader', 'tb-medical', 'tb-other', 'tb-comments'].forEach(id => document.getElementById(id).addEventListener('input', tbFieldsSoon));
+document.getElementById('tb-topics').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-tb-topic]');
+  if (!row) return;
+  tbFlushFields();
+  const t = TB_TOPICS[Number(row.getAttribute('data-tb-topic'))];
+  const r = tbMutate(x => { x.topics = x.topics || {}; if (x.topics[t]) delete x.topics[t]; else x.topics[t] = true; });
+  if (r) tbRenderTopics(r);
+});
+document.getElementById('tb-attendees').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-tb-att-del]');
+  if (!del) return;
+  const i = Number(del.getAttribute('data-tb-att-del'));
+  const cur = tbCur();
+  const who = cur && cur.signoffs[i] ? cur.signoffs[i].name : 'this person';
+  if (!confirm('Remove ' + who + ' from the attendance record?')) return;
+  const r = tbMutate(x => { x.signoffs.splice(i, 1); });
+  if (r) tbRenderAttendees(Object.assign({}, r, { status: 'draft' }));
+});
+document.getElementById('tb-signin-open').addEventListener('click', () => { tbFlushFields(); window.tbOpenSignin(); });
+document.getElementById('tb-submit').addEventListener('click', () => {
+  tbFlushFields();
+  const r = tbCur();
+  if (!r || r.status !== 'draft') return;
+  const topicsN = TB_TOPICS.filter(t => (r.topics || {})[t]).length + (String(r.other || '').trim() ? 1 : 0);
+  if (!topicsN) { alert('Tap at least one topic covered (or add one under Other topics).'); return; }
+  if (!(r.signoffs || []).length) { alert('No attendees yet — tap "Sign in crew" and pass the device around first.'); return; }
+  if (!confirm('Submit this attendance record with ' + r.signoffs.length + ' attendee' + (r.signoffs.length === 1 ? '' : 's') + '? It will sync to your account and email the PDF.')) return;
+  const recipients = tbGetRecipients();
+  const rec = Object.assign({}, r);
+  delete rec.status;
+  rec.submittedAt = new Date().toISOString(); rec.updatedAt = rec.submittedAt;
+  const submitted = tbReadSubmitted(); submitted.push(rec); tbWriteSubmitted(submitted);
+  tbWriteDrafts(tbReadDrafts().filter(x => x.id !== r.id));
+  tbOpenEditor(rec.id);
+  tbSendPdf(rec, recipients);
+});
+document.getElementById('tb-resend').addEventListener('click', () => { const r = tbCur(); if (r && r.status === 'submitted') tbSendPdf(r, tbGetRecipients()); });
+document.getElementById('tb-preview').addEventListener('click', () => {
+  const r = tbCur();
+  if (!r) return;
+  try { const doc = tbBuildPDF(r); previewShow(URL.createObjectURL(doc.output('blob')), false, 'ToolboxTalk_' + String(r.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (r.date || '') + '.pdf'); }
+  catch (e) { alert(e && e.message ? e.message : 'Could not build the PDF.'); }
+});
+document.querySelector('.tab[data-tab="toolbox"]').addEventListener('click', () => {
+  if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
+  tbRenderList();
+  try { window.dispatchEvent(new CustomEvent('ebcc-tb-pull')); } catch (e) {}
+});
+window.addEventListener('ebcc-tb-updated', () => {
+  if (!document.getElementById('tab-toolbox').classList.contains('active')) return;
+  if (!tbCurrentId) tbRenderList();
+});
+window.addEventListener('pagehide', tbFlushFields);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') tbFlushFields(); });
+tbRenderRecipients();
 
 // ---- events ----
 document.getElementById('ir-list').addEventListener('click', (e) => {

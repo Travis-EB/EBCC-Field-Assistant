@@ -17,6 +17,8 @@
     'ebcc_jha_records_v1': 'jha_records',
     // Incident reports — same by-id merge as JHAs
     'ebcc_incident_reports_v1': 'incident_reports',
+    // Toolbox talks (attendance records) — same by-id merge
+    'ebcc_toolbox_records_v1': 'toolbox_records',
     // Posted spreads (explicit snapshots for admin review)
     'ebcc_cpy_posts_v1': 'cpy_posts',
     'ebcc_flat_posts_v1': 'flat_posts',
@@ -32,6 +34,7 @@
   var DRAFTS_KEY = 'ebcc_ewt_drafts_v1';
   var JHA_KEY = 'ebcc_jha_records_v1';
   var IR_KEY = 'ebcc_incident_reports_v1';
+  var TB_KEY = 'ebcc_toolbox_records_v1';
   var PENDING_KEY = 'ebcc_sync_pending';
   var HYDRATED_FLAG = 'ebcc_hydrated_once';
 
@@ -395,6 +398,32 @@
   }
   window.addEventListener('ebcc-ir-pull', function () { pullIr(); });
 
+  // ---------- Toolbox talks merge/pull (same shape as JHAs) ----------
+  function readTbLocal() {
+    try { var v = JSON.parse(localStorage.getItem(TB_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+  function adoptTb(merged) {
+    var before = localStorage.getItem(TB_KEY) || '[]';
+    var after = JSON.stringify(merged);
+    if (after === before) return false;
+    origSetItem(TB_KEY, after);
+    try { window.dispatchEvent(new CustomEvent('ebcc-tb-updated')); } catch (e) {}
+    return true;
+  }
+  var pullingTb = false;
+  function pullTb() {
+    if (!ME || pullingTb) return Promise.resolve();
+    pullingTb = true;
+    return apiFetch('/api/records').then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
+      var server = res && res.records && res.records.toolbox_records;
+      var serverArr = server && Array.isArray(server.data) ? server.data : [];
+      var merged = mergeJha(serverArr, readTbLocal());
+      adoptTb(merged);
+      if (JSON.stringify(merged) !== JSON.stringify(serverArr)) queuePush(TB_KEY);
+    }).catch(function () {}).then(function () { pullingTb = false; });
+  }
+  window.addEventListener('ebcc-tb-pull', function () { pullTb(); });
+
   // ---------- hydrate local from server (first device / cross-device) ----------
   function hydrateFromServer() {
     return apiFetch('/api/records').then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
@@ -409,6 +438,7 @@
         if (lsKey === DRAFTS_KEY) { adoptDrafts(mergeDrafts(server.data, readDraftsLocal())); return; }
         if (lsKey === JHA_KEY) { adoptJha(mergeJha(server.data, readJhaLocal())); return; }
         if (lsKey === IR_KEY) { adoptIr(mergeJha(server.data, readIrLocal())); return; }
+        if (lsKey === TB_KEY) { adoptTb(mergeJha(server.data, readTbLocal())); return; }
         var local = localStorage.getItem(lsKey);
         var localEmpty = !local || local === '[]' || local === '{}' || local === 'null';
         // Only hydrate when local is empty — never clobber unsynced local edits.
@@ -447,7 +477,7 @@
       // Coming BACK from the share sheet / mail app: retry anything the
       // phone killed while the app was backgrounded — including PDF offloads —
       // and pick up drafts written on another device in the meantime.
-      if (document.visibilityState === 'visible') { flushPending(); offloadPendingEwtPdfs(); pullDrafts(); pullJha(); pullIr(); }
+      if (document.visibilityState === 'visible') { flushPending(); offloadPendingEwtPdfs(); pullDrafts(); pullJha(); pullIr(); pullTb(); }
     });
   }
 
@@ -527,6 +557,11 @@
           if (lsKey === IR_KEY) {
             r.json().then(function (j) {
               if (j && Array.isArray(j.data)) adoptIr(mergeJha(j.data, readIrLocal()));
+            }).catch(function () {});
+          }
+          if (lsKey === TB_KEY) {
+            r.json().then(function (j) {
+              if (j && Array.isArray(j.data)) adoptTb(mergeJha(j.data, readTbLocal()));
             }).catch(function () {});
           }
         } else {
@@ -742,7 +777,7 @@
         // Only chips with something in them — zeros are noise.
         var chip = function (label, v) { return v ? '<span class="adm-chip">' + label + ' <b>' + v + '</b></span>' : ''; };
         var chips = chip('Tickets', c.trucking_tickets) + chip('Ticket reports', c.trucking_sends) + chip('Load counts', c.load_count_sends) +
-          chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) + chip('Incidents', c.incident_reports) +
+          chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) + chip('Incidents', c.incident_reports) + chip('Toolbox talks', c.toolbox_records) +
           chip('Spreads', (c.cpy_posts || 0) + (c.flat_posts || 0)) +
           chip('Calcs', (c.lime_posts || 0) + (c.flexbase_posts || 0));
         return '<div class="adm-user-card">' +
@@ -812,6 +847,10 @@
         (function () {
           var irs = (rec.incident_reports && rec.incident_reports.data) || [];
           return section('Incident Reports (' + irs.length + ')' + updatedTag(rec.incident_reports), irAdminHtml(irs), !irs.length);
+        })() +
+        (function () {
+          var tbs = (rec.toolbox_records && rec.toolbox_records.data) || [];
+          return section('Toolbox Talks (' + tbs.length + ')' + updatedTag(rec.toolbox_records), tbAdminHtml(tbs), !tbs.length);
         })() +
         '<div class="adm-group-label">Posted Spreads &amp; Calcs</div>' +
         section('Cost Per Yard (' + cpyP.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(cpyP), !cpyP.length) +
@@ -1179,6 +1218,60 @@
         return postDetails(head, body);
       }).join('');
       return '<div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + days.length + ')</div>' + inner;
+    }).join('');
+  }
+
+  // Toolbox talks — grouped by project; topics covered, attendee signatures,
+  // and the emailed attendance-record PDF.
+  var ADMIN_TB_CACHE = [];
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-tb-pdf]') : null;
+    if (!b) return;
+    var rec = ADMIN_TB_CACHE[+b.getAttribute('data-tb-pdf')];
+    if (!rec || !rec.pdfBlob) return;
+    var name = String(rec.pdfBlob).split('/').slice(1).join('/');
+    apiFetch('/api/ewt-pdf?user=' + encodeURIComponent(ADMIN_EWT_OWNER) + '&name=' + encodeURIComponent(name))
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(function (buf) { openPdfBytes(buf); })
+      .catch(function () { alert('Could not load this PDF.'); });
+  });
+  function tbAdminHtml(arr) {
+    ADMIN_TB_CACHE = Array.isArray(arr) ? arr : [];
+    if (!ADMIN_TB_CACHE.length) return none();
+    var byProj = {};
+    ADMIN_TB_CACHE.forEach(function (r, idx) {
+      if (!r) return;
+      r.__idx = idx;
+      var k = r.projectName || r.projectCode || 'Unknown project';
+      (byProj[k] = byProj[k] || []).push(r);
+    });
+    return Object.keys(byProj).sort().map(function (proj) {
+      var talks = byProj[proj].slice().sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+      var inner = talks.map(function (r) {
+        var sos = r.signoffs || [];
+        var topics = Object.keys(r.topics || {}).filter(function (k) { return r.topics[k]; });
+        var head = esc(r.date || '—') + ' · ' + sos.length + ' attendee' + (sos.length === 1 ? '' : 's') + ' · ' + topics.length + ' topic' + (topics.length === 1 ? '' : 's') + (r.leader ? ' · ' + esc(r.leader) : '');
+        var sentLine = r.sentTs
+          ? '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">' + (r.sent ? 'Emailed ' : 'Email failed ') +
+              esc(new Date(r.sentTs).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' })) +
+              (r.emailedTo && r.emailedTo.length ? ' to ' + esc(r.emailedTo.join(', ')) : '') + '</div>'
+          : '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">Not emailed yet</div>';
+        var pdfBtn = r.pdfBlob
+          ? '<button type="button" data-tb-pdf="' + r.__idx + '" style="padding:4px 12px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;margin-bottom:8px">Open PDF</button>'
+          : '';
+        var body = sentLine + pdfBtn +
+          (r.medical ? '<div style="font-size:11px;color:var(--gray);margin-bottom:6px">Nearest medical: ' + esc(r.medical) + '</div>' : '') +
+          (topics.length ? '<div style="margin-bottom:6px"><strong>Topics:</strong> ' + topics.map(esc).join(' · ') + (r.other ? ' · ' + esc(r.other) : '') + '</div>' : (r.other ? '<div style="margin-bottom:6px"><strong>Topics:</strong> ' + esc(r.other) + '</div>' : '')) +
+          (r.comments ? '<div style="margin-bottom:6px;white-space:pre-wrap"><strong>Comments:</strong> ' + esc(r.comments) + '</div>' : '') +
+          (sos.length ? sos.map(function (s) {
+            return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-top:1px solid var(--light-gray)">' +
+              '<span style="min-width:140px;font-weight:600">' + esc(s.name || '—') + '</span>' +
+              (s.sig ? '<img src="' + esc(s.sig) + '" alt="signature" style="height:28px;background:#fff;border:1px solid var(--border);border-radius:4px">' : '<em style="color:var(--gray)">' + (s.sigTrimmed ? 'signature archived in PDF' : 'unsigned') + '</em>') +
+            '</div>';
+          }).join('') : '');
+        return postDetails(head, body);
+      }).join('');
+      return '<div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + talks.length + ')</div>' + inner;
     }).join('');
   }
 
