@@ -1,4 +1,4 @@
-// POST /api/send-toolbox — email a submitted Toolbox Talk (attendance record) PDF from the
+// POST /api/send-toolbox — email a submitted Tailgate Talk (attendance record) PDF from the
 // signed-in user's own mailbox and archive a copy for the office. Amber
 // (safety) is always on the recipient list — enforced here, not just in
 // the app — and the matching report in toolbox_records is stamped.
@@ -33,7 +33,7 @@ module.exports = async function (context, req) {
   const recipients = Array.from(new Set(ALWAYS_TO.concat(
     (Array.isArray(body.recipients) ? body.recipients : []).map((r) => String(r).trim().toLowerCase())
   ))).filter((r) => EMAIL_RE.test(r)).slice(0, 20);
-  const subject = String(body.subject || 'EBCC Toolbox Talk').slice(0, 150);
+  const subject = String(body.subject || 'EBCC Tailgate Talk').slice(0, 150);
   const text = String(body.text || '').slice(0, 20000);
   const fileName = String(body.fileName || 'ToolboxTalk.pdf').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 80) || 'ToolboxTalk.pdf';
   let pdfB64 = String(body.pdf || '');

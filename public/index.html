@@ -234,7 +234,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   background: var(--card, #fff); border-radius: 14px; padding: 16px;
   width: 100%; max-width: 520px; box-shadow: 0 18px 50px rgba(0,0,0,.3);
 }
-/* Toolbox Talk sign-in overlay (pass-the-device crew sign-in) */
+/* Tailgate Talk sign-in overlay (pass-the-device crew sign-in) */
 #tb-signin {
   position: fixed; inset: 0; z-index: 1300;
   background: rgba(0,0,0,.45);
@@ -1928,7 +1928,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     <button class="tab" data-tab="jha" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.3 17.2a1 1 0 0 1 1-1.2h15.4a1 1 0 0 1 1 1.2l-.2 1.3a1 1 0 0 1-1 .8H4.5a1 1 0 0 1-1-.8z"/><path d="M10 10.5V6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4.5"/><path d="M5.2 16v-2.3a6.8 6.8 0 0 1 4.8-6.5"/><path d="M14 7.2a6.8 6.8 0 0 1 4.8 6.5V16"/></svg>JHA's</button>
     <button class="tab" data-tab="sssp" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5h16"/><path d="M13.6 5.2 18 19.5H6L10.4 5.2a1.7 1.7 0 0 1 3.2 0z"/><path d="M8.9 10.3h6.2"/><path d="M7.6 14.6h8.8"/></svg>SSSP's</button>
     <button class="tab" data-tab="incident" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="3" width="7" height="3.4" rx="1"/><path d="M15.5 4.7h2A1.5 1.5 0 0 1 19 6.2v13.3a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5V6.2a1.5 1.5 0 0 1 1.5-1.5h2"/><path d="M12 9.6v4.6"/><path d="M12 17h.01"/></svg>Incident Report</button>
-    <button class="tab" data-tab="toolbox" role="tab" aria-selected="false">Toolbox Talk</button>
+    <button class="tab" data-tab="toolbox" role="tab" aria-selected="false">Tailgate Talk</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-label">Settings</div>
@@ -2118,13 +2118,13 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 <section class="tab-content" id="tab-toolbox">
 
 <div class="ewt-banner">
-  <div><strong>Toolbox Talk</strong></div>
+  <div><strong>Tailgate Talk</strong></div>
   <div class="ewt-license">Safety Meeting Attendance Record</div>
 </div>
 
 <div class="ewt-section" id="tb-picker">
   <h3>Project</h3>
-  <div class="ewt-hint">Toolbox talks are organized by project — the same project list as Job Books. Start typing a name or job # and pick from the list.</div>
+  <div class="ewt-hint">Tailgate talks are organized by project — the same project list as Job Books. Start typing a name or job # and pick from the list.</div>
   <div class="search-bar" style="margin:8px 0 0">
     <input type="text" id="tb-proj-combo" placeholder="Search projects — name or job #…" autocomplete="off">
     <div class="search-results" id="tb-proj-results"></div>
@@ -2134,7 +2134,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 
 <div id="tb-editor" style="display:none">
   <div class="ewt-section">
-    <h3 id="tb-ed-title">Toolbox Talk</h3>
+    <h3 id="tb-ed-title">Tailgate Talk</h3>
     <div class="ewt-grid">
       <label>Date <input type="date" id="tb-date"></label>
       <label>Superintendent / Foreman <input type="text" id="tb-leader"></label>
@@ -9960,7 +9960,7 @@ document.getElementById('ir-photos').addEventListener('click', (e) => {
 });
 
 // ============================================================
-// Toolbox Talks — Safety Meeting Attendance Record. Project
+// Tailgate Talks — Safety Meeting Attendance Record. Project
 // first, tap the topics covered, then pass the device around
 // so each attendee prints and signs. Drafts stay on the device;
 // Submit syncs (toolbox_records) and emails the PDF to Amber +
@@ -10027,8 +10027,8 @@ function tbRenderList() {
   const code = tbProjCombo.getCode();
   if (!code) { list.innerHTML = ''; return; }
   const mine = tbRead().filter(r => r.projectCode === code).sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  let html = '<div class="controls" style="margin-bottom:10px"><button class="btn btn-primary" id="tb-new-btn">New toolbox talk (' + jhaFmtDate(jhaToday()) + ')</button></div>';
-  if (!mine.length) html += '<div class="empty">No toolbox talks for this project yet.</div>';
+  let html = '<div class="controls" style="margin-bottom:10px"><button class="btn btn-primary" id="tb-new-btn">New tailgate talk (' + jhaFmtDate(jhaToday()) + ')</button></div>';
+  if (!mine.length) html += '<div class="empty">No tailgate talks for this project yet.</div>';
   else html += mine.map(r => {
     const n = (r.signoffs || []).length;
     const topics = Object.keys(r.topics || {}).filter(k => r.topics[k]).length;
@@ -10072,7 +10072,7 @@ function tbOpenEditor(id) {
   tbCurrentId = id;
   document.getElementById('tb-picker').style.display = 'none';
   document.getElementById('tb-editor').style.display = '';
-  document.getElementById('tb-ed-title').textContent = 'Toolbox Talk — ' + (r.projectName || r.projectCode) + ' — ' + jhaFmtDate(r.date);
+  document.getElementById('tb-ed-title').textContent = 'Tailgate Talk — ' + (r.projectName || r.projectCode) + ' — ' + jhaFmtDate(r.date);
   document.getElementById('tb-date').value = r.date || '';
   document.getElementById('tb-leader').value = r.leader || '';
   document.getElementById('tb-medical').value = r.medical || '';
@@ -10236,7 +10236,7 @@ function tbRenderSendStatus(r) {
 }
 function tbFormatText(r) {
   const on = TB_TOPICS.filter(t => (r.topics || {})[t]);
-  const lines = ['EBCC SAFETY MEETING ATTENDANCE RECORD (TOOLBOX TALK)'];
+  const lines = ['EBCC SAFETY MEETING ATTENDANCE RECORD (TAILGATE TALK)'];
   lines.push('Job: ' + (r.projectName || '') + ' (' + (r.projectCode || '') + ')');
   lines.push('Date: ' + jhaFmtDate(r.date) + ' · Superintendent/Foreman: ' + (r.leader || '—'));
   lines.push('', 'TOPICS COVERED (' + on.length + ')');
@@ -10332,8 +10332,8 @@ async function tbSendPdf(rec, recipients) {
   const setStatus = (m, c) => { if (el) { el.textContent = m; el.style.color = c || 'var(--dark)'; } };
   let doc;
   try { doc = tbBuildPDF(rec); } catch (e) { setStatus('Could not build the PDF: ' + (e && e.message ? e.message : e), 'var(--red)'); return; }
-  const fileName = 'ToolboxTalk_' + String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (rec.date || '') + '.pdf';
-  const subject = 'Toolbox Talk - ' + (rec.projectName || rec.projectCode || '') + ' - ' + jhaFmtDate(rec.date);
+  const fileName = 'TailgateTalk_' + String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (rec.date || '') + '.pdf';
+  const subject = 'Tailgate Talk - ' + (rec.projectName || rec.projectCode || '') + ' - ' + jhaFmtDate(rec.date);
   setStatus('Emailing…', 'var(--gray)');
   try {
     const r = await fetch('/api/send-toolbox', {
@@ -10402,7 +10402,7 @@ document.getElementById('tb-resend').addEventListener('click', () => { const r =
 document.getElementById('tb-preview').addEventListener('click', () => {
   const r = tbCur();
   if (!r) return;
-  try { const doc = tbBuildPDF(r); previewShow(URL.createObjectURL(doc.output('blob')), false, 'ToolboxTalk_' + String(r.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (r.date || '') + '.pdf'); }
+  try { const doc = tbBuildPDF(r); previewShow(URL.createObjectURL(doc.output('blob')), false, 'TailgateTalk_' + String(r.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (r.date || '') + '.pdf'); }
   catch (e) { alert(e && e.message ? e.message : 'Could not build the PDF.'); }
 });
 document.querySelector('.tab[data-tab="toolbox"]').addEventListener('click', () => {

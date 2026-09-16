@@ -17,7 +17,7 @@
     'ebcc_jha_records_v1': 'jha_records',
     // Incident reports — same by-id merge as JHAs
     'ebcc_incident_reports_v1': 'incident_reports',
-    // Toolbox talks (attendance records) — same by-id merge
+    // Tailgate talks (attendance records) — same by-id merge
     'ebcc_toolbox_records_v1': 'toolbox_records',
     // Posted spreads (explicit snapshots for admin review)
     'ebcc_cpy_posts_v1': 'cpy_posts',
@@ -398,7 +398,7 @@
   }
   window.addEventListener('ebcc-ir-pull', function () { pullIr(); });
 
-  // ---------- Toolbox talks merge/pull (same shape as JHAs) ----------
+  // ---------- Tailgate talks merge/pull (same shape as JHAs) ----------
   function readTbLocal() {
     try { var v = JSON.parse(localStorage.getItem(TB_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
   }
@@ -777,7 +777,7 @@
         // Only chips with something in them — zeros are noise.
         var chip = function (label, v) { return v ? '<span class="adm-chip">' + label + ' <b>' + v + '</b></span>' : ''; };
         var chips = chip('Tickets', c.trucking_tickets) + chip('Ticket reports', c.trucking_sends) + chip('Load counts', c.load_count_sends) +
-          chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) + chip('Incidents', c.incident_reports) + chip('Toolbox talks', c.toolbox_records) +
+          chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) + chip('Incidents', c.incident_reports) + chip('Tailgate talks', c.toolbox_records) +
           chip('Spreads', (c.cpy_posts || 0) + (c.flat_posts || 0)) +
           chip('Calcs', (c.lime_posts || 0) + (c.flexbase_posts || 0));
         return '<div class="adm-user-card">' +
@@ -850,7 +850,7 @@
         })() +
         (function () {
           var tbs = (rec.toolbox_records && rec.toolbox_records.data) || [];
-          return section('Toolbox Talks (' + tbs.length + ')' + updatedTag(rec.toolbox_records), tbAdminHtml(tbs), !tbs.length);
+          return section('Tailgate Talks (' + tbs.length + ')' + updatedTag(rec.toolbox_records), tbAdminHtml(tbs), !tbs.length);
         })() +
         '<div class="adm-group-label">Posted Spreads &amp; Calcs</div>' +
         section('Cost Per Yard (' + cpyP.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(cpyP), !cpyP.length) +
@@ -1221,7 +1221,7 @@
     }).join('');
   }
 
-  // Toolbox talks — grouped by project; topics covered, attendee signatures,
+  // Tailgate talks — grouped by project; topics covered, attendee signatures,
   // and the emailed attendance-record PDF.
   var ADMIN_TB_CACHE = [];
   document.addEventListener('click', function (ev) {
