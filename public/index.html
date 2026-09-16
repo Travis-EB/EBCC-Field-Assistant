@@ -8695,7 +8695,15 @@ function projCombo(inputId, resultsId, onSelect) {
     if (code) { code = ''; onSelect(null); }  // typing again = new search
     openList(inp.value.trim().toLowerCase());
   });
-  inp.addEventListener('focus', () => { if (!code) openList(inp.value.trim().toLowerCase()); });
+  // Tapping a field that already holds a job highlights the whole name and
+  // drops the full list — one tap to switch: type to replace, or pick another.
+  const armSwitch = () => {
+    if (!code) { if (!box.classList.contains('open')) openList(inp.value.trim().toLowerCase()); return; }
+    setTimeout(() => { try { inp.select(); } catch (e) {} }, 0);
+    if (!box.classList.contains('open')) openList('');
+  };
+  inp.addEventListener('focus', armSwitch);
+  inp.addEventListener('click', armSwitch);
   box.addEventListener('mousedown', (e) => {
     const el = e.target.closest('[data-proj]');
     if (!el) { e.preventDefault(); return; }
