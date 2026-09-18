@@ -2,7 +2,7 @@
  * Offline-first app shell. Never caches /api/ or /.auth/ (identity + data must be live).
  * Bump CACHE_VERSION on any shell change to force clients to refresh.
  */
-const CACHE_VERSION = 'ebcc-shell-v92';
+const CACHE_VERSION = 'ebcc-shell-v93';
 const SHELL = [
   '/',
   '/index.html',

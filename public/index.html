@@ -7983,6 +7983,7 @@ function jbOpenProject(code) {
       '<button class="btn" id="jb-back-btn">&larr; Back</button>' +
       '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.name) + '</div>' +
       '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.code) + '</div></div>' +
+      (window.EBCC_IS_ADMIN ? '<button class="btn" id="jb-delete-project" style="margin-left:auto;flex-shrink:0;color:var(--red);border-color:var(--red)">Delete project</button>' : '') +
     '</div>' +
     '<div id="jb-dropzone" style="margin:12px 0;padding:18px 16px;border:2px dashed var(--border);border-radius:12px;text-align:center;color:var(--gray);font-size:13px;background:var(--dz-bg)">' +
       '<span id="jb-drophint">Drag files here — they save automatically</span><br>' +
@@ -8015,6 +8016,31 @@ function jbOpenProject(code) {
     box.innerHTML = '';
     document.getElementById('jb-home').style.display = '';
     jbLoadProjects();
+  };
+  // Admin-only: delete the whole project. Typing the job number guards against
+  // a stray tap. Uploaded files stay in storage (recoverable); filed reports
+  // keep their stored project name.
+  const jbDelBtn = document.getElementById('jb-delete-project');
+  if (jbDelBtn) jbDelBtn.onclick = () => {
+    const typed = prompt('Delete "' + p.name + '" for EVERYONE?\n\nIt disappears from Job Books and every project search, along with its fuel rate and links. Uploaded files are kept in storage (recoverable), and reports already filed against it are not affected.\n\nType the job number (' + p.code + ') to confirm:');
+    if (typed == null) return;
+    if (typed.trim() !== String(p.code)) { alert('Job number did not match — nothing was deleted.'); return; }
+    jbDelBtn.disabled = true;
+    jbDelBtn.textContent = 'Deleting…';
+    fetch('/api/projects?code=' + encodeURIComponent(p.code), { method: 'DELETE' })
+      .then(r => r.json().then(j => ({ ok: r.ok, j: j })).catch(() => ({ ok: false, j: null })))
+      .then(out => {
+        if (out.ok && out.j && out.j.ok) {
+          // If the calculators were pointed at this job, clear that selection.
+          if (typeof currentJobCode !== 'undefined' && currentJobCode === p.code && typeof pickCalcJob === 'function') pickCalcJob(null);
+          document.getElementById('jb-back-btn').click();   // back to the list; reloads projects
+        } else {
+          jbDelBtn.disabled = false;
+          jbDelBtn.textContent = 'Delete project';
+          alert((out.j && out.j.error) || 'Could not delete the project.');
+        }
+      })
+      .catch(() => { jbDelBtn.disabled = false; jbDelBtn.textContent = 'Delete project'; alert('Offline — try again.'); });
   };
   document.getElementById('jb-fuel-save').onclick = () => {
     const v = document.getElementById('jb-fuel').value.trim();

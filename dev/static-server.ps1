@@ -68,6 +68,8 @@ while ($listener.IsListening) {
         $json = '{"ok":true,"sent":true,"recipients":["office@earthbasics.net"],"archived":true}'
       } elseif ($path -eq '/api/ewt-pdf' -and $req.HttpMethod -eq 'POST') {
         $json = '{"ok":true,"path":"dev-admin/mock-' + [DateTime]::Now.Ticks + '.pdf"}'
+      } elseif ($path -eq '/api/projects' -and $req.HttpMethod -eq 'DELETE') {
+        $json = '{"ok":true}'
       } elseif ($path -eq '/api/projects' -and $req.HttpMethod -eq 'POST') {
         $reader2 = New-Object IO.StreamReader($req.InputStream); $pbody = $reader2.ReadToEnd(); $reader2.Close()
         if ($pbody -like '*setFuel*') { $json = '{"ok":true,"fuelRate":4.44}' }
