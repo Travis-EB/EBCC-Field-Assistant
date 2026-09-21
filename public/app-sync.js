@@ -913,7 +913,6 @@
       var loadCount = (rec.load_count && rec.load_count.data) || null;
       var jhas = arr('jha_records'), irs = arr('incident_reports'), tbs = arr('toolbox_records');
       var cpyP = arr('cpy_posts'), flatP = arr('flat_posts'), limeP = arr('lime_posts'), fbP = arr('flexbase_posts');
-      var st = function (k) { return rec[k] && rec[k].data; };
       // { title, html, empty, n } per section; n feeds the category tab counts
       var S = function (title, html, empty, n) { return { title: title, html: html, empty: empty, n: empty ? 0 : (n == null ? 1 : n) }; };
       var cats = [
@@ -934,12 +933,6 @@
           S('Flat Work (' + flatP.length + ')' + updatedTag(rec.flat_posts), flatPostsHtml(flatP), !flatP.length, flatP.length),
           S('Lime Trucks (' + limeP.length + ')' + updatedTag(rec.lime_posts), limePostsHtml(limeP), !limeP.length, limeP.length),
           S('Flex Base (' + fbP.length + ')' + updatedTag(rec.flexbase_posts), fbPostsHtml(fbP), !fbP.length, fbP.length)
-        ] },
-        { id: 'setups', label: 'Calculator Setups', secs: [
-          S('Cost Per Yard' + updatedTag(rec.cpy_state), cpyHtml(st('cpy_state')), !st('cpy_state')),
-          S('Flat Work' + updatedTag(rec.flat_state), flatHtml(st('flat_state')), !st('flat_state')),
-          S('Lime Trucks' + updatedTag(rec.lime_state), limeHtml(st('lime_state')), !st('lime_state')),
-          S('Flex Base' + updatedTag(rec.flexbase_state), fbHtml(st('flexbase_state')), !st('flexbase_state'))
         ] }
       ];
       cats.forEach(function (c) { c.n = c.secs.reduce(function (n, s) { return n + s.n; }, 0); });
@@ -1248,20 +1241,8 @@
       openPdfBytes(bytes);
     } catch (e) { alert('Could not open this PDF.'); }
   });
-  // ---- Tight spreadsheet-style tables for the admin drill-down ----
+  // ---- Number formatting for the admin drill-down ----
   function fmtNum(n) { var v = +n; return isFinite(v) ? v.toLocaleString() : '0'; }
-  function tbl(headers, rows) {
-    var th = headers.map(function (h) {
-      return '<th style="text-align:' + (h.num ? 'right' : 'left') + ';padding:3px 8px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--gray,#8b919b);background:var(--soft,#fafbfc);border:1px solid var(--tbl-border,#eef0f3);font-weight:600;white-space:nowrap">' + esc(h.label) + '</th>';
-    }).join('');
-    var body = rows.map(function (r) {
-      return '<tr>' + r.map(function (v, i) {
-        return '<td style="text-align:' + (headers[i].num ? 'right' : 'left') + ';padding:3px 8px;font-size:11px;border:1px solid var(--tbl-border,#eef0f3);white-space:nowrap;font-variant-numeric:tabular-nums">' + v + '</td>';
-      }).join('') + '</tr>';
-    }).join('');
-    return '<div style="overflow-x:auto;margin:3px 0 6px"><table style="border-collapse:collapse;min-width:100%">' +
-      '<tr>' + th + '</tr>' + body + '</table></div>';
-  }
   // ---- Posted spreads, rendered in the calculator tabs' own visual
   // language (.summary stats, .job-projection, .equipment-card rows) so
   // they read the same as the CPY tab and follow light/dark automatically.
@@ -1551,43 +1532,6 @@
     try { return ' — as of ' + new Date(entry.updatedAt).toLocaleDateString(); } catch (e) { return ''; }
   }
   function none() { return '<em style="color:var(--gray)">None</em>'; }
-  function equipTable(items) {
-    return tbl(
-      [{label:'Equipment'},{label:'Qty',num:1},{label:'Rate',num:1},{label:'Rnd min',num:1}],
-      items.map(function (it) {
-        return [esc(it.name || '?'), esc(it.quantity != null ? it.quantity : 1), '$' + esc(it.rate || 0),
-          (it.producer && it.roundTime) ? esc(it.roundTime) : '—'];
-      }));
-  }
-  function cpyHtml(st) {
-    // Synced state uses `job`; keep `items` as a fallback for older snapshots.
-    var items = st && (st.job || st.items);
-    if (!st || !Array.isArray(items) || !items.length) return none();
-    var head = '<div style="font-size:10.5px;color:var(--gray);margin-top:4px">' +
-      esc(st.hoursPerDay != null ? st.hoursPerDay : '—') + ' hrs/day · yd/load ' + esc(st.ydPerLoad != null ? st.ydPerLoad : '—') +
-      ' · to move ' + esc(st.yardsToMove || 0) +
-      (st.procShifts ? ' · shifts ' + esc(st.procShifts) + '×' + esc(st.procShiftHours != null ? st.procShiftHours : '—') + 'h' : '') + '</div>';
-    return head + equipTable(items);
-  }
-  function flatHtml(st) {
-    // Synced state uses `flatJob`/`flat*` keys; keep old names as fallback.
-    var items = st && (st.flatJob || st.items);
-    if (!st || !Array.isArray(items) || !items.length) return none();
-    var hours = st.flatHoursPerDay != null ? st.flatHoursPerDay : st.hoursPerDay;
-    var head = '<div style="font-size:10.5px;color:var(--gray);margin-top:4px">' +
-      esc(hours != null ? hours : '—') + ' hrs/day · sqft/day ' + esc(st.flatSqftPerDay || st.sqftPerDay || 0) +
-      ' · job ' + esc(st.flatJobSqft || st.jobSqft || 0) + ' sqft</div>';
-    return head + equipTable(items);
-  }
-  function limeHtml(st) {
-    if (!st || (!st['lime-rate'] && !st['lime-area'])) return none();
-    return 'Spec rate ' + esc(st['lime-rate'] || '—') + ' lb/sy · Area ' + esc(st['lime-area'] || '—') + ' sqft';
-  }
-  function fbHtml(st) {
-    if (!st || (!st['fb-area'] && !st['fb-depth'])) return none();
-    return 'Area ' + esc(st['fb-area'] || '—') + ' sqft · Depth ' + esc(st['fb-depth'] || '—') + '" · Truck ' + esc(st['fb-truck-tons'] || '—') + ' tons';
-  }
-
   // ---------- go ----------
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
