@@ -752,133 +752,303 @@
     if (tabBtn) tabBtn.addEventListener('click', loadAdmin);
   }
 
-  function loadAdmin() {
+  // Manage Users is a two-level view: a searchable / filterable user list, and
+  // a full-page user detail (category tabs + record filter) that replaces the
+  // list instead of stacking underneath it.
+  var ADMIN_USERS = [];
+  var ADM_LIST = { q: '', filter: 'all', sort: 'active', scrollY: 0 };
+  var ADM_WIRED = false;
+  var ADM_POST_KEYS = ['cpy_posts', 'flat_posts', 'lime_posts', 'flexbase_posts'];
+  var ADM_RECORD_KEYS = ['trucking_tickets', 'trucking_sends', 'load_count_sends', 'ewt_records', 'jha_records', 'incident_reports', 'toolbox_records'].concat(ADM_POST_KEYS);
+  function admTotal(u) {
+    var c = u.counts || {};
+    return ADM_RECORD_KEYS.reduce(function (n, k) { return n + (c[k] || 0); }, 0);
+  }
+  function admToday() { return new Date().toISOString().slice(0, 10); }
+  function admActiveToday(u) { return (u.lastActiveAt || '').slice(0, 10) === admToday(); }
+  function admLast(u) {
+    return u.lastActiveAt
+      ? new Date(u.lastActiveAt).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' })
+      : 'never';
+  }
+  function admInitials(u) {
+    var parts = String(u.name || u.email || '?').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean);
+    return ((parts[0] || '?').charAt(0) + (parts.length > 1 ? parts[parts.length - 1].charAt(0) : '')).toUpperCase();
+  }
+  function admRoleSelect(u) {
+    return '<select data-role-for="' + esc(u.id) + '" aria-label="Role">' + ['admin', 'user', 'disabled'].map(function (r) {
+      return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>';
+    }).join('') + '</select>';
+  }
+
+  function admShowList() {
+    var detail = document.getElementById('adm-user-detail');
+    detail.style.display = 'none'; detail.innerHTML = '';
+    document.getElementById('adm-list-view').style.display = '';
+  }
+
+  function wireAdminList() {
+    if (ADM_WIRED) return;
+    ADM_WIRED = true;
+    var search = document.getElementById('adm-search');
+    search.addEventListener('input', function () { ADM_LIST.q = search.value; renderUserList(); });
+    document.getElementById('adm-sort').addEventListener('change', function (e) { ADM_LIST.sort = e.target.value; renderUserList(); });
+    document.getElementById('adm-filters').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-adm-filter]') : null;
+      if (!b) return;
+      ADM_LIST.filter = b.getAttribute('data-adm-filter');
+      renderUserList();
+    });
     var panel = document.getElementById('adm-panel');
-    apiFetch('/api/users').then(function (r) { return r.ok ? r.json() : { users: [] }; }).then(function (res) {
-      var users = res.users || [];
-      var today = new Date().toISOString().slice(0, 10);
-      var totalRecords = 0, activeToday = 0;
-      users.forEach(function (u) {
-        var c = u.counts || {}; totalRecords += (c.trucking_tickets || 0) + (c.load_count || 0) + (c.ewt_records || 0);
-        if ((u.lastActiveAt || '').slice(0, 10) === today) activeToday++;
-      });
-      document.getElementById('adm-user-count').textContent = users.length;
-      document.getElementById('adm-record-count').textContent = totalRecords;
-      document.getElementById('adm-active-count').textContent = activeToday;
-
-      var rows = users.map(function (u) {
-        var c = u.counts || {};
-        var last = u.lastActiveAt
-          ? new Date(u.lastActiveAt).toLocaleString([], { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' })
-          : 'never';
-        var sel = ['admin', 'user', 'disabled'].map(function (r) {
-          return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>';
-        }).join('');
-        // Only chips with something in them — zeros are noise.
-        var chip = function (label, v) { return v ? '<span class="adm-chip">' + label + ' <b>' + v + '</b></span>' : ''; };
-        var chips = chip('Tickets', c.trucking_tickets) + chip('Ticket reports', c.trucking_sends) + chip('Load counts', c.load_count_sends) +
-          chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) + chip('Incidents', c.incident_reports) + chip('Tailgate talks', c.toolbox_records) +
-          chip('Spreads', (c.cpy_posts || 0) + (c.flat_posts || 0)) +
-          chip('Calcs', (c.lime_posts || 0) + (c.flexbase_posts || 0));
-        return '<div class="adm-user-card">' +
-          '<div style="min-width:0">' +
-            '<div class="adm-user-name">' + esc(u.name || u.email) + '</div>' +
-            '<div class="adm-user-email">' + esc(u.email) + '</div>' +
-            (chips ? '<div class="adm-chips">' + chips + '</div>' : '') +
-            '<div class="adm-last">' + (chips ? '' : 'No records yet · ') + 'Last active ' + esc(last) + '</div>' +
-          '</div>' +
-          '<div class="adm-actions">' +
-            '<select data-role-for="' + esc(u.id) + '">' + sel + '</select>' +
-            '<button class="btn" data-view-for="' + esc(u.id) + '" data-name="' + esc(u.name || u.email) + '">View</button>' +
-          '</div>' +
-        '</div>';
-      }).join('');
-      panel.innerHTML = rows || '<p style="color:var(--gray);font-size:13px">No users yet.</p>';
-
-      panel.querySelectorAll('select[data-role-for]').forEach(function (s) {
-        s.addEventListener('change', function () {
-          var uid = s.getAttribute('data-role-for');
-          apiFetch('/api/users', { method: 'PATCH', body: { userId: uid, role: s.value } })
-            .then(function (r) { return r.json(); })
-            .then(function (out) { if (out.error) { alert(out.error); loadAdmin(); } });
-        });
-      });
-      panel.querySelectorAll('button[data-view-for]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          viewUserRecords(b.getAttribute('data-view-for'), b.getAttribute('data-name'));
-        });
-      });
+    var open = function (card) {
+      var u = ADMIN_USERS.filter(function (x) { return x.id === card.getAttribute('data-view-for'); })[0];
+      if (u) viewUserRecords(u);
+    };
+    panel.addEventListener('click', function (e) {
+      var card = e.target.closest ? e.target.closest('[data-view-for]') : null;
+      if (card) open(card);
+    });
+    panel.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var card = e.target.closest ? e.target.closest('[data-view-for]') : null;
+      if (card) { e.preventDefault(); open(card); }
     });
   }
 
-  function viewUserRecords(userId, name) {
-    ADMIN_EWT_OWNER = userId;
-    var box = document.getElementById('adm-user-detail');
-    box.style.display = '';
-    box.innerHTML = '<p style="color:var(--gray);font-size:13px;padding:8px 0">Loading ' + esc(name) + '’s records…</p>';
-    apiFetch('/api/records?userId=' + encodeURIComponent(userId)).then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
-      if (!res) { box.innerHTML = '<p style="color:var(--red)">Could not load records.</p>'; return; }
-      var rec = res.records || {};
-      var tickets = (rec.trucking_tickets && rec.trucking_tickets.data) || [];
-      var loadCount = (rec.load_count && rec.load_count.data) || null;
-      var ewt = (rec.ewt_records && rec.ewt_records.data) || [];
-      var sends = (rec.load_count_sends && rec.load_count_sends.data) || [];
-      var jhas = (rec.jha_records && rec.jha_records.data) || [];
-      var cpyP = (rec.cpy_posts && rec.cpy_posts.data) || [];
-      var flatP = (rec.flat_posts && rec.flat_posts.data) || [];
-      var limeP = (rec.lime_posts && rec.lime_posts.data) || [];
-      var fbP = (rec.flexbase_posts && rec.flexbase_posts.data) || [];
-      var html = '<div class="adm-detail-card">' +
-        '<div class="adm-detail-head">' +
-          '<strong>' + esc(name) + '</strong>' +
-          '<button class="btn" id="admin-detail-close">Close</button>' +
+  function loadAdmin() {
+    wireAdminList();
+    admShowList();
+    apiFetch('/api/users').then(function (r) { return r.ok ? r.json() : { users: [] }; }).then(function (res) {
+      ADMIN_USERS = res.users || [];
+      var totalRecords = 0, activeToday = 0;
+      ADMIN_USERS.forEach(function (u) {
+        totalRecords += admTotal(u);
+        if (admActiveToday(u)) activeToday++;
+      });
+      document.getElementById('adm-user-count').textContent = ADMIN_USERS.length;
+      document.getElementById('adm-record-count').textContent = totalRecords;
+      document.getElementById('adm-active-count').textContent = activeToday;
+      renderUserList();
+    });
+  }
+
+  function renderUserList() {
+    var panel = document.getElementById('adm-panel');
+    var tests = {
+      all: function () { return true; },
+      today: admActiveToday,
+      records: function (u) { return admTotal(u) > 0; },
+      admin: function (u) { return u.role === 'admin'; },
+      disabled: function (u) { return u.role === 'disabled'; }
+    };
+    // Filter pills carry live counts so it's clear what each one holds.
+    document.querySelectorAll('#adm-filters [data-adm-filter]').forEach(function (b) {
+      var k = b.getAttribute('data-adm-filter');
+      b.classList.toggle('on', k === ADM_LIST.filter);
+      var n = b.querySelector('b');
+      if (n) n.textContent = ADMIN_USERS.filter(tests[k]).length;
+    });
+    var q = ADM_LIST.q.trim().toLowerCase();
+    var list = ADMIN_USERS.filter(tests[ADM_LIST.filter] || tests.all).filter(function (u) {
+      return !q || ((u.name || '') + ' ' + (u.email || '')).toLowerCase().indexOf(q) !== -1;
+    });
+    var byName = function (a, b) { return String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')); };
+    if (ADM_LIST.sort === 'name') list.sort(byName);
+    else if (ADM_LIST.sort === 'records') list.sort(function (a, b) { return admTotal(b) - admTotal(a) || byName(a, b); });
+    else list.sort(function (a, b) { return String(b.lastActiveAt || '').localeCompare(String(a.lastActiveAt || '')) || byName(a, b); });
+
+    document.getElementById('adm-showing').textContent = list.length === ADMIN_USERS.length
+      ? ADMIN_USERS.length + ' user' + (ADMIN_USERS.length === 1 ? '' : 's')
+      : 'Showing ' + list.length + ' of ' + ADMIN_USERS.length;
+
+    panel.innerHTML = list.map(function (u) {
+      var c = u.counts || {};
+      // Only chips with something in them — zeros are noise.
+      var chip = function (label, v) { return v ? '<span class="adm-chip">' + label + ' <b>' + v + '</b></span>' : ''; };
+      var chips = chip('Tickets', c.trucking_tickets) + chip('Ticket reports', c.trucking_sends) + chip('Load counts', c.load_count_sends) +
+        chip('EWT', c.ewt_records) + chip('JHA', c.jha_records) + chip('Incidents', c.incident_reports) + chip('Tailgate talks', c.toolbox_records) +
+        chip('Spreads', (c.cpy_posts || 0) + (c.flat_posts || 0)) +
+        chip('Calcs', (c.lime_posts || 0) + (c.flexbase_posts || 0));
+      var badge = u.role === 'admin' ? '<span class="adm-badge">Admin</span>' : (u.role === 'disabled' ? '<span class="adm-badge off">Disabled</span>' : '');
+      return '<div class="adm-user-card' + (u.role === 'disabled' ? ' is-off' : '') + '" role="button" tabindex="0" data-view-for="' + esc(u.id) + '">' +
+        '<div class="adm-avatar' + (admActiveToday(u) ? ' live' : '') + '">' + esc(admInitials(u)) + '</div>' +
+        '<div style="min-width:0">' +
+          '<div class="adm-user-name">' + esc(u.name || u.email) + badge + '</div>' +
+          '<div class="adm-user-email">' + esc(u.email) + '</div>' +
+          (chips ? '<div class="adm-chips">' + chips + '</div>' : '') +
+          '<div class="adm-last">' + (chips ? '' : 'No records yet · ') + (admActiveToday(u) ? 'Active today · ' : 'Last active ') + esc(admLast(u)) + '</div>' +
         '</div>' +
-        '<div class="adm-group-label">Project Communications</div>' +
-        section('Truck Tickets (' + tickets.length + ')', ticketsHtml(tickets), !tickets.length) +
-        (function () {
-          var sends = (rec.trucking_sends && rec.trucking_sends.data) || [];
-          return section('Truck Tickets — sent reports (' + sends.length + ')', truckingSendsHtml(sends), !sends.length);
-        })() +
-        section('Load Count — current day' + updatedTag(rec.load_count), loadCountHtml(loadCount), !loadCount) +
-        section('Load Count — sent days (' + sends.length + ')', loadCountSendsHtml(sends), !sends.length) +
-        section('Extra Work Tickets (' + ewt.length + ')', ewtHtml(ewt), !ewt.length) +
-        '<div class="adm-group-label">Safety</div>' +
-        section('JHA’s (' + jhas.length + ')' + updatedTag(rec.jha_records), jhaAdminHtml(jhas), !jhas.length) +
-        (function () {
-          var irs = (rec.incident_reports && rec.incident_reports.data) || [];
-          return section('Incident Reports (' + irs.length + ')' + updatedTag(rec.incident_reports), irAdminHtml(irs), !irs.length);
-        })() +
-        (function () {
-          var tbs = (rec.toolbox_records && rec.toolbox_records.data) || [];
-          return section('Tailgate Talks (' + tbs.length + ')' + updatedTag(rec.toolbox_records), tbAdminHtml(tbs), !tbs.length);
-        })() +
-        '<div class="adm-group-label">Posted Spreads &amp; Calcs</div>' +
-        section('Cost Per Yard (' + cpyP.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(cpyP), !cpyP.length) +
-        section('Flat Work (' + flatP.length + ')' + updatedTag(rec.flat_posts), flatPostsHtml(flatP), !flatP.length) +
-        section('Lime Trucks (' + limeP.length + ')' + updatedTag(rec.lime_posts), limePostsHtml(limeP), !limeP.length) +
-        section('Flex Base (' + fbP.length + ')' + updatedTag(rec.flexbase_posts), fbPostsHtml(fbP), !fbP.length) +
-        '<div class="adm-group-label">Calculator Setups</div>' +
-        section('Cost Per Yard' + updatedTag(rec.cpy_state), cpyHtml(rec.cpy_state && rec.cpy_state.data), !(rec.cpy_state && rec.cpy_state.data)) +
-        section('Flat Work' + updatedTag(rec.flat_state), flatHtml(rec.flat_state && rec.flat_state.data), !(rec.flat_state && rec.flat_state.data)) +
-        section('Lime Trucks' + updatedTag(rec.lime_state), limeHtml(rec.lime_state && rec.lime_state.data), !(rec.lime_state && rec.lime_state.data)) +
-        section('Flex Base' + updatedTag(rec.flexbase_state), fbHtml(rec.flexbase_state && rec.flexbase_state.data), !(rec.flexbase_state && rec.flexbase_state.data)) +
+        '<svg class="adm-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>' +
       '</div>';
-      box.innerHTML = html;
-      var cl = document.getElementById('admin-detail-close');
-      if (cl) cl.addEventListener('click', function () { box.style.display = 'none'; box.innerHTML = ''; });
-      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }).join('') || '<p style="color:var(--gray);font-size:13px;padding:8px 0">' + (ADMIN_USERS.length ? 'No users match.' : 'No users yet.') + '</p>';
+  }
+
+  function viewUserRecords(u) {
+    var userId = u.id, name = u.name || u.email;
+    ADMIN_EWT_OWNER = userId;
+    ADM_LIST.scrollY = window.scrollY || 0;
+    var listView = document.getElementById('adm-list-view');
+    var box = document.getElementById('adm-user-detail');
+    listView.style.display = 'none';
+    box.style.display = '';
+    var back = function () {
+      admShowList();
+      renderUserList(); // role may have changed
+      window.scrollTo(0, ADM_LIST.scrollY);
+    };
+    var head = '<button class="btn adm-back" id="admin-detail-close">&larr; All users</button>';
+    box.innerHTML = head + '<p style="color:var(--gray);font-size:13px;padding:8px 0">Loading ' + esc(name) + '’s records…</p>';
+    document.getElementById('admin-detail-close').addEventListener('click', back);
+    window.scrollTo(0, 0);
+    apiFetch('/api/records?userId=' + encodeURIComponent(userId)).then(function (r) { return r.ok ? r.json() : null; }).then(function (res) {
+      if (ADMIN_EWT_OWNER !== userId || box.style.display === 'none') return; // navigated away meanwhile
+      if (!res) {
+        box.innerHTML = head + '<p style="color:var(--red)">Could not load records.</p>';
+        document.getElementById('admin-detail-close').addEventListener('click', back);
+        return;
+      }
+      var rec = res.records || {};
+      var arr = function (k) { return (rec[k] && rec[k].data) || []; };
+      var tickets = arr('trucking_tickets'), trkSends = arr('trucking_sends'), sends = arr('load_count_sends'), ewt = arr('ewt_records');
+      var loadCount = (rec.load_count && rec.load_count.data) || null;
+      var jhas = arr('jha_records'), irs = arr('incident_reports'), tbs = arr('toolbox_records');
+      var cpyP = arr('cpy_posts'), flatP = arr('flat_posts'), limeP = arr('lime_posts'), fbP = arr('flexbase_posts');
+      var st = function (k) { return rec[k] && rec[k].data; };
+      // { title, html, empty, n } per section; n feeds the category tab counts
+      var S = function (title, html, empty, n) { return { title: title, html: html, empty: empty, n: empty ? 0 : (n == null ? 1 : n) }; };
+      var cats = [
+        { id: 'comm', label: 'Project Comms', secs: [
+          S('Truck Tickets (' + tickets.length + ')', ticketsHtml(tickets), !tickets.length, tickets.length),
+          S('Truck Tickets — sent reports (' + trkSends.length + ')', truckingSendsHtml(trkSends), !trkSends.length, trkSends.length),
+          S('Load Count — current day' + updatedTag(rec.load_count), loadCountHtml(loadCount), !loadCount),
+          S('Load Count — sent days (' + sends.length + ')', loadCountSendsHtml(sends), !sends.length, sends.length),
+          S('Extra Work Tickets (' + ewt.length + ')', ewtHtml(ewt), !ewt.length, ewt.length)
+        ] },
+        { id: 'safety', label: 'Safety', secs: [
+          S('Tailgate Talks (' + tbs.length + ')' + updatedTag(rec.toolbox_records), tbAdminHtml(tbs), !tbs.length, tbs.length),
+          S('JHA’s (' + jhas.length + ')' + updatedTag(rec.jha_records), jhaAdminHtml(jhas), !jhas.length, jhas.length),
+          S('Incident Reports (' + irs.length + ')' + updatedTag(rec.incident_reports), irAdminHtml(irs), !irs.length, irs.length)
+        ] },
+        { id: 'posts', label: 'Spreads & Calcs', secs: [
+          S('Cost Per Yard (' + cpyP.length + ')' + updatedTag(rec.cpy_posts), spreadsHtml(cpyP), !cpyP.length, cpyP.length),
+          S('Flat Work (' + flatP.length + ')' + updatedTag(rec.flat_posts), flatPostsHtml(flatP), !flatP.length, flatP.length),
+          S('Lime Trucks (' + limeP.length + ')' + updatedTag(rec.lime_posts), limePostsHtml(limeP), !limeP.length, limeP.length),
+          S('Flex Base (' + fbP.length + ')' + updatedTag(rec.flexbase_posts), fbPostsHtml(fbP), !fbP.length, fbP.length)
+        ] },
+        { id: 'setups', label: 'Calculator Setups', secs: [
+          S('Cost Per Yard' + updatedTag(rec.cpy_state), cpyHtml(st('cpy_state')), !st('cpy_state')),
+          S('Flat Work' + updatedTag(rec.flat_state), flatHtml(st('flat_state')), !st('flat_state')),
+          S('Lime Trucks' + updatedTag(rec.lime_state), limeHtml(st('lime_state')), !st('lime_state')),
+          S('Flex Base' + updatedTag(rec.flexbase_state), fbHtml(st('flexbase_state')), !st('flexbase_state'))
+        ] }
+      ];
+      cats.forEach(function (c) { c.n = c.secs.reduce(function (n, s) { return n + s.n; }, 0); });
+      var firstCat = (cats.filter(function (c) { return c.n > 0; })[0] || cats[0]).id;
+
+      var panes = cats.map(function (c) {
+        var full = c.secs.filter(function (s) { return !s.empty; });
+        var empty = c.secs.filter(function (s) { return s.empty; });
+        return '<div class="adm-pane" data-adm-pane="' + c.id + '">' +
+          // a lone section opens itself — no extra tap to reach the data
+          full.map(function (s) { return section(s.title, s.html, false, full.length === 1); }).join('') +
+          (full.length ? '' : '<p class="adm-none">Nothing here yet.</p>') +
+          (empty.length ? '<div class="adm-empty-line">' + (full.length ? 'Nothing yet in: ' : 'Empty: ') +
+            empty.map(function (s) { return esc(s.title.replace(/\s*\(0\)/, '').replace(/\s+·.*$/, '')); }).join(' · ') + '</div>' : '') +
+          '<p class="adm-none adm-nomatch" style="display:none">No records match the filter.</p>' +
+        '</div>';
+      }).join('');
+
+      box.innerHTML = head +
+        '<div class="adm-detail-card">' +
+          '<div class="adm-detail-head">' +
+            '<div class="adm-avatar' + (admActiveToday(u) ? ' live' : '') + '">' + esc(admInitials(u)) + '</div>' +
+            '<div style="min-width:0;flex:1">' +
+              '<div class="adm-user-name" style="font-size:17px">' + esc(name) + '</div>' +
+              '<div class="adm-user-email">' + esc(u.email || '') + '</div>' +
+              '<div class="adm-last" style="margin-top:3px">Last active ' + esc(admLast(u)) + '</div>' +
+            '</div>' +
+            '<div class="adm-actions"><label class="adm-role-label">Role</label>' + admRoleSelect(u) + '</div>' +
+          '</div>' +
+          '<div class="adm-cats" role="tablist">' + cats.map(function (c) {
+            return '<button type="button" role="tab" class="adm-cat' + (c.n ? '' : ' is-empty') + '" data-adm-cat="' + c.id + '">' + esc(c.label) + ' <b data-n="' + c.n + '">' + c.n + '</b></button>';
+          }).join('') + '</div>' +
+          '<input type="search" id="adm-detail-filter" class="adm-search" placeholder="Filter by project, date, ticket #, name…" autocomplete="off">' +
+          panes +
+        '</div>';
+
+      document.getElementById('admin-detail-close').addEventListener('click', back);
+      var sel = box.querySelector('select[data-role-for]');
+      sel.addEventListener('change', function () {
+        var prev = u.role;
+        apiFetch('/api/users', { method: 'PATCH', body: { userId: userId, role: sel.value } })
+          .then(function (r) { return r.json(); })
+          .then(function (out) {
+            if (out.error) { alert(out.error); sel.value = prev; } else { u.role = sel.value; }
+          })
+          .catch(function () { alert('Could not change the role — try again.'); sel.value = prev; });
+      });
+
+      var showCat = function (id) {
+        box.querySelectorAll('[data-adm-cat]').forEach(function (b) {
+          var on = b.getAttribute('data-adm-cat') === id;
+          b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        box.querySelectorAll('[data-adm-pane]').forEach(function (p) { p.style.display = p.getAttribute('data-adm-pane') === id ? '' : 'none'; });
+      };
+      box.querySelector('.adm-cats').addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('[data-adm-cat]') : null;
+        if (b) showCat(b.getAttribute('data-adm-cat'));
+      });
+      showCat(firstCat);
+
+      // Record filter: hides non-matching entries in every category and turns
+      // the tab counts into match counts, so hits in other tabs are visible.
+      var filter = document.getElementById('adm-detail-filter');
+      filter.addEventListener('input', function () {
+        var q = filter.value.trim().toLowerCase();
+        box.querySelectorAll('[data-adm-pane]').forEach(function (pane) {
+          var hits = 0;
+          pane.querySelectorAll('.adm-sec').forEach(function (sec) {
+            var items = sec.querySelectorAll('.adm-post, .adm-row'), secHits = 0;
+            if (items.length) {
+              items.forEach(function (it) {
+                var g = it.closest('.adm-group');
+                var text = (it.textContent + ' ' + (g ? g.getAttribute('data-filter') : '')).toLowerCase();
+                var ok = !q || text.indexOf(q) !== -1;
+                it.style.display = ok ? '' : 'none';
+                if (ok) secHits++;
+              });
+              sec.querySelectorAll('.adm-group').forEach(function (g) {
+                var any = Array.prototype.some.call(g.querySelectorAll('.adm-post, .adm-row'), function (it) { return it.style.display !== 'none'; });
+                g.style.display = any ? '' : 'none';
+              });
+            } else {
+              secHits = (!q || sec.textContent.toLowerCase().indexOf(q) !== -1) ? 1 : 0;
+            }
+            sec.style.display = secHits ? '' : 'none';
+            if (q && secHits) sec.open = true; // surface the matches without another tap
+            hits += secHits;
+          });
+          var b = box.querySelector('[data-adm-cat="' + pane.getAttribute('data-adm-pane') + '"] b');
+          if (b) b.textContent = q ? hits : b.getAttribute('data-n');
+          var nm = pane.querySelector('.adm-nomatch');
+          if (nm) nm.style.display = (q && !hits && pane.querySelector('.adm-sec')) ? '' : 'none';
+          var el = pane.querySelector('.adm-empty-line');
+          if (el) el.style.display = q ? 'none' : '';
+        });
+      });
     });
   }
 
   // Drill-down level 1: collapsed by default — the admin opens only what
-  // they need (user > section > date > spread).
-  function section(title, inner, isEmpty) {
-    return '<details class="adm-sec' + (isEmpty ? ' is-empty' : '') + '"><summary>' + esc(title) + '</summary><div class="adm-sec-body">' + inner + '</div></details>';
+  // they need (user > category > section > date > spread).
+  function section(title, inner, isEmpty, open) {
+    return '<details class="adm-sec' + (isEmpty ? ' is-empty' : '') + '"' + (open ? ' open' : '') + '><summary>' + esc(title) + '</summary><div class="adm-sec-body">' + inner + '</div></details>';
   }
   function ticketsHtml(t) {
     if (!Array.isArray(t) || !t.length) return '<em style="color:var(--gray)">None</em>';
     return t.map(function (x) {
-      return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">#' + esc(x.pitTicketNo || x.truckNum || '—') +
+      return '<div class="adm-row" style="padding:6px 0;border-bottom:1px solid var(--light-gray)">#' + esc(x.pitTicketNo || x.truckNum || '—') +
         ' · ' + esc(x.commodity || x.commodityType || '') + ' · ' + esc(x.date || '') +
         ' · ' + esc(x.tons || '') + 't / ' + esc(x.yards || '') + 'cy · ' + esc(x.truckingCo || '') + '</div>';
     }).join('');
@@ -1012,7 +1182,7 @@
     ADMIN_EWT_CACHE = Array.isArray(e) ? e : [];
     if (!ADMIN_EWT_CACHE.length) return '<em style="color:var(--gray)">None</em>';
     return ADMIN_EWT_CACHE.map(function (x, i) {
-      return '<div style="padding:6px 0;border-bottom:1px solid var(--light-gray)">Ticket ' + esc(x.ticketNo || '—') + ' · ' + esc(x.date || '') +
+      return '<div class="adm-row" style="padding:6px 0;border-bottom:1px solid var(--light-gray)">Ticket ' + esc(x.ticketNo || '—') + ' · ' + esc(x.date || '') +
         ' · ' + esc(x.customer || '') + (x.signed ? ' · signed' + (x.printName ? ' (' + esc(x.printName) + ')' : '') : (x.printName ? ' · ' + esc(x.printName) : '')) +
         ((x.pdf || x.pdfBlob)
           ? ' <button type="button" data-ewt-pdf="' + i + '" style="margin-left:6px;padding:2px 10px;border-radius:99px;border:none;background:var(--soft,#f4f5f7);color:var(--ink,#23272e);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer">Open PDF</button>'
@@ -1217,7 +1387,7 @@
           }).join('') : '');
         return postDetails(head, body);
       }).join('');
-      return '<div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + days.length + ')</div>' + inner;
+      return '<div class="adm-group" data-filter="' + esc(proj) + '"><div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + days.length + ')</div>' + inner + '</div>';
     }).join('');
   }
 
@@ -1271,7 +1441,7 @@
           }).join('') : '');
         return postDetails(head, body);
       }).join('');
-      return '<div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + talks.length + ')</div>' + inner;
+      return '<div class="adm-group" data-filter="' + esc(proj) + '"><div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + talks.length + ')</div>' + inner + '</div>';
     }).join('');
   }
 
@@ -1346,7 +1516,7 @@
           line('Witnesses', r.witnesses);
         return postDetails(head, body);
       }).join('');
-      return '<div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + reps.length + ')</div>' + inner;
+      return '<div class="adm-group" data-filter="' + esc(proj) + '"><div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + reps.length + ')</div>' + inner + '</div>';
     }).join('');
   }
 

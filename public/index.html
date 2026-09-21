@@ -158,11 +158,61 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 }
 
 /* Manage Users (admin console) */
-.adm-user-card {
-  display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
-  background: var(--card, #fff); border: 1px solid var(--border); border-radius: 12px;
-  padding: 12px 14px; margin-bottom: 10px; min-width: 0;
+.adm-toolbar { display: flex; gap: 8px; margin: 14px 0 10px; }
+.adm-search {
+  flex: 1; min-width: 0; width: 100%; box-sizing: border-box;
+  font-family: inherit; font-size: 14px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--card, #fff); color: var(--dark);
 }
+.adm-search:focus { outline: none; border-color: var(--orange); }
+.adm-toolbar select {
+  font-family: inherit; font-size: 13px; padding: 7px 8px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--card, #fff); color: var(--dark);
+}
+.adm-filters, .adm-cats { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.adm-filters::-webkit-scrollbar, .adm-cats::-webkit-scrollbar { display: none; }
+.adm-cat {
+  font-family: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  padding: 7px 12px; border-radius: 99px; border: 1px solid var(--border);
+  background: var(--card, #fff); color: var(--gray);
+}
+.adm-cat b { font-weight: 700; margin-left: 3px; color: var(--dark); }
+.adm-cat.on { background: var(--orange); border-color: var(--orange); color: #fff; }
+.adm-cat.on b { color: #fff; }
+.adm-cat.is-empty:not(.on) { opacity: .55; }
+.adm-showing { font-size: 11px; color: var(--gray); margin: 10px 2px 8px; }
+.adm-user-card {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center;
+  background: var(--card, #fff); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 8px; min-width: 0; cursor: pointer;
+  transition: border-color .12s;
+}
+.adm-user-card:hover, .adm-user-card:focus-visible { border-color: var(--orange); outline: none; }
+.adm-user-card.is-off { opacity: .6; }
+.adm-avatar {
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--light-gray); color: var(--dark); font-size: 13px; font-weight: 700; letter-spacing: .02em;
+}
+.adm-avatar.live::after {
+  content: ''; position: absolute; right: 0; bottom: 0; width: 10px; height: 10px;
+  border-radius: 50%; background: #22a35a; border: 2px solid var(--card, #fff);
+}
+.adm-badge {
+  display: inline-block; vertical-align: 2px; margin-left: 7px; padding: 1px 7px; border-radius: 99px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--orange); border: 1px solid var(--orange);
+}
+.adm-badge.off { color: var(--gray); border-color: var(--gray); }
+.adm-chev { width: 18px; height: 18px; stroke: var(--gray); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.adm-back { margin-bottom: 4px; }
+.adm-role-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--gray); font-weight: 650; }
+.adm-cats { margin: 16px 0 10px; }
+.adm-pane { margin-top: 6px; }
+.adm-none { color: var(--gray); font-size: 13px; padding: 10px 0 4px; margin: 0; }
+.adm-empty-line { font-size: 11.5px; color: var(--gray); padding: 12px 0 2px; }
 .adm-user-name { font-weight: 700; font-size: 15px; color: var(--dark); overflow-wrap: anywhere; }
 .adm-user-email { font-size: 12px; color: var(--gray); margin-top: 1px; overflow-wrap: anywhere; }
 .adm-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
@@ -183,7 +233,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   margin-top: 14px; padding: 16px; border: 1px solid var(--border);
   border-radius: 12px; background: var(--card, #fff);
 }
-.adm-detail-head { display: flex; justify-content: space-between; align-items: center; }
+.adm-detail-head { display: flex; gap: 12px; align-items: center; }
 .adm-detail-head strong { font-size: 16px; }
 .adm-group-label {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.2px;
@@ -2918,13 +2968,31 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 </section>
 
 <section class="tab-content" id="tab-admin">
+  <div id="adm-list-view">
   <div class="summary">
     <div class="stat"><div class="label">Users</div><div class="value" id="adm-user-count">—</div></div>
     <div class="stat"><div class="label">Records</div><div class="value" id="adm-record-count">—</div></div>
     <div class="stat"><div class="label">Active Today</div><div class="value" id="adm-active-count">—</div></div>
   </div>
-  <div id="adm-panel">
-    <p style="color:var(--gray);font-size:13px;padding:8px 0">Loading users…</p>
+    <div class="adm-toolbar">
+      <input type="search" id="adm-search" class="adm-search" placeholder="Search name or email…" autocomplete="off">
+      <select id="adm-sort" aria-label="Sort users">
+        <option value="active">Recently active</option>
+        <option value="name">Name A–Z</option>
+        <option value="records">Most records</option>
+      </select>
+    </div>
+    <div class="adm-filters" id="adm-filters">
+      <button type="button" class="adm-cat on" data-adm-filter="all">All <b>0</b></button>
+      <button type="button" class="adm-cat" data-adm-filter="today">Active today <b>0</b></button>
+      <button type="button" class="adm-cat" data-adm-filter="records">Has records <b>0</b></button>
+      <button type="button" class="adm-cat" data-adm-filter="admin">Admins <b>0</b></button>
+      <button type="button" class="adm-cat" data-adm-filter="disabled">Disabled <b>0</b></button>
+    </div>
+    <div id="adm-showing" class="adm-showing"></div>
+    <div id="adm-panel">
+      <p style="color:var(--gray);font-size:13px;padding:8px 0">Loading users…</p>
+    </div>
   </div>
   <div id="adm-user-detail" style="display:none"></div>
 </section>
