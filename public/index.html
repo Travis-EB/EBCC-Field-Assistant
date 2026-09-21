@@ -993,6 +993,34 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   border-color: var(--blue);
 }
 .ewt-recipients .chip input { margin: 0; }
+/* Shared recipient picker (recipMount) */
+.ewt-recipients.recip { display: block; margin-bottom: 10px; }
+.recip-selected { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; min-height: 30px; align-items: center; }
+.recip-none { font-size: 12.5px; color: var(--gray); }
+.recip-chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  padding: 5px 4px 5px 11px; border-radius: 99px;
+  background: var(--orange); color: #fff; font-size: 13px; font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.recip-chip button {
+  border: none; background: transparent; color: #fff; cursor: pointer; font-family: inherit;
+  font-size: 17px; line-height: 1; width: 24px; height: 24px; border-radius: 50%; padding: 0; flex-shrink: 0;
+}
+.recip-chip button:hover { background: rgba(0,0,0,.18); }
+.recip-select, .recip-input {
+  width: 100%; box-sizing: border-box; min-width: 0;
+  font-family: inherit; font-size: 16px; color: var(--dark);
+  padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--card, #fff);
+}
+.recip-select { margin-bottom: 8px; }
+.recip-select:focus, .recip-input:focus { outline: none; border-color: var(--orange); }
+.recip-add { display: flex; gap: 8px; align-items: stretch; }
+.recip-add .recip-input { flex: 1; }
+.recip-add .btn { flex-shrink: 0; }
+.recip-msg { font-size: 12px; color: var(--red); min-height: 0; margin-top: 4px; }
+.recip-msg:empty { display: none; }
 .ewt-actions {
   display: flex;
   gap: 8px;
@@ -2042,7 +2070,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     <h3>Send JHA</h3>
     <div class="ewt-hint">Pick recipients (or type others below). Emails the JHA as a PDF — hazards, steps, and today's signatures — from your own mailbox, and archives a copy for the office.</div>
     <div class="ewt-recipients" id="jha-recipients"></div>
-    <input type="text" id="jha-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
     <div class="ewt-actions">
       <button class="btn btn-primary" id="jha-preview-btn">Preview PDF</button>
       <button class="btn btn-primary" id="jha-send-btn">Email JHA</button>
@@ -2143,9 +2170,8 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 
   <div class="ewt-section">
     <h3>Email the report</h3>
-    <div class="ewt-hint">Submitting emails a PDF of this report to <strong>amber@earthbasics.net</strong> automatically. Add the PM, safety manager, or anyone else who should get a copy.</div>
+    <div class="ewt-hint">Pick who gets the PDF when you submit — the PM, safety manager, or anyone else. With nobody picked, the report is still saved to your account and visible to the office.</div>
     <div class="ewt-recipients" id="ir-recipients"></div>
-    <input type="text" id="ir-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
     <div class="ewt-actions" id="ir-resend-wrap" style="display:none;margin-top:8px">
       <button class="btn btn-primary" id="ir-resend">Email PDF again</button>
       <button class="btn" id="ir-preview">Preview PDF</button>
@@ -2219,9 +2245,8 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 
   <div class="ewt-section">
     <h3>Email the record</h3>
-    <div class="ewt-hint">Submitting emails a PDF of this attendance record to <strong>amber@earthbasics.net</strong> automatically. Add the PM, safety manager, or anyone else who should get a copy.</div>
+    <div class="ewt-hint">Pick who gets the PDF when you submit — the PM, safety manager, or anyone else. With nobody picked, the record is still saved to your account and visible to the office.</div>
     <div class="ewt-recipients" id="tb-recipients"></div>
-    <input type="text" id="tb-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
     <div class="ewt-actions" id="tb-resend-wrap" style="display:none;margin-top:8px">
       <button class="btn btn-primary" id="tb-resend">Email PDF again</button>
       <button class="btn" id="tb-preview">Preview PDF</button>
@@ -2432,7 +2457,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <label>Starting balance — cy already moved <input type="number" id="cpy-prod-baseline" min="0" step="1000" inputmode="numeric" placeholder="only needed once per project"></label>
 </div>
 <div class="ewt-recipients" id="cpy-recipients"></div>
-<input type="text" id="cpy-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
 <div class="controls" style="margin-top:8px">
   <button class="btn btn-primary" id="cpy-prod-preview">Preview image</button>
   <button class="btn btn-primary" id="cpy-prod-send">Email production</button>
@@ -2549,7 +2573,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <label>Starting balance — sq ft already covered <input type="number" id="flat-prod-baseline" min="0" step="1000" inputmode="numeric" placeholder="only needed once per project"></label>
 </div>
 <div class="ewt-recipients" id="flat-recipients"></div>
-<input type="text" id="flat-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
 <div class="controls" style="margin-top:8px">
   <button class="btn btn-primary" id="flat-prod-preview">Preview image</button>
   <button class="btn btn-primary" id="flat-prod-send">Email production</button>
@@ -2724,7 +2747,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <h3>Send Ticket</h3>
   <div class="ewt-hint">Pick recipients (or type others below). Email opens your mail app with the ticket pre-filled.</div>
   <div class="ewt-recipients" id="ewt-recipients"></div>
-  <input type="text" id="ewt-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
   <div class="ewt-actions">
     <button class="btn btn-primary" id="ewt-preview-btn">Preview PDF</button>
     <button class="btn btn-primary" id="ewt-email-btn">Email Ticket</button>
@@ -2881,7 +2903,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <h3>Send Batch to PMs</h3>
   <div class="ewt-hint">Pick recipients and send — the report PDF and the original ticket photos go out from your own mailbox, and both are saved for the office (Manage Users). If email is unavailable, the share sheet opens instead.</div>
   <div class="ewt-recipients" id="trk-recipients"></div>
-  <input type="text" id="trk-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
   <div class="ewt-actions">
     <button class="btn btn-primary" id="trk-share-btn">Send batch</button>
     <button class="btn" id="trk-clear-all-btn">Clear all tickets</button>
@@ -2930,7 +2951,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <h3>Send Day Summary</h3>
   <div class="ewt-hint">Emails the day's PDF from your own mailbox to the checked recipients and saves a copy for the office. With no recipients checked, it opens your phone's share sheet instead.</div>
   <div class="ewt-recipients" id="lc-recipients"></div>
-  <input type="text" id="lc-extra-recipients" placeholder="Additional emails (comma-separated)" autocomplete="off">
   <div class="ewt-actions">
     <button class="btn btn-primary" id="lc-share-btn">Send day</button>
     <button class="btn" id="lc-clear-btn">Clear day</button>
@@ -4314,6 +4334,81 @@ const EWT_SAVED_CONTACTS = [
   'daveb@earthbasics.net',
   'ncowles@earthbasics.net',
 ];
+
+// ---- Shared recipient picker — every Email / Send box uses this ----
+// recipMount('<prefix>') fills #<prefix>-recipients with: the chosen
+// recipients (removable chips), a dropdown of saved contacts, and an entry
+// field that takes any number of other addresses (Enter, comma, or Add —
+// pasting a list works too). recipGet('<prefix>') returns the chosen list.
+var RECIP_STATE = {};
+const RECIP_EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+function recipMount(prefix) {
+  const wrap = document.getElementById(prefix + '-recipients');
+  if (!wrap) return;
+  const list = RECIP_STATE[prefix] = RECIP_STATE[prefix] || [];
+  wrap.classList.add('recip');
+  wrap.innerHTML =
+    '<div class="recip-selected"></div>' +
+    '<select class="recip-select" aria-label="Add a saved contact"></select>' +
+    '<div class="recip-add">' +
+      '<input type="email" class="recip-input" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="Add another email address" aria-label="Add another email address">' +
+      '<button type="button" class="btn recip-add-btn">Add</button>' +
+    '</div>' +
+    '<div class="recip-msg" aria-live="polite"></div>';
+  const selBox = wrap.querySelector('.recip-selected');
+  const select = wrap.querySelector('.recip-select');
+  const input = wrap.querySelector('.recip-input');
+  const msg = wrap.querySelector('.recip-msg');
+  const render = () => {
+    selBox.innerHTML = list.length
+      ? list.map((e, i) => '<span class="recip-chip">' + escHTML(e) + '<button type="button" data-recip-rm="' + i + '" aria-label="Remove ' + escAttr(e) + '">&times;</button></span>').join('')
+      : '<span class="recip-none">No recipients yet</span>';
+    select.innerHTML = '<option value="">Add a saved contact…</option>' + EWT_SAVED_CONTACTS.map(e =>
+      '<option value="' + escAttr(e) + '"' + (list.indexOf(e) !== -1 ? ' disabled' : '') + '>' + escHTML(e) + (list.indexOf(e) !== -1 ? ' ✓' : '') + '</option>').join('');
+  };
+  // Adds every valid address in `text`; returns whatever could not be read as an email.
+  const addFrom = (text) => {
+    const bad = [];
+    String(text || '').split(/[\s,;]+/).map(t => t.trim().toLowerCase()).filter(Boolean).forEach(t => {
+      if (!RECIP_EMAIL_RE.test(t)) bad.push(t);
+      else if (list.indexOf(t) === -1) list.push(t);
+    });
+    render();
+    return bad;
+  };
+  const commit = () => {
+    if (!input.value.trim()) return true;
+    const bad = addFrom(input.value);
+    input.value = bad.join(', ');
+    msg.textContent = bad.length ? 'Not a valid email address: ' + bad.join(', ') : '';
+    return !bad.length;
+  };
+  wrap._recipCommit = commit;
+  wrap._recipRender = () => { render(); input.value = ''; msg.textContent = ''; };
+  select.addEventListener('change', () => { if (select.value) { addFrom(select.value); msg.textContent = ''; } });
+  selBox.addEventListener('click', e => {
+    const b = e.target.closest('[data-recip-rm]');
+    if (b) { list.splice(+b.getAttribute('data-recip-rm'), 1); render(); }
+  });
+  wrap.querySelector('.recip-add-btn').addEventListener('click', () => { commit(); input.focus(); });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); commit(); }
+    else if (e.key === 'Backspace' && !input.value && list.length) { list.pop(); render(); }
+  });
+  input.addEventListener('paste', () => setTimeout(() => { if (/[\s,;]/.test(input.value.trim())) commit(); }, 0));
+  input.addEventListener('blur', commit);
+  render();
+}
+function recipGet(prefix) {
+  const wrap = document.getElementById(prefix + '-recipients');
+  if (wrap && wrap._recipCommit) wrap._recipCommit();   // an address typed but not yet added still counts
+  return (RECIP_STATE[prefix] || []).slice();
+}
+function recipClear(prefix) {
+  if (RECIP_STATE[prefix]) RECIP_STATE[prefix].length = 0;
+  const wrap = document.getElementById(prefix + '-recipients');
+  if (wrap && wrap._recipRender) wrap._recipRender();
+}
 const EWT_LICENSE_NO = 'A692678';
 
 let ewtLabor = [{ desc:'', trade:'', reg:'', ot:'', sb:'' }];
@@ -4415,12 +4510,7 @@ function ewtUpdateTotals() {
   if (me) me.innerHTML = mt.length ? '<span>Total materials —</span> ' + mt.join(' &middot; ') : '';
 }
 
-function ewtRenderRecipients() {
-  const wrap = document.getElementById('ewt-recipients');
-  wrap.innerHTML = EWT_SAVED_CONTACTS.map(email =>
-    '<label class="chip"><input type="checkbox" class="ewt-recipient-chk" value="' + escAttr(email) + '"> ' + escHTML(email) + '</label>'
-  ).join('');
-}
+function ewtRenderRecipients() { recipMount('ewt'); }
 
 document.addEventListener('input', (e) => {
   const lIdx = e.target.dataset.ewtLaborIdx;
@@ -4525,7 +4615,7 @@ document.getElementById('ewt-reset-btn').addEventListener('click', () => {
     else if (i.id !== 'ewt-date') i.value = '';
   });
   document.getElementById('ewt-date').valueAsDate = new Date();
-  document.querySelectorAll('.ewt-recipient-chk').forEach(c => c.checked = false);
+  recipClear('ewt');
   ewtRenderLabor();
   ewtRenderEquipment();
   ewtRenderMaterials();
@@ -4650,12 +4740,7 @@ window.addEventListener('ebcc-drafts-updated', ewtRenderDrafts);
   if (btn) btn.addEventListener('click', () => { try { window.dispatchEvent(new CustomEvent('ebcc-drafts-pull')); } catch (e) {} });
 })();
 
-function ewtGetRecipients() {
-  const chips = Array.from(document.querySelectorAll('.ewt-recipient-chk:checked')).map(c => c.value);
-  const extra = document.getElementById('ewt-extra-recipients').value
-    .split(',').map(s => s.trim()).filter(Boolean);
-  return Array.from(new Set([...chips, ...extra]));
-}
+function ewtGetRecipients() { return recipGet('ewt'); }
 
 function ewtFormatText(t) {
   const lines = [];
@@ -5340,18 +5425,9 @@ document.getElementById('trk-clear-all-btn').addEventListener('click', () => {
   trkRenderList();
 });
 
-function trkRenderRecipients() {
-  document.getElementById('trk-recipients').innerHTML = EWT_SAVED_CONTACTS.map(email =>
-    '<label class="chip"><input type="checkbox" class="trk-recipient-chk" value="' + trkEscAttr(email) + '"> ' + trkEscHTML(email) + '</label>'
-  ).join('');
-}
+function trkRenderRecipients() { recipMount('trk'); }
 
-function trkGetRecipients() {
-  const chips = Array.from(document.querySelectorAll('.trk-recipient-chk:checked')).map(c => c.value);
-  const extra = document.getElementById('trk-extra-recipients').value
-    .split(',').map(s => s.trim()).filter(Boolean);
-  return Array.from(new Set([...chips, ...extra]));
-}
+function trkGetRecipients() { return recipGet('trk'); }
 
 function trkFormatSummary(tickets) {
   const lines = [];
@@ -7206,17 +7282,8 @@ document.getElementById('lc-clear-btn').addEventListener('click', () => {
 });
 
 // Recipients (reuses EWT saved contacts)
-function lcRenderRecipients() {
-  document.getElementById('lc-recipients').innerHTML = EWT_SAVED_CONTACTS.map(email =>
-    '<label class="chip"><input type="checkbox" class="lc-recipient-chk" value="' + lcEscAttr(email) + '"> ' + lcEscHTML(email) + '</label>'
-  ).join('');
-}
-function lcGetRecipients() {
-  const chips = Array.from(document.querySelectorAll('.lc-recipient-chk:checked')).map(c => c.value);
-  const extra = document.getElementById('lc-extra-recipients').value
-    .split(',').map(s => s.trim()).filter(Boolean);
-  return Array.from(new Set([...chips, ...extra]));
-}
+function lcRenderRecipients() { recipMount('lc'); }
+function lcGetRecipients() { return recipGet('lc'); }
 
 // Build PDF
 async function lcBuildPDF() {
@@ -8680,17 +8747,8 @@ function prodDrawImage(d, proj) {
   return cv;
 }
 
-function prodRenderRecipients(wrapId, cls) {
-  const wrap = document.getElementById(wrapId);
-  wrap.innerHTML = EWT_SAVED_CONTACTS.map(email =>
-    '<label class="chip"><input type="checkbox" class="' + cls + '" value="' + escAttr(email) + '"> ' + escHTML(email) + '</label>'
-  ).join('');
-}
-function prodGetRecipients(cls, extraId) {
-  const chips = Array.from(document.querySelectorAll('.' + cls + ':checked')).map(c => c.value);
-  const extra = document.getElementById(extraId).value.split(',').map(s => s.trim()).filter(Boolean);
-  return Array.from(new Set([...chips, ...extra]));
-}
+function prodRenderRecipients(kind) { recipMount(kind); }
+function prodGetRecipients(kind) { return recipGet(kind); }
 
 // Point the shared preview modal at a URL. Images go into a scaled <img>
 // (the iframe would show a 2000px PNG at natural size); PDFs keep the iframe.
@@ -8774,7 +8832,7 @@ async function prodSend(kind) {
     d.rows.forEach(r => lines.push('  ' + r.qty + '× ' + r.name + (r.round ? ' — ' + r.round + ' min round' : '') + (r.cyday ? ' — ' + r.cyday.toLocaleString() + ' cy/day' : '')));
     lines.push('', '— Sent from EBCC Field Assistant');
     const bodyText = lines.join('\n');
-    const recipients = prodGetRecipients(kind + '-recipient-chk', kind + '-extra-recipients');
+    const recipients = prodGetRecipients(kind);
 
     setStatus(recipients.length ? 'Sending…' : 'Saving a copy…', 'var(--gray)');
     try {
@@ -8834,8 +8892,8 @@ async function prodSend(kind) {
   }, 'production report', 'Send');
 }
 
-prodRenderRecipients('cpy-recipients', 'cpy-recipient-chk');
-prodRenderRecipients('flat-recipients', 'flat-recipient-chk');
+prodRenderRecipients('cpy');
+prodRenderRecipients('flat');
 document.getElementById('cpy-prod-date').value = jhaToday();
 document.getElementById('flat-prod-date').value = jhaToday();
 document.getElementById('cpy-prod-preview').addEventListener('click', () => prodPreview('cpy'));
@@ -9284,18 +9342,8 @@ let jhaSigIndex = -1, jhaSigHas = false;
 })();
 
 // ---- email / PDF (same flow as EWT + Load Count) ----
-function jhaRenderRecipients() {
-  const wrap = document.getElementById('jha-recipients');
-  wrap.innerHTML = EWT_SAVED_CONTACTS.map(email =>
-    '<label class="chip"><input type="checkbox" class="jha-recipient-chk" value="' + escAttr(email) + '"> ' + escHTML(email) + '</label>'
-  ).join('');
-}
-function jhaGetRecipients() {
-  const chips = Array.from(document.querySelectorAll('.jha-recipient-chk:checked')).map(c => c.value);
-  const extra = document.getElementById('jha-extra-recipients').value
-    .split(',').map(s => s.trim()).filter(Boolean);
-  return Array.from(new Set([...chips, ...extra]));
-}
+function jhaRenderRecipients() { recipMount('jha'); }
+function jhaGetRecipients() { return recipGet('jha'); }
 function jhaRenderSendStatus(j) {
   const el = document.getElementById('jha-send-status');
   if (!el) return;
@@ -9767,17 +9815,8 @@ function irFlushFields() {
 }
 
 // ---- email / PDF ----
-const IR_ALWAYS_TO = ['amber@earthbasics.net'];
-function irRenderRecipients() {
-  document.getElementById('ir-recipients').innerHTML = EWT_SAVED_CONTACTS.map(email =>
-    '<label class="chip"><input type="checkbox" class="ir-recipient-chk" value="' + escAttr(email) + '"> ' + escHTML(email) + '</label>'
-  ).join('');
-}
-function irGetRecipients() {
-  const chips = Array.from(document.querySelectorAll('.ir-recipient-chk:checked')).map(c => c.value);
-  const extra = document.getElementById('ir-extra-recipients').value.split(',').map(s => s.trim()).filter(Boolean);
-  return Array.from(new Set([...IR_ALWAYS_TO, ...chips, ...extra]));
-}
+function irRenderRecipients() { recipMount('ir'); }
+function irGetRecipients() { return recipGet('ir'); }
 function irRenderSendStatus(r) {
   const el = document.getElementById('ir-send-status');
   if (!el) return;
@@ -9919,7 +9958,7 @@ async function irSendPdf(rec, recipients) {
   catch (e) { setStatus('Could not build the PDF: ' + (e && e.message ? e.message : e), 'var(--red)'); return; }
   const fileName = 'Incident_' + String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (rec.date || '') + '.pdf';
   const subject = 'Incident Report - ' + (rec.projectName || rec.projectCode || '') + ' - ' + jhaFmtDate(rec.date) + (rec.type ? ' - ' + rec.type : '');
-  setStatus('Emailing…', 'var(--gray)');
+  setStatus(recipients && recipients.length ? 'Emailing…' : 'Saving a copy…', 'var(--gray)');
   try {
     const r = await fetch('/api/send-incident', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -9942,7 +9981,7 @@ async function irSendPdf(rec, recipients) {
       // Originals reached the store — the device copy is no longer needed.
       if (res.archived && Array.isArray(res.photoBlobs) && res.photoBlobs.length >= pending.length) irPendingSet(rec.id, null);
       if (stamped && irCurrentId === rec.id) irRenderPhotos(Object.assign({}, stamped, { status: 'submitted' }));
-      if (res.sent) { irRenderSendStatus(stamped); return; }
+      if (res.sent || res.reason === 'no-recipients') { irRenderSendStatus(stamped); return; }
       setStatus('Email service unavailable (' + (res.reason || 'unknown') + ') — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
       return;
     }
@@ -10062,7 +10101,6 @@ document.getElementById('ir-photos').addEventListener('click', (e) => {
 // ============================================================
 const TB_KEY = 'ebcc_toolbox_records_v1';       // submitted — synced
 const TB_DRAFT_KEY = 'ebcc_toolbox_drafts_v1';  // drafts — this device only
-const TB_ALWAYS_TO = ['amber@earthbasics.net'];
 const TB_TOPICS = [
   'Never position yourself behind or in a blind spot of equipment without operators knowledge.',
   'Slippery surfaces: wet equipment, pads, roads, etc.',
@@ -10309,16 +10347,8 @@ function tbFlushFields() {
 })();
 
 // ---- email / PDF ----
-function tbRenderRecipients() {
-  document.getElementById('tb-recipients').innerHTML = EWT_SAVED_CONTACTS.map(email =>
-    '<label class="chip"><input type="checkbox" class="tb-recipient-chk" value="' + escAttr(email) + '"> ' + escHTML(email) + '</label>'
-  ).join('');
-}
-function tbGetRecipients() {
-  const chips = Array.from(document.querySelectorAll('.tb-recipient-chk:checked')).map(c => c.value);
-  const extra = document.getElementById('tb-extra-recipients').value.split(',').map(s => s.trim()).filter(Boolean);
-  return Array.from(new Set([...TB_ALWAYS_TO, ...chips, ...extra]));
-}
+function tbRenderRecipients() { recipMount('tb'); }
+function tbGetRecipients() { return recipGet('tb'); }
 function tbRenderSendStatus(r) {
   const el = document.getElementById('tb-send-status');
   if (!el) return;
@@ -10428,7 +10458,7 @@ async function tbSendPdf(rec, recipients) {
   try { doc = tbBuildPDF(rec); } catch (e) { setStatus('Could not build the PDF: ' + (e && e.message ? e.message : e), 'var(--red)'); return; }
   const fileName = 'TailgateTalk_' + String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (rec.date || '') + '.pdf';
   const subject = 'Tailgate Talk - ' + (rec.projectName || rec.projectCode || '') + ' - ' + jhaFmtDate(rec.date);
-  setStatus('Emailing…', 'var(--gray)');
+  setStatus(recipients && recipients.length ? 'Emailing…' : 'Saving a copy…', 'var(--gray)');
   try {
     const r = await fetch('/api/send-toolbox', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -10438,7 +10468,7 @@ async function tbSendPdf(rec, recipients) {
     const res = await r.json().catch(() => null);
     if (res && res.ok) {
       const stamped = tbStampSubmitted(rec.id, x => { x.emailedTo = res.recipients || recipients; x.sent = !!res.sent; x.sentTs = new Date().toISOString(); if (res.pdfBlob) x.pdfBlob = res.pdfBlob; });
-      if (res.sent) { tbRenderSendStatus(stamped); return; }
+      if (res.sent || res.reason === 'no-recipients') { tbRenderSendStatus(stamped); return; }
       setStatus('Email service unavailable (' + (res.reason || 'unknown') + ') — the record is saved on your account; use "Email PDF again" later.', 'var(--red)');
       return;
     }
@@ -10482,7 +10512,7 @@ document.getElementById('tb-submit').addEventListener('click', () => {
   const topicsN = TB_TOPICS.filter(t => (r.topics || {})[t]).length + (String(r.other || '').trim() ? 1 : 0);
   if (!topicsN) { alert('Tap at least one topic covered (or add one under Other topics).'); return; }
   if (!(r.signoffs || []).length) { alert('No attendees yet — tap "Sign in crew" and pass the device around first.'); return; }
-  if (!confirm('Submit this attendance record with ' + r.signoffs.length + ' attendee' + (r.signoffs.length === 1 ? '' : 's') + '? It will sync to your account and email the PDF.')) return;
+  if (!confirm('Submit this attendance record with ' + r.signoffs.length + ' attendee' + (r.signoffs.length === 1 ? '' : 's') + '? It will sync to your account' + (tbGetRecipients().length ? ' and email the PDF to ' + tbGetRecipients().length + ' recipient' + (tbGetRecipients().length === 1 ? '' : 's') + '.' : ' (no email — nobody is picked under Email the record).') + '')) return;
   const recipients = tbGetRecipients();
   const rec = Object.assign({}, r);
   delete rec.status;
@@ -10545,7 +10575,7 @@ document.getElementById('ir-submit').addEventListener('click', () => {
     irWriteSubmitted(submitted);
     irWriteDrafts(irReadDrafts().filter(x => x.id !== r.id));
     irOpenEditor(rec.id);          // reopens locked with the "Submitted" stamp
-    irSendPdf(rec, recipients);    // auto-email: amber + anyone added
+    irSendPdf(rec, recipients);    // emails whoever was picked; always archives the PDF
   })();
 });
 ['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses'].forEach(id => {

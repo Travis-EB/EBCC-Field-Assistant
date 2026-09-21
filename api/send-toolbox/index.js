@@ -1,7 +1,7 @@
 // POST /api/send-toolbox — email a submitted Tailgate Talk (attendance record) PDF from the
-// signed-in user's own mailbox and archive a copy for the office. Amber
-// (safety) is always on the recipient list — enforced here, not just in
-// the app — and the matching report in toolbox_records is stamped.
+// signed-in user's own mailbox and archive a copy for the office. Only the
+// recipients the user picked get the email (none picked = archive only, no
+// email), and the matching report in toolbox_records is stamped.
 //
 // Body: { subject, text, recipients[], fileName, pdf (data URI or base64),
 //         summary: { recordId, date, projectCode, projectName, type } }
@@ -11,7 +11,6 @@ const { getEwtContainer, safeName } = require('../shared/blob');
 const { sendGraphMail } = require('../shared/mail');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ALWAYS_TO = ['amber@earthbasics.net'];
 
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
@@ -30,7 +29,7 @@ module.exports = async function (context, req) {
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) { body = null; } }
   if (!body || typeof body !== 'object') return json(context, 400, { ok: false, error: 'Bad request.' });
 
-  const recipients = Array.from(new Set(ALWAYS_TO.concat(
+  const recipients = Array.from(new Set((
     (Array.isArray(body.recipients) ? body.recipients : []).map((r) => String(r).trim().toLowerCase())
   ))).filter((r) => EMAIL_RE.test(r)).slice(0, 20);
   const subject = String(body.subject || 'EBCC Tailgate Talk').slice(0, 150);
@@ -106,7 +105,8 @@ module.exports = async function (context, req) {
   }
 
   // ---- Email it ----
-  const mail = await sendGraphMail(context, { fromEmail: me.email, subject, text, recipients, fileName, pdfB64, attachments });
+  let mail = { ok: false, reason: 'no-recipients' };
+  if (recipients.length) mail = await sendGraphMail(context, { fromEmail: me.email, subject, text, recipients, fileName, pdfB64, attachments });
 
   // ---- Stamp the report in the user's synced records (never blocks the reply) ----
   try {
