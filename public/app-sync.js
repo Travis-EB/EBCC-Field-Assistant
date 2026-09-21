@@ -772,7 +772,9 @@
       : 'never';
   }
   function admInitials(u) {
-    var parts = String(u.name || u.email || '?').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean);
+    var parts = String(u.name || u.email || '?').replace(/@.*/, '').split(/[\s._,-]+/).filter(Boolean);
+    // "Garry Pecoy III" is GP, not GI — generational suffixes aren't a last name
+    while (parts.length > 2 && /^(jr|sr|ii|iii|iv|v)$/i.test(parts[parts.length - 1])) parts.pop();
     return ((parts[0] || '?').charAt(0) + (parts.length > 1 ? parts[parts.length - 1].charAt(0) : '')).toUpperCase();
   }
   function admRoleSelect(u) {
