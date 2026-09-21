@@ -4820,7 +4820,7 @@ document.getElementById('ewt-email-btn').addEventListener('click', async () => {
 // paginate cleanly with the table band repeated on continuation pages.
 function ewtBuildPDF(t) {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 30;                 // page margin
@@ -6224,7 +6224,7 @@ async function trkBuildBatchPDF(tickets) {
   tickets = tickets.map(t => { trkNormalizeTicket(t); return t; });
 
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const MARGIN = 36;
@@ -7224,7 +7224,7 @@ async function lcBuildPDF() {
     throw new Error('PDF library not loaded — check your internet connection.');
   }
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const MARGIN = 36;
@@ -9339,7 +9339,7 @@ function jhaFormatText(j) {
 function jhaBuildPDF(j) {
   if (typeof window.jspdf === 'undefined') throw new Error('PDF library not loaded — check your internet connection.');
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 34;
@@ -9817,7 +9817,7 @@ function irFormatText(r) {
 async function irBuildPDF(r, photoData) {
   if (typeof window.jspdf === 'undefined') throw new Error('PDF library not loaded — check your internet connection.');
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 34, CW = W - 2 * M;
@@ -9930,7 +9930,7 @@ async function irSendPdf(rec, recipients) {
         photoBlobs: (rec.photoBlobs || []).map(p => p && p.path).filter(Boolean),   // already archived — re-attach from the store
       }),
     });
-    const res = r.ok ? await r.json() : null;
+    const res = await r.json().catch(() => null);
     if (res && res.ok) {
       const stamped = irStampSubmitted(rec.id, x => {
         x.emailedTo = res.recipients || recipients;
@@ -9946,7 +9946,7 @@ async function irSendPdf(rec, recipients) {
       setStatus('Email service unavailable (' + (res.reason || 'unknown') + ') — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
       return;
     }
-    setStatus('Email service unavailable — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
+    setStatus('Could not email it (' + ((res && res.error) || ('server error ' + r.status)) + ') — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
   } catch (e) {
     setStatus((navigator.onLine ? 'Email service unavailable' : 'Offline') + ' — the report is saved on your account; use "Email PDF again" when you\'re back online.', 'var(--red)');
   }
@@ -10346,7 +10346,7 @@ function tbFormatText(r) {
 function tbBuildPDF(r) {
   if (typeof window.jspdf === 'undefined') throw new Error('PDF library not loaded — check your internet connection.');
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
   const M = 40, CW = W - 2 * M;
   const INK = [31, 41, 55], GRAY = [120, 128, 138], PEACH = [249, 206, 187], BAND_TEXT = [122, 62, 22];
@@ -10435,14 +10435,14 @@ async function tbSendPdf(rec, recipients) {
       body: JSON.stringify({ subject, text: tbFormatText(rec), recipients, fileName, pdf: doc.output('datauristring'),
         summary: { recordId: rec.id, date: rec.date, projectCode: rec.projectCode, projectName: rec.projectName, attendees: (rec.signoffs || []).length } }),
     });
-    const res = r.ok ? await r.json() : null;
+    const res = await r.json().catch(() => null);
     if (res && res.ok) {
       const stamped = tbStampSubmitted(rec.id, x => { x.emailedTo = res.recipients || recipients; x.sent = !!res.sent; x.sentTs = new Date().toISOString(); if (res.pdfBlob) x.pdfBlob = res.pdfBlob; });
       if (res.sent) { tbRenderSendStatus(stamped); return; }
       setStatus('Email service unavailable (' + (res.reason || 'unknown') + ') — the record is saved on your account; use "Email PDF again" later.', 'var(--red)');
       return;
     }
-    setStatus('Email service unavailable — the record is saved on your account; use "Email PDF again" later.', 'var(--red)');
+    setStatus('Could not email it (' + ((res && res.error) || ('server error ' + r.status)) + ') — the record is saved on your account; use "Email PDF again" later.', 'var(--red)');
   } catch (e) {
     setStatus((navigator.onLine ? 'Email service unavailable' : 'Offline') + ' — the record is saved on your account; use "Email PDF again" when you\'re back online.', 'var(--red)');
   }
