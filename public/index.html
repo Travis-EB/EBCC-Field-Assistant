@@ -2416,7 +2416,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 </div>
 
 <div class="section-header">Yard producers (scrapers &amp; rock trucks)</div>
-<div class="controls">
+<div class="controls" id="ypl-control" style="display:none">
   <label class="hours-control">
     <span>Yd / load (scrapers)</span>
     <div class="stepper">
@@ -3577,6 +3577,11 @@ function updateCalculatorTotals() {
       }
     }
   });
+
+  // Yd/load only matters to scrapers (producers that aren't fixed-body rock
+  // trucks) — hide the stepper until one is in the spread.
+  const yplCtl = document.getElementById('ypl-control');
+  if (yplCtl) yplCtl.style.display = job.some(it => it.producer && !it.fixedLoad) ? '' : 'none';
 
   // Processed-material summary tile (shown only while a processor is in the job)
   const hasProc = job.some(it => it.processor);
@@ -8595,7 +8600,7 @@ function prodCollectCpy() {
   const days = (yardsToMove > 0 && totalYards > 0) ? yardsToMove / totalYards : 0;
   return {
     kind: 'cpy', title: 'Earthwork Production', state: activeState,
-    hoursPerDay: hoursPerDay, ydPerLoad: ydPerLoad, rows: rows,
+    hoursPerDay: hoursPerDay, ydPerLoad: job.some(it => it.producer && !it.fixedLoad) ? ydPerLoad : 0, rows: rows,
     totalYards: Math.round(totalYards), dirt: Math.round(dirt), rock: Math.round(rock),
     processed: Math.round(processed), yardsToMove: yardsToMove,
     days: days ? Math.round(days * 10) / 10 : 0,
