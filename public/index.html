@@ -2426,7 +2426,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     </div>
   </label>
 </div>
-<div class="col-headers">
+<div class="col-headers" id="producers-headers" style="display:none">
   <div></div>
   <div class="qty-h">Qty</div>
   <div class="rt-h">Round (min)</div>
@@ -2451,7 +2451,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 </div>
 
 <div class="section-header">Send production report</div>
-<div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, round times, and yardage only. No rates or costs, so it's safe to send to PM's and superintendents. Pick a project and it tracks yards moved so far and yards remaining from your previously sent reports.</div>
 <div class="ewt-grid" style="margin-bottom:8px">
   <label>Report day <input type="date" id="cpy-prod-date"></label>
   <label>Starting balance — cy already moved <input type="number" id="cpy-prod-baseline" min="0" step="1000" inputmode="numeric" placeholder="only needed once per project"></label>
@@ -2567,7 +2566,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 </div>
 
 <div class="section-header">Send production report</div>
-<div class="ewt-hint" style="margin-bottom:8px">Emails a clean production image — equipment, hours, and coverage only. No rates or costs, so it's safe to send to PM's and superintendents. Pick a project and it tracks coverage so far and remaining from your previously sent reports.</div>
 <div class="ewt-grid" style="margin-bottom:8px">
   <label>Report day <input type="date" id="flat-prod-date"></label>
   <label>Starting balance — sq ft already covered <input type="number" id="flat-prod-baseline" min="0" step="1000" inputmode="numeric" placeholder="only needed once per project"></label>
@@ -3578,8 +3576,10 @@ function updateCalculatorTotals() {
     }
   });
 
-  // Yd/load only matters to scrapers (producers that aren't fixed-body rock
-  // trucks) — hide the stepper until one is in the spread.
+  // Producer column headers and the yd/load stepper only make sense once a
+  // producer is in the spread (yd/load: scrapers only — rock trucks are fixed-body).
+  const prodHdr = document.getElementById('producers-headers');
+  if (prodHdr) prodHdr.style.display = job.some(it => it.producer) ? '' : 'none';
   const yplCtl = document.getElementById('ypl-control');
   if (yplCtl) yplCtl.style.display = job.some(it => it.producer && !it.fixedLoad) ? '' : 'none';
 
