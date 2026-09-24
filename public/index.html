@@ -1822,8 +1822,16 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   height: 100%;
   touch-action: none;        /* essential — prevents page scroll while signing */
   background: linear-gradient(to bottom, white 0%, white calc(100% - 22px), #f3f4f6 calc(100% - 22px), #f3f4f6 calc(100% - 21px), white calc(100% - 21px));
-  /* stays white in dark mode on purpose — signatures are dark ink on paper */
   cursor: crosshair;
+}
+/* Dark mode: the pad is *displayed* inverted so it reads as a dark box with
+   light ink. The canvas data itself stays dark ink on transparent, which is
+   what the PDFs, admin thumbnails, and draft restores all expect. The
+   gradient below is the pre-inversion of the card colour. */
+[data-theme="dark"] .ewt-signature-wrap { background: var(--card); }
+[data-theme="dark"] .ewt-signature-pad {
+  background: linear-gradient(to bottom, #d4dae2 0%, #d4dae2 calc(100% - 22px), #b9c1cb calc(100% - 22px), #b9c1cb calc(100% - 21px), #d4dae2 calc(100% - 21px));
+  filter: invert(1) hue-rotate(180deg);
 }
 .ewt-signature-hint {
   position: absolute;
