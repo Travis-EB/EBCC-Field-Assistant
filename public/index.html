@@ -2986,6 +2986,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
       <span style="font-size:11px;color:var(--gray);align-self:center;text-transform:uppercase;letter-spacing:.08em;font-weight:600">Sort</span>
       <button class="btn btn-primary" data-jb-sort="code">Job #</button>
       <button class="btn" data-jb-sort="name">A&ndash;Z</button>
+      <button class="btn" data-jb-sort="recent">Most recent</button>
       <button class="btn" data-jb-sort="size">File size</button>
     </div>
     <div id="jb-list"><div class="empty">Loading projects…</div></div>
@@ -7923,6 +7924,12 @@ let jbSort = 'code';
 
 let jbSearchQuery = '';
 
+// Latest activity on a project: created, newest file upload, link added, or
+// fuel rate set — whichever is most recent. Drives the "Most recent" sort.
+function jbRecentTs(p) {
+  const ts = [p.createdAt, p.lastFileAt, p.fuelSetAt].concat((p.links || []).map(l => l && l.addedAt));
+  return ts.reduce((m, t) => { const v = t ? Date.parse(t) : 0; return v > m ? v : m; }, 0);
+}
 function jbRenderList() {
   const list = document.getElementById('jb-list');
   const count = document.getElementById('jb-count');
@@ -7934,12 +7941,14 @@ function jbRenderList() {
   if (!projs.length) { list.innerHTML = '<div class="empty">No projects match "' + escHTML(jbSearchQuery.trim()) + '".</div>'; return; }
   if (jbSort === 'name') projs.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   else if (jbSort === 'size') projs.sort((a, b) => (b.totalSize || 0) - (a.totalSize || 0));
+  else if (jbSort === 'recent') projs.sort((a, b) => jbRecentTs(b) - jbRecentTs(a) || String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
   else projs.sort((a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
   list.innerHTML = projs.map(p => {
     const linkN = (p.links || []).length;
     const meta = (p.fileCount
       ? ' · ' + p.fileCount + ' file' + (p.fileCount === 1 ? '' : 's') + ' · ' + jbFmtSize(p.totalSize)
-      : ' · no files') + (linkN ? ' · ' + linkN + ' link' + (linkN === 1 ? '' : 's') : '');
+      : ' · no files') + (linkN ? ' · ' + linkN + ' link' + (linkN === 1 ? '' : 's') : '') +
+      (jbSort === 'recent' && jbRecentTs(p) ? ' · updated ' + new Date(jbRecentTs(p)).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' }) : '');
     return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jb-open="' + escAttr(p.code) + '">' +
       '<div><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(p.code) + escHTML(meta) + '</div></div>' +
       '<button class="btn" data-jb-open="' + escAttr(p.code) + '">Open</button>' +

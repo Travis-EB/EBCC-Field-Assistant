@@ -75,7 +75,7 @@ while ($listener.IsListening) {
         if ($pbody -like '*setFuel*') { $json = '{"ok":true,"fuelRate":4.44}' }
         else { $json = '{"ok":true,"project":{"code":"NEW","name":"NEW"}}' }
       } elseif ($path -eq '/api/projects') {
-        $json = '{"projects":[{"code":"26-292-03","name":"PROSPER RETAIL","fuelRate":4.74,"fileCount":2,"totalSize":3300000,"links":[{"name":"Procore","url":"https://app.procore.com/2024/project/home"},{"name":"Autodesk Docs","url":"https://acc.autodesk.com/docs/files/projects/abc123"}]},{"code":"26-100-03","name":"NL35 III PH 1 - SITE & BUILDING 7","fileCount":5,"totalSize":12000000},{"code":"25-079-02","name":"FOX FIELD WEST BUILDING 1","fileCount":0,"totalSize":0}]}'
+        $json = '{"projects":[{"code":"26-292-03","name":"PROSPER RETAIL","createdAt":"2026-06-01T10:00:00Z","lastFileAt":"2026-08-04T10:00:00Z","fuelRate":4.74,"fileCount":2,"totalSize":3300000,"links":[{"name":"Procore","url":"https://app.procore.com/2024/project/home"},{"name":"Autodesk Docs","url":"https://acc.autodesk.com/docs/files/projects/abc123"}]},{"code":"26-100-03","name":"NL35 III PH 1 - SITE & BUILDING 7","createdAt":"2026-05-01T10:00:00Z","lastFileAt":"2026-09-20T10:00:00Z","fileCount":5,"totalSize":12000000},{"code":"25-079-02","name":"FOX FIELD WEST BUILDING 1","createdAt":"2026-09-28T10:00:00Z","fileCount":0,"totalSize":0}]}'
       } elseif ($path -eq '/api/project-files' -and $req.HttpMethod -eq 'DELETE') {
         $json = '{"ok":true}'
       } elseif ($path -eq '/api/project-files' -and $req.HttpMethod -eq 'POST') {

@@ -89,14 +89,17 @@ module.exports = async function (context, req) {
         const container = await getJobBooksContainer();
         for await (const blob of container.listBlobsFlat()) {
           const seg = blob.name.split('/')[0];
-          if (!sizes[seg]) sizes[seg] = { n: 0, b: 0 };
+          if (!sizes[seg]) sizes[seg] = { n: 0, b: 0, t: 0 };
           sizes[seg].n++;
           sizes[seg].b += blob.properties.contentLength || 0;
+          // newest upload — feeds the "Most recent" sort in Job Books
+          const t = blob.properties.lastModified ? +new Date(blob.properties.lastModified) : 0;
+          if (t > sizes[seg].t) sizes[seg].t = t;
         }
       } catch (e) { /* blob not configured — totals stay zero */ }
       const list = (doc.data || []).map((p) => {
-        const s = sizes[safeName(p.code)] || { n: 0, b: 0 };
-        return Object.assign({}, p, { fileCount: s.n, totalSize: s.b });
+        const s = sizes[safeName(p.code)] || { n: 0, b: 0, t: 0 };
+        return Object.assign({}, p, { fileCount: s.n, totalSize: s.b, lastFileAt: s.t ? new Date(s.t).toISOString() : '' });
       }).sort((a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
       return json(context, 200, { projects: list });
     }
