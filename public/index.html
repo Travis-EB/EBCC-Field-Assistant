@@ -213,6 +213,55 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 .adm-pane { margin-top: 6px; }
 .adm-none { color: var(--gray); font-size: 13px; padding: 10px 0 4px; margin: 0; }
 .adm-empty-line { font-size: 11.5px; color: var(--gray); padding: 12px 0 2px; }
+
+/* Segmented control (Job Books state, Active Jobs machine/person) */
+.seg { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 8px; }
+.seg button {
+  flex: 1; padding: 9px 10px; border: none; background: var(--card, #fff); color: var(--gray);
+  font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button.on { background: var(--orange); color: #fff; }
+
+/* Active Jobs */
+.aj-card { grid-template-columns: 1fr auto; cursor: pointer; }
+.aj-card:hover, .aj-card:focus-visible { border-color: var(--orange); outline: none; }
+.aj-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.aj-monthnav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+#aj-month { font-weight: 700; font-size: 15px; }
+.aj-mini { padding: 6px 12px; font-size: 13px; }
+.aj-dow, .aj-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.aj-dow span { text-align: center; font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--gray); padding-bottom: 2px; }
+.aj-cell {
+  min-height: 48px; border: 1px solid var(--border); border-radius: 8px; background: var(--card, #fff);
+  font-family: inherit; color: var(--dark); padding: 5px 2px 4px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer;
+}
+.aj-cell.aj-pad { border: none; background: transparent; cursor: default; }
+.aj-cell.has { background: var(--light-gray); }
+.aj-cell.is-today .aj-dn { color: var(--orange); font-weight: 800; }
+.aj-cell.is-sel { border-color: var(--orange); box-shadow: inset 0 0 0 1px var(--orange); }
+.aj-dn { font-size: 12px; font-weight: 600; line-height: 1; }
+.aj-cnt { display: flex; gap: 3px; }
+.aj-cnt b { font-size: 10px; font-weight: 700; color: #fff; border-radius: 99px; padding: 0 5px; line-height: 15px; min-width: 15px; text-align: center; }
+.aj-m { background: var(--orange); }
+.aj-p { background: #3b82f6; }
+.aj-legend { display: flex; gap: 14px; font-size: 11.5px; color: var(--gray); margin-top: 8px; }
+.aj-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.aj-glabel { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--gray); font-weight: 650; margin: 12px 0 2px; }
+.aj-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
+.aj-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--orange); flex-shrink: 0; }
+.aj-row.is-person .aj-dot { background: #3b82f6; }
+.aj-name { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
+.aj-when { font-size: 12px; color: var(--gray); }
+.aj-form input {
+  width: 100%; box-sizing: border-box; font-family: inherit; font-size: 16px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark); margin-bottom: 8px;
+}
+.aj-form input:focus { outline: none; border-color: var(--orange); }
+.aj-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.aj-dates label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--gray); }
+.aj-dates label small { font-weight: 500; text-transform: none; letter-spacing: 0; }
+.aj-dates label input { margin-top: 4px; }
 .adm-user-name { font-weight: 700; font-size: 15px; color: var(--dark); overflow-wrap: anywhere; }
 .adm-user-email { font-size: 12px; color: var(--gray); margin-top: 1px; overflow-wrap: anywhere; }
 .adm-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
@@ -2127,10 +2176,65 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 </section>
 
 <section class="tab-content" id="tab-activejobs">
-  <div class="ewt-section">
-    <h3>Active Jobs</h3>
-    <div class="ewt-hint">Jobs currently running — pulled from the same project list as Job Books.</div>
-    <div id="aj-list" style="margin-top:10px"><div class="empty">Loading projects…</div></div>
+  <div id="aj-home">
+    <div class="ewt-section">
+      <h3>Active Jobs</h3>
+      <div id="aj-admin" class="admin-only" style="display:none">
+        <div class="ewt-hint">Make a job active — it shows here for everyone, with its on-site schedule.</div>
+        <div class="search-bar" style="margin:8px 0 14px">
+          <input type="text" id="aj-proj-combo" placeholder="Make a job active — search name or job #…" autocomplete="off">
+          <div class="search-results" id="aj-proj-results"></div>
+        </div>
+      </div>
+      <div id="aj-list"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+  <div id="aj-detail" style="display:none">
+    <div class="aj-top">
+      <button class="btn" id="aj-back">&larr; Active jobs</button>
+      <div id="aj-title" style="flex:1;min-width:0"></div>
+      <button class="btn btn-primary" id="aj-edit-toggle">Edit</button>
+    </div>
+    <div class="ewt-section">
+      <div class="aj-monthnav">
+        <button type="button" class="btn aj-mini" id="aj-prev" aria-label="Previous month">&lsaquo;</button>
+        <div id="aj-month"></div>
+        <button type="button" class="btn aj-mini" id="aj-next" aria-label="Next month">&rsaquo;</button>
+      </div>
+      <div class="aj-dow"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+      <div class="aj-grid" id="aj-cal"></div>
+      <div class="aj-legend"><span><i class="aj-m"></i>machines</span><span><i class="aj-p"></i>personnel</span></div>
+    </div>
+    <div class="ewt-section aj-form" id="aj-editor" style="display:none">
+      <h3 id="aj-form-title">Add to the schedule</h3>
+      <div class="seg" id="aj-kind">
+        <button type="button" data-aj-kind="machine" class="on">Machine</button>
+        <button type="button" data-aj-kind="person">Person</button>
+      </div>
+      <input type="text" id="aj-name" list="aj-names" placeholder="Machine — e.g. Scraper: CAT651" autocomplete="off">
+      <datalist id="aj-names"></datalist>
+      <div class="aj-dates">
+        <label>Start<input type="date" id="aj-start"></label>
+        <label>End <small>(blank = ongoing)</small><input type="date" id="aj-end"></label>
+      </div>
+      <input type="text" id="aj-note" placeholder="Note (optional) — operator, shift, unit #…" autocomplete="off">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="aj-save-entry">Add</button>
+        <button class="btn" id="aj-cancel-entry" style="display:none">Cancel</button>
+      </div>
+      <div id="aj-form-msg" style="font-size:12.5px;font-weight:600;color:var(--red);min-height:16px;margin-top:6px"></div>
+    </div>
+    <div class="ewt-section">
+      <h3 id="aj-daytitle"></h3>
+      <div id="aj-daylist"></div>
+    </div>
+    <div class="ewt-section" id="aj-allwrap" style="display:none">
+      <h3>Everything scheduled</h3>
+      <div id="aj-all"></div>
+    </div>
+    <div id="aj-admin-foot" class="admin-only" style="display:none;margin:4px 0 20px">
+      <button class="btn" id="aj-deactivate" style="color:var(--red);border-color:var(--red)">Remove from active jobs</button>
+    </div>
   </div>
 </section>
 
@@ -2371,13 +2475,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <div id="cpy-job-status" style="font-size:12.5px;font-weight:600;min-height:17px;margin:0 4px 8px"></div>
 </div>
 <div class="controls">
-  <label class="hours-control state-control">
-    <span>State</span>
-    <select id="state-select-cpy" data-state-select>
-      <option value="CA">CA</option>
-      <option value="TX">TX</option>
-    </select>
-  </label>
   <label class="hours-control">
     <span>Hours/day</span>
     <input type="number" id="hours-input" value="8" min="0" step="0.5" inputmode="decimal">
@@ -2536,13 +2633,6 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   <div id="flat-job-status" style="font-size:12.5px;font-weight:600;min-height:17px;margin:0 4px 8px"></div>
 </div>
 <div class="controls">
-  <label class="hours-control state-control">
-    <span>State</span>
-    <select id="state-select-flat" data-state-select>
-      <option value="CA">CA</option>
-      <option value="TX">TX</option>
-    </select>
-  </label>
   <label class="hours-control">
     <span>Hours/day</span>
     <input type="number" id="flat-hours-input" value="8" min="0" step="0.5" inputmode="decimal">
@@ -3368,18 +3458,26 @@ function applyJobFuel() {
   const projs = window.EBCC_PROJECTS || [];
   const code = (typeof currentJobCode !== 'undefined') ? currentJobCode : '';
   const p = code ? projs.find(x => x.code === code) : null;
+  // The job's state (set in Job Books) picks the CA/TX rate library.
+  // performStateChange migrates the spread and re-enters this function.
+  if (p && (p.state === 'CA' || p.state === 'TX') && p.state !== activeState && typeof window.performStateChange === 'function') {
+    window.performStateChange(p.state);
+    return;
+  }
   const anchorStr = '$' + FUEL_ANCHOR[activeState].toFixed(2) + '/gal';
-  let fuel = null, msg, color;
+  let fuel = null, msg, color = 'var(--green, #059669)';
   if (!p) {
-    msg = '⚠ No job selected — ' + activeState + ' rates default to ' + anchorStr + '. Select a job above to use its fuel rate.';
-    color = '#d97706';
-  } else if (p.fuelRate == null) {
-    msg = '⚠ ' + p.name + ': no fuel rate has been input in Job Books — using ' + anchorStr + '.';
+    msg = '⚠ No job selected — using ' + activeState + ' rates at ' + anchorStr + '. Select a job above to use its state and fuel rate from Job Books.';
     color = '#d97706';
   } else {
-    fuel = +p.fuelRate;
-    msg = p.name + ' — fuel $' + fuel.toFixed(2) + '/gal from Job Books.';
-    color = 'var(--green, #059669)';
+    const noState = !(p.state === 'CA' || p.state === 'TX');
+    const noFuel = p.fuelRate == null;
+    if (!noFuel) fuel = +p.fuelRate;
+    msg = (noState || noFuel ? '⚠ ' : '') + p.name + ' — ' +
+      (noState ? 'no state set in Job Books, using ' + activeState + ' rates' : activeState + ' rates') + ' · ' +
+      (noFuel ? 'no fuel rate in Job Books, using ' + anchorStr : 'fuel $' + fuel.toFixed(2) + '/gal') +
+      (noState || noFuel ? '.' : ' from Job Books.');
+    if (noState || noFuel) color = '#d97706';
   }
   ['cpy-job-status', 'flat-job-status'].forEach(id => {
     const el = document.getElementById(id);
@@ -7927,6 +8025,8 @@ function jbLoadProjects() {
     if (!res || !res.projects) return;
     window.EBCC_PROJECTS = res.projects;
     jbRenderList();
+    if (typeof applyJobFuel === 'function') applyJobFuel();
+    if (typeof ajRefresh === 'function') ajRefresh();
     const dl = document.getElementById('ewt-job-list');
     if (dl) dl.innerHTML = res.projects.map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.name) + '</option>').join('');
   }).catch(() => {});
@@ -7960,6 +8060,7 @@ function jbRenderList() {
     const meta = (p.fileCount
       ? ' · ' + p.fileCount + ' file' + (p.fileCount === 1 ? '' : 's') + ' · ' + jbFmtSize(p.totalSize)
       : ' · no files') + (linkN ? ' · ' + linkN + ' link' + (linkN === 1 ? '' : 's') : '') +
+      (p.state ? ' · ' + p.state : '') + (p.active ? ' · ACTIVE' : '') +
       (jbSort === 'recent' && jbRecentTs(p) ? ' · updated ' + new Date(jbRecentTs(p)).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' }) : '');
     return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jb-open="' + escAttr(p.code) + '">' +
       '<div><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(p.code) + escHTML(meta) + '</div></div>' +
@@ -8136,6 +8237,9 @@ function jbMoveFile(name, from, to) {
 }
 
 
+function jbStateText(p) {
+  return p.state ? 'Cost Per Yard and Flat Work use ' + p.state + ' rates on this job' : '⚠ No state set — calculators fall back to CA rates';
+}
 function jbOpenProject(code) {
   const p = (window.EBCC_PROJECTS || []).find(x => x.code === code);
   if (!p) return;
@@ -8153,6 +8257,15 @@ function jbOpenProject(code) {
       '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.name) + '</div>' +
       '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.code) + '</div></div>' +
       (window.EBCC_IS_ADMIN ? '<button class="btn" id="jb-delete-project" style="margin-left:auto;flex-shrink:0;color:var(--red);border-color:var(--red)">Delete project</button>' : '') +
+    '</div>' +
+    // State picks the CA/TX rate library on Cost Per Yard and Flat Work for this job.
+    '<div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px;flex-wrap:wrap">' +
+      '<span style="font-size:12px;font-weight:600;color:var(--gray)">State</span>' +
+      '<div class="seg" id="jb-state-seg" style="margin:0;width:150px">' +
+        '<button type="button" data-jb-state="CA"' + (p.state === 'CA' ? ' class="on"' : '') + '>CA</button>' +
+        '<button type="button" data-jb-state="TX"' + (p.state === 'TX' ? ' class="on"' : '') + '>TX</button>' +
+      '</div>' +
+      '<span id="jb-state-status" style="font-size:12px;font-weight:600;color:var(--gray)">' + jbStateText(p) + '</span>' +
     '</div>' +
     '<div id="jb-dropzone" style="margin:12px 0;padding:18px 16px;border:2px dashed var(--border);border-radius:12px;text-align:center;color:var(--gray);font-size:13px;background:var(--dz-bg)">' +
       '<span id="jb-drophint">Drag files here — they save automatically</span><br>' +
@@ -8180,6 +8293,23 @@ function jbOpenProject(code) {
     '<div class="section-header">Files</div>' +
     '<div id="jb-files"><div class="empty">Loading files…</div></div>';
   window.scrollTo(0, 0);
+  document.getElementById('jb-state-seg').onclick = (e) => {
+    const b = e.target.closest('[data-jb-state]');
+    if (!b) return;
+    const v = b.getAttribute('data-jb-state');
+    if (p.state === v) return;
+    const st = document.getElementById('jb-state-status');
+    st.textContent = 'Saving…';
+    fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'setState', code: code, state: v }) })
+      .then(r => r.json().then(j => ({ ok: r.ok && j && j.ok, j })).catch(() => ({ ok: false })))
+      .then(out => {
+        if (!out.ok) { st.textContent = (out.j && out.j.error) || 'Could not save the state.'; st.style.color = 'var(--red)'; return; }
+        p.state = v;
+        document.querySelectorAll('#jb-state-seg [data-jb-state]').forEach(x => x.classList.toggle('on', x.getAttribute('data-jb-state') === v));
+        st.style.color = 'var(--gray)'; st.textContent = jbStateText(p);
+        if (typeof currentJobCode !== 'undefined' && currentJobCode === code && typeof applyJobFuel === 'function') applyJobFuel();
+      });
+  };
   document.getElementById('jb-back-btn').onclick = () => {
     box.style.display = 'none';
     box.innerHTML = '';
@@ -9691,30 +9821,287 @@ document.querySelector('.tab[data-tab="sssp"]').addEventListener('click', () => 
   if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
 });
 
-// ---- Active Jobs (Project Management) — starts as a read-only view of the
-// shared project list, most recent activity first. ----
-function ajRender() {
+// ============================================================
+// Active Jobs (Project Management). Admins promote jobs to active; each
+// active job carries an on-site schedule — machines and personnel with
+// date ranges — shown as a month calendar. The schedule is saved on the
+// shared project record (mode:'setSchedule'), so every device sees the
+// same board. Dates are plain 'YYYY-MM-DD' strings compared as text.
+// ============================================================
+let ajCode = null;       // job open in the schedule view
+let ajMonth = '';        // 'YYYY-MM' on screen
+let ajDay = '';          // selected 'YYYY-MM-DD'
+let ajEditing = false;
+let ajEditId = null;     // entry loaded into the form (null = adding)
+let ajKind = 'machine';
+
+function ajIso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function ajToday() { return ajIso(new Date()); }
+function ajParse(iso) { const p = String(iso).split('-').map(Number); return new Date(p[0], p[1] - 1, p[2] || 1); }
+function ajFmt(iso, long) {
+  if (!iso) return '';
+  return ajParse(iso).toLocaleDateString([], long ? { weekday: 'short', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' });
+}
+function ajOnDay(e, day) { return e.start <= day && (!e.end || day <= e.end); }
+function ajLength(e) { return e.end ? Math.round((ajParse(e.end) - ajParse(e.start)) / 86400000) + 1 : null; }
+function ajProj() { return (window.EBCC_PROJECTS || []).find(p => p.code === ajCode) || null; }
+function ajSchedule(p) { return Array.isArray(p && p.schedule) ? p.schedule : []; }
+function ajIsPerson(e) { return e.kind === 'person'; }
+function ajActiveJobs() {
+  return (window.EBCC_PROJECTS || []).filter(p => p.active).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+function ajPost(body) {
+  return fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => r.json().then(j => ({ ok: r.ok && j && j.ok, j: j })).catch(() => ({ ok: false, j: null })))
+    .catch(() => ({ ok: false, j: null }));
+}
+// Called whenever the project list reloads.
+function ajRefresh() {
+  if (ajCode) { if (ajProj()) ajRenderDetail(); else ajBack(); }
+  else ajRenderHome();
+}
+
+function ajRenderHome() {
   const list = document.getElementById('aj-list');
   if (!list) return;
-  const projs = (window.EBCC_PROJECTS || []).slice().sort((a, b) => jbRecentTs(b) - jbRecentTs(a));
-  if (!projs.length) { list.innerHTML = '<div class="empty">No projects yet — add one in Job Books.</div>'; return; }
+  const projs = ajActiveJobs();
+  const today = ajToday();
+  if (!projs.length) {
+    list.innerHTML = '<div class="empty">No active jobs yet.' + (window.EBCC_IS_ADMIN ? ' Pick a project above to make it active.' : ' An admin can make a job active.') + '</div>';
+    return;
+  }
   list.innerHTML = projs.map(p => {
-    const when = jbRecentTs(p) ? ' · updated ' + new Date(jbRecentTs(p)).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' }) : '';
-    return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-aj-open="' + escAttr(p.code) + '">' +
-      '<div><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(p.code + when) + '</div></div>' +
-      '<button class="btn" data-aj-open="' + escAttr(p.code) + '">Job Book</button>' +
+    const sched = ajSchedule(p);
+    const m = sched.filter(e => !ajIsPerson(e) && ajOnDay(e, today)).length;
+    const n = sched.filter(e => ajIsPerson(e) && ajOnDay(e, today)).length;
+    const meta = p.code + (p.state ? ' · ' + p.state : '') + ' · today: ' + m + ' machine' + (m === 1 ? '' : 's') + ', ' + n + ' ' + (n === 1 ? 'person' : 'people');
+    return '<div class="equipment-card aj-card" data-aj-open="' + escAttr(p.code) + '" role="button" tabindex="0">' +
+      '<div style="min-width:0"><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(meta) + '</div></div>' +
+      '<svg class="adm-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>' +
     '</div>';
   }).join('');
 }
-document.getElementById('aj-list').addEventListener('click', e => {
-  const b = e.target.closest('[data-aj-open]');
-  if (!b) return;
-  document.querySelector('.tab[data-tab="jobbooks"]').click();
-  jbOpenProject(b.getAttribute('data-aj-open'));
-});
-document.querySelector('.tab[data-tab="activejobs"]').addEventListener('click', () => {
-  if ((window.EBCC_PROJECTS || []).length) ajRender(); else jbLoadProjects().then(ajRender);
-});
+
+function ajOpen(code) {
+  ajCode = code; ajEditing = false; ajEditId = null;
+  const today = ajToday();
+  ajMonth = today.slice(0, 7); ajDay = today;
+  document.getElementById('aj-home').style.display = 'none';
+  document.getElementById('aj-detail').style.display = '';
+  ajRenderDetail();
+  window.scrollTo(0, 0);
+}
+function ajBack() {
+  ajCode = null; ajEditing = false; ajEditId = null;
+  document.getElementById('aj-detail').style.display = 'none';
+  document.getElementById('aj-home').style.display = '';
+  ajRenderHome();
+}
+
+function ajRow(e) {
+  const len = ajLength(e);
+  const when = ajFmt(e.start) + (e.end ? ' – ' + ajFmt(e.end) + ' · ' + len + ' day' + (len === 1 ? '' : 's') : ' → ongoing');
+  return '<div class="aj-row' + (ajIsPerson(e) ? ' is-person' : '') + '">' +
+    '<span class="aj-dot"></span>' +
+    '<div style="min-width:0;flex:1"><div class="aj-name">' + escHTML(e.name) + '</div>' +
+    '<div class="aj-when">' + escHTML(when) + (e.note ? ' · ' + escHTML(e.note) : '') + '</div></div>' +
+    (ajEditing ? '<button type="button" class="btn aj-mini" data-aj-edit="' + escAttr(e.id) + '">Edit</button>' +
+                 '<button type="button" class="btn aj-mini" data-aj-rm="' + escAttr(e.id) + '" aria-label="Remove" style="color:var(--red)">&times;</button>' : '') +
+  '</div>';
+}
+function ajGroups(items) {
+  const g = (isPerson, label) => {
+    const xs = items.filter(e => ajIsPerson(e) === isPerson);
+    return xs.length ? '<div class="aj-glabel">' + label + ' (' + xs.length + ')</div>' + xs.map(ajRow).join('') : '';
+  };
+  return g(false, 'Machines') + g(true, 'Personnel');
+}
+
+function ajRenderDetail() {
+  const p = ajProj();
+  if (!p) { ajBack(); return; }
+  const sched = ajSchedule(p);
+  const today = ajToday();
+  document.getElementById('aj-title').innerHTML =
+    '<div style="font-weight:650;font-size:16px;letter-spacing:-0.01em;overflow-wrap:anywhere">' + escHTML(p.name) + '</div>' +
+    '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.code + (p.state ? ' · ' + p.state : '')) + '</div>';
+  document.getElementById('aj-edit-toggle').textContent = ajEditing ? 'Done' : 'Edit';
+  document.getElementById('aj-edit-toggle').classList.toggle('btn-primary', !ajEditing);
+
+  // Month grid — each day shows how many machines / people are on site.
+  const ym = ajMonth.split('-').map(Number);
+  const first = new Date(ym[0], ym[1] - 1, 1);
+  const daysIn = new Date(ym[0], ym[1], 0).getDate();
+  document.getElementById('aj-month').textContent = first.toLocaleDateString([], { month: 'long', year: 'numeric' });
+  let cells = '';
+  for (let i = 0; i < first.getDay(); i++) cells += '<div class="aj-cell aj-pad"></div>';
+  for (let d = 1; d <= daysIn; d++) {
+    const iso = ajIso(new Date(ym[0], ym[1] - 1, d));
+    const m = sched.filter(e => !ajIsPerson(e) && ajOnDay(e, iso)).length;
+    const n = sched.filter(e => ajIsPerson(e) && ajOnDay(e, iso)).length;
+    cells += '<button type="button" class="aj-cell' + (iso === today ? ' is-today' : '') + (iso === ajDay ? ' is-sel' : '') + ((m || n) ? ' has' : '') + '" data-aj-day="' + iso + '" aria-label="' + iso + '">' +
+      '<span class="aj-dn">' + d + '</span>' +
+      ((m || n) ? '<span class="aj-cnt">' + (m ? '<b class="aj-m">' + m + '</b>' : '') + (n ? '<b class="aj-p">' + n + '</b>' : '') + '</span>' : '') +
+    '</button>';
+  }
+  document.getElementById('aj-cal').innerHTML = cells;
+
+  // Selected day
+  const onDay = sched.filter(e => ajOnDay(e, ajDay));
+  document.getElementById('aj-daytitle').textContent = 'On site ' + (ajDay === today ? 'today — ' : '') + ajFmt(ajDay, true);
+  document.getElementById('aj-daylist').innerHTML = onDay.length ? ajGroups(onDay)
+    : '<div class="empty">Nothing scheduled for this day.' + (ajEditing ? '' : ' Tap Edit to add machines or people.') + '</div>';
+
+  // Edit mode: the form plus the full schedule
+  document.getElementById('aj-editor').style.display = ajEditing ? '' : 'none';
+  const allWrap = document.getElementById('aj-allwrap');
+  allWrap.style.display = ajEditing ? '' : 'none';
+  if (ajEditing) {
+    const all = sched.slice().sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name));
+    document.getElementById('aj-all').innerHTML = all.length ? ajGroups(all) : '<div class="empty">Nothing scheduled yet.</div>';
+    ajFillNames(p);
+  }
+}
+
+// Datalist: machines from the job's rate library (by state) plus anything
+// already scheduled; people from names used on any job's schedule.
+function ajFillNames(p) {
+  const dl = document.getElementById('aj-names');
+  const names = new Set();
+  if (ajKind === 'machine') {
+    const lib = (p.state === 'TX') ? EQUIPMENT_LIBRARY_TX : EQUIPMENT_LIBRARY_CA;
+    lib.forEach(e => { if (!/^Labor:/i.test(e.name)) names.add(e.name); });
+    (window.EBCC_PROJECTS || []).forEach(x => ajSchedule(x).forEach(e => { if (!ajIsPerson(e)) names.add(e.name); }));
+  } else {
+    (window.EBCC_PROJECTS || []).forEach(x => ajSchedule(x).forEach(e => { if (ajIsPerson(e)) names.add(e.name); }));
+  }
+  dl.innerHTML = Array.from(names).sort().map(n => '<option value="' + escAttr(n) + '">').join('');
+  document.getElementById('aj-name').placeholder = ajKind === 'machine' ? 'Machine — e.g. Scraper: CAT651' : 'Name — e.g. Maria Lopez';
+}
+function ajSetKind(k) {
+  ajKind = k;
+  document.querySelectorAll('#aj-kind [data-aj-kind]').forEach(b => b.classList.toggle('on', b.getAttribute('data-aj-kind') === k));
+  const p = ajProj(); if (p) ajFillNames(p);
+}
+function ajFormReset() {
+  ajEditId = null;
+  document.getElementById('aj-form-title').textContent = 'Add to the schedule';
+  document.getElementById('aj-save-entry').textContent = 'Add';
+  document.getElementById('aj-cancel-entry').style.display = 'none';
+  document.getElementById('aj-name').value = '';
+  document.getElementById('aj-start').value = ajDay || ajToday();
+  document.getElementById('aj-end').value = '';
+  document.getElementById('aj-note').value = '';
+  document.getElementById('aj-form-msg').textContent = '';
+}
+function ajFormLoad(e) {
+  ajEditId = e.id;
+  ajSetKind(ajIsPerson(e) ? 'person' : 'machine');
+  document.getElementById('aj-form-title').textContent = 'Edit — ' + e.name;
+  document.getElementById('aj-save-entry').textContent = 'Save changes';
+  document.getElementById('aj-cancel-entry').style.display = '';
+  document.getElementById('aj-name').value = e.name;
+  document.getElementById('aj-start').value = e.start;
+  document.getElementById('aj-end').value = e.end || '';
+  document.getElementById('aj-note').value = e.note || '';
+  document.getElementById('aj-form-msg').textContent = '';
+  document.getElementById('aj-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// Save the whole schedule: show it immediately, then persist; roll back on failure.
+function ajSaveSchedule(next) {
+  const p = ajProj(); if (!p) return;
+  const prev = ajSchedule(p);
+  p.schedule = next;
+  ajRenderDetail();
+  ajPost({ mode: 'setSchedule', code: p.code, schedule: next }).then(out => {
+    if (out.ok) { if (Array.isArray(out.j.schedule)) p.schedule = out.j.schedule; return; }
+    p.schedule = prev;
+    ajRenderDetail();
+    alert((out.j && out.j.error) || 'Could not save the schedule — check your connection and try again.');
+  });
+}
+
+(function () {
+  // Home: open a job; admin picker promotes one
+  document.getElementById('aj-list').addEventListener('click', e => {
+    const c = e.target.closest('[data-aj-open]'); if (c) ajOpen(c.getAttribute('data-aj-open'));
+  });
+  document.getElementById('aj-list').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const c = e.target.closest('[data-aj-open]'); if (c) { e.preventDefault(); ajOpen(c.getAttribute('data-aj-open')); }
+  });
+  const picker = projCombo('aj-proj-combo', 'aj-proj-results', p => {
+    if (!p) return;
+    if (p.active) { picker.clear(); alert(p.name + ' is already active.'); return; }
+    if (!confirm('Make "' + p.name + '" an active job? It will show under Active Jobs for everyone.')) { picker.clear(); return; }
+    ajPost({ mode: 'setActive', code: p.code, active: true }).then(out => {
+      picker.clear();
+      if (!out.ok) { alert((out.j && out.j.error) || 'Could not update the job.'); return; }
+      p.active = true;
+      ajRenderHome();
+    });
+  });
+  document.getElementById('aj-deactivate').addEventListener('click', () => {
+    const p = ajProj(); if (!p) return;
+    if (!confirm('Remove "' + p.name + '" from Active Jobs? Its schedule is kept and comes back if the job is made active again.')) return;
+    ajPost({ mode: 'setActive', code: p.code, active: false }).then(out => {
+      if (!out.ok) { alert((out.j && out.j.error) || 'Could not update the job.'); return; }
+      delete p.active;
+      ajBack();
+    });
+  });
+
+  // Detail
+  document.getElementById('aj-back').addEventListener('click', ajBack);
+  document.getElementById('aj-prev').addEventListener('click', () => { const ym = ajMonth.split('-').map(Number); ajMonth = ajIso(new Date(ym[0], ym[1] - 2, 1)).slice(0, 7); ajRenderDetail(); });
+  document.getElementById('aj-next').addEventListener('click', () => { const ym = ajMonth.split('-').map(Number); ajMonth = ajIso(new Date(ym[0], ym[1], 1)).slice(0, 7); ajRenderDetail(); });
+  document.getElementById('aj-cal').addEventListener('click', e => {
+    const c = e.target.closest('[data-aj-day]'); if (!c) return;
+    ajDay = c.getAttribute('data-aj-day');
+    if (ajEditing && ajEditId == null) document.getElementById('aj-start').value = ajDay;
+    ajRenderDetail();
+  });
+  document.getElementById('aj-edit-toggle').addEventListener('click', () => {
+    ajEditing = !ajEditing;
+    if (ajEditing) { ajSetKind('machine'); ajFormReset(); }
+    ajRenderDetail();
+  });
+  document.getElementById('aj-kind').addEventListener('click', e => {
+    const b = e.target.closest('[data-aj-kind]'); if (b) ajSetKind(b.getAttribute('data-aj-kind'));
+  });
+  document.getElementById('aj-cancel-entry').addEventListener('click', ajFormReset);
+  document.getElementById('aj-save-entry').addEventListener('click', () => {
+    const p = ajProj(); if (!p) return;
+    const msg = document.getElementById('aj-form-msg');
+    const name = document.getElementById('aj-name').value.replace(/\s+/g, ' ').trim();
+    const start = document.getElementById('aj-start').value;
+    const end = document.getElementById('aj-end').value;
+    const note = document.getElementById('aj-note').value.trim();
+    if (!name) { msg.textContent = ajKind === 'machine' ? 'Enter the machine.' : 'Enter the person\'s name.'; document.getElementById('aj-name').focus(); return; }
+    if (!start) { msg.textContent = 'Pick a start date.'; return; }
+    if (end && end < start) { msg.textContent = 'End date is before the start date.'; return; }
+    const entry = { id: ajEditId || Math.random().toString(36).slice(2, 10), kind: ajKind, name: name, start: start, end: end, note: note };
+    const next = ajSchedule(p).filter(e => e.id !== entry.id).concat([entry]);
+    ajSaveSchedule(next);
+    ajFormReset();
+    ajSetKind(ajKind); // refresh datalist with the new name
+  });
+  // Edit / remove rows (both the day list and the full list)
+  ['aj-daylist', 'aj-all'].forEach(id => document.getElementById(id).addEventListener('click', e => {
+    const p = ajProj(); if (!p) return;
+    const ed = e.target.closest('[data-aj-edit]');
+    if (ed) { const x = ajSchedule(p).find(y => y.id === ed.getAttribute('data-aj-edit')); if (x) ajFormLoad(x); return; }
+    const rm = e.target.closest('[data-aj-rm]');
+    if (rm) {
+      const x = ajSchedule(p).find(y => y.id === rm.getAttribute('data-aj-rm'));
+      if (x && confirm('Remove ' + x.name + ' from the schedule?')) { if (ajEditId === x.id) ajFormReset(); ajSaveSchedule(ajSchedule(p).filter(y => y.id !== x.id)); }
+    }
+  }));
+  document.querySelector('.tab[data-tab="activejobs"]').addEventListener('click', () => {
+    ajRefresh();
+    jbLoadProjects(); // fresh board — ajRefresh runs again on load
+  });
+})();
 
 // ============================================================
 // Incident Reports — a simple per-project form. Autosaves like

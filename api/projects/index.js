@@ -45,6 +45,25 @@ const SEED = [
   ['24-279-02', 'AMAZON HESPERIA CAZ5'],
 ];
 
+// Apply `fn(project)` to one project with an etag-checked replace, retrying
+// when another writer got in first. Returns the project, or null if absent.
+async function updateProject(records, code, fn) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const doc = await readDoc(records);
+    if (!doc) return null;
+    const p = (doc.data || []).find((x) => x && String(x.code).toLowerCase() === String(code).toLowerCase());
+    if (!p) return null;
+    fn(p);
+    try {
+      await records.item(DOC_ID, DOC_PK).replace(doc, { accessCondition: { type: 'IfMatch', condition: doc._etag } });
+      return p;
+    } catch (e) {
+      if (e.code !== 412) throw e; // 412 = raced another writer — retry
+    }
+  }
+  throw new Error('projects doc contention');
+}
+
 async function readDoc(records) {
   try {
     const { resource } = await records.item(DOC_ID, DOC_PK).read();
@@ -110,6 +129,58 @@ module.exports = async function (context, req) {
 
       // ---- project links (Procore / Autodesk / etc.) ----
       const mode = String((body && body.mode) || '');
+
+      // ---- state (CA/TX) — picks the calculator rate library for the job ----
+      if (mode === 'setState') {
+        const code = String((body && body.code) || '').trim();
+        const state = String((body && body.state) || '').toUpperCase();
+        if (!code) return json(context, 400, { error: 'code required.' });
+        if (state !== 'CA' && state !== 'TX') return json(context, 400, { error: 'State must be CA or TX.' });
+        const p = await updateProject(records, code, (x) => { x.state = state; x.stateSetBy = me.email; x.stateSetAt = new Date().toISOString(); });
+        if (!p) return json(context, 404, { error: 'Project not found.' });
+        return json(context, 200, { ok: true, state });
+      }
+
+      // ---- active flag (Active Jobs tab) — admin promotes / demotes ----
+      if (mode === 'setActive') {
+        if (!isAdmin(me)) return json(context, 403, { error: 'Admin only.' });
+        const code = String((body && body.code) || '').trim();
+        if (!code) return json(context, 400, { error: 'code required.' });
+        const active = !!(body && body.active);
+        const p = await updateProject(records, code, (x) => {
+          if (active) { x.active = true; x.activeSetBy = me.email; x.activeSetAt = new Date().toISOString(); }
+          else { delete x.active; delete x.activeSetBy; delete x.activeSetAt; }
+        });
+        if (!p) return json(context, 404, { error: 'Project not found.' });
+        return json(context, 200, { ok: true, active });
+      }
+
+      // ---- on-site schedule: machines + personnel with date ranges ----
+      if (mode === 'setSchedule') {
+        const code = String((body && body.code) || '').trim();
+        if (!code) return json(context, 400, { error: 'code required.' });
+        const DATE_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+        const raw = Array.isArray(body && body.schedule) ? body.schedule.slice(0, 300) : [];
+        const schedule = [];
+        for (const it of raw) {
+          if (!it || typeof it !== 'object') continue;
+          const start = String(it.start || '');
+          const end = String(it.end || '');
+          if (!DATE_RE.test(start)) continue;
+          if (end && (!DATE_RE.test(end) || end < start)) continue;
+          schedule.push({
+            id: String(it.id || '').slice(0, 40) || Math.random().toString(36).slice(2, 10),
+            kind: it.kind === 'person' ? 'person' : 'machine',
+            name: String(it.name || '').trim().slice(0, 80),
+            start, end,
+            note: String(it.note || '').trim().slice(0, 200),
+          });
+        }
+        if (schedule.some((x) => !x.name)) return json(context, 400, { error: 'Every entry needs a name.' });
+        const p = await updateProject(records, code, (x) => { x.schedule = schedule; x.scheduleSetBy = me.email; x.scheduleSetAt = new Date().toISOString(); });
+        if (!p) return json(context, 404, { error: 'Project not found.' });
+        return json(context, 200, { ok: true, schedule });
+      }
 
       // ---- per-project fuel price (drives CA equipment rate escalation) ----
       if (mode === 'setFuel') {
