@@ -187,6 +187,8 @@ module.exports = async function (context, req) {
             id: String(it.id || '').slice(0, 40) || Math.random().toString(36).slice(2, 10),
             kind: it.kind === 'person' ? 'person' : 'machine',
             name: String(it.name || '').trim().slice(0, 80),
+            // machines carry a unit count (8 scrapers = one entry, qty 8)
+            qty: it.kind === 'person' ? 1 : Math.min(99, Math.max(1, parseInt(it.qty, 10) || 1)),
             start, end,
             note: String(it.note || '').trim().slice(0, 200),
           });
