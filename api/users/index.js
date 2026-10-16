@@ -1,4 +1,5 @@
-// /api/users — ADMIN ONLY. List users and change roles/status.
+// /api/users — ADMIN ONLY, except GET ?scope=directory (any signed-in user):
+// a names-and-emails list of active accounts, used to pick a job's foreman.
 // GET   -> list all users (id, email, name, role, lastActiveAt, counts).
 // PATCH -> { userId, role } where role in { admin, user, disabled }.
 const { getContainers, getPrincipal, ensureUser, isAdmin, json, realName, contactName } = require('../shared/auth');
@@ -16,10 +17,18 @@ module.exports = async function (context, req) {
     context.log.error('users ensureUser', e);
     return json(context, 500, { error: 'Server error.' });
   }
-  if (!isAdmin(me)) return json(context, 403, { error: 'Admin only.' });
-
   const { users } = await getContainers();
   const method = (req.method || 'GET').toUpperCase();
+
+  if (method === 'GET' && req.query && req.query.scope === 'directory') {
+    if (me.role === 'disabled') return json(context, 403, { error: 'Account disabled.' });
+    const { resources } = await users.items.query("SELECT c.id, c.email, c.name, c.role FROM c WHERE c.role != 'disabled'").fetchAll();
+    const out = resources.map((u) => ({ id: u.id, email: u.email, name: u.name || u.email }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return json(context, 200, { users: out });
+  }
+
+  if (!isAdmin(me)) return json(context, 403, { error: 'Admin only.' });
 
   try {
     if (method === 'GET') {

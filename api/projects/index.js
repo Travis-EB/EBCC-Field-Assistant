@@ -141,6 +141,21 @@ module.exports = async function (context, req) {
         return json(context, 200, { ok: true, state });
       }
 
+      // ---- foreman — one of the Field Assistant accounts ----
+      if (mode === 'setForeman') {
+        const code = String((body && body.code) || '').trim();
+        if (!code) return json(context, 400, { error: 'code required.' });
+        const email = String((body && body.email) || '').trim().toLowerCase();
+        const name = String((body && body.name) || '').trim().slice(0, 80);
+        if (email && !/^[^ @]+@[^ @]+[.][^ @]+$/.test(email)) return json(context, 400, { error: 'Bad email.' });
+        const p = await updateProject(records, code, (x) => {
+          if (!email) { delete x.foreman; }
+          else { x.foreman = { email, name: name || email, setBy: me.email, setAt: new Date().toISOString() }; }
+        });
+        if (!p) return json(context, 404, { error: 'Project not found.' });
+        return json(context, 200, { ok: true, foreman: p.foreman || null });
+      }
+
       // ---- active flag (Active Jobs tab) — admin promotes / demotes ----
       if (mode === 'setActive') {
         if (!isAdmin(me)) return json(context, 403, { error: 'Admin only.' });

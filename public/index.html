@@ -224,6 +224,60 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 .seg button.on { background: var(--orange); color: #fff; }
 
 /* Active Jobs */
+.aj-toolbar { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.aj-nav { display: flex; gap: 6px; }
+.aj-board { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--card, #fff); -webkit-overflow-scrolling: touch; }
+.aj-trow { display: flex; min-width: max-content; border-top: 1px solid var(--hairline); }
+.aj-thead { border-top: none; position: sticky; top: 0; z-index: 3; background: var(--card, #fff); }
+.aj-tname {
+  position: sticky; left: 0; z-index: 2; width: 150px; flex-shrink: 0; box-sizing: border-box;
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--card, #fff);
+  border-right: 1px solid var(--border);
+}
+.aj-thead .aj-tname { display: block; padding: 0 8px; }
+.aj-mh { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--gray); padding: 6px 0 2px 6px; white-space: nowrap; overflow: hidden; }
+.aj-dh { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--gray); padding: 4px 0 6px; }
+.aj-months { display: flex; }
+.aj-months .aj-mh { box-sizing: border-box; border-left: 1px solid var(--hairline); }
+.aj-days { display: flex; }
+.aj-track { position: relative; display: flex; flex-shrink: 0; }
+.aj-thead .aj-track { display: block; }
+.aj-dc { width: 30px; flex-shrink: 0; box-sizing: border-box; text-align: center; font-size: 11px; color: var(--gray); padding: 2px 0 6px; border-left: 1px solid var(--hairline); }
+.aj-dc.is-we { background: var(--light-gray); }
+.aj-dc.is-today { color: var(--orange); font-weight: 800; box-shadow: inset 2px 0 0 var(--orange); }
+.aj-dc.bg { padding: 0; min-height: 100%; }
+.aj-tjob .aj-track, .aj-tkid .aj-track { height: 44px; }
+.aj-tgroup { background: var(--light-gray); }
+.aj-tgroup .aj-tname { background: var(--light-gray); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--gray); padding: 5px 8px; }
+.aj-tgroup .aj-track { height: 24px; }
+.aj-tog { width: 22px; height: 22px; border: none; background: transparent; color: var(--gray); font-size: 14px; cursor: pointer; padding: 0; flex-shrink: 0; transition: transform .12s; }
+.aj-tog.open { transform: rotate(90deg); }
+.aj-tog:disabled { cursor: default; opacity: .5; }
+.aj-tjt { min-width: 0; cursor: pointer; }
+.aj-tjn { font-weight: 650; font-size: 13px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aj-tkn { font-weight: 600; font-size: 12.5px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aj-tjs { font-size: 10.5px; color: var(--gray); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aj-tkid .aj-tname { padding-left: 16px; }
+.aj-tkid .aj-dot { width: 8px; height: 8px; }
+.aj-bar {
+  position: absolute; top: 9px; height: 26px; box-sizing: border-box; border: none; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 11.5px; font-weight: 700; color: #fff; padding: 0 8px; text-align: left;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: flex; align-items: center;
+}
+/* Labels stick to the visible edge so a bar that starts off-screen still reads. */
+.aj-bar span { overflow: hidden; text-overflow: ellipsis; position: sticky; left: 158px; }
+.aj-bar.is-job { background: var(--dark); color: var(--card, #fff); }
+.aj-bar.is-machine { background: var(--orange); }
+.aj-bar.is-person { background: #3b82f6; }
+.aj-bar.clip-l { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.aj-bar.clip-r { border-top-right-radius: 0; border-bottom-right-radius: 0; -webkit-mask-image: linear-gradient(to right, #000 80%, transparent); mask-image: linear-gradient(to right, #000 80%, transparent); }
+.aj-bar:hover, .aj-bar:focus-visible { filter: brightness(1.1); outline: none; }
+.aj-foreman-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aj-foreman-row select {
+  flex: 1; min-width: 160px; font-family: inherit; font-size: 15px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark);
+}
+#aj-foreman-status { font-size: 12px; font-weight: 600; color: var(--gray); }
 .aj-card { grid-template-columns: 1fr auto; cursor: pointer; }
 .aj-card:hover, .aj-card:focus-visible { border-color: var(--orange); outline: none; }
 .aj-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -2187,7 +2241,19 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
         </div>
       </div>
       <div class="adm-filters" id="aj-state-row" style="margin:8px 0 10px"><button type="button" class="adm-cat on" data-state-filter="all">All <b>0</b></button><button type="button" class="adm-cat" data-state-filter="CA">CA <b>0</b></button><button type="button" class="adm-cat" data-state-filter="TX">TX <b>0</b></button><button type="button" class="adm-cat" data-state-filter="none">No state <b>0</b></button></div>
+      <div class="aj-toolbar">
+        <div class="aj-nav">
+          <button type="button" class="btn aj-mini" id="aj-win-prev" aria-label="Earlier">&lsaquo;</button>
+          <button type="button" class="btn aj-mini" id="aj-win-today">Today</button>
+          <button type="button" class="btn aj-mini" id="aj-win-next" aria-label="Later">&rsaquo;</button>
+        </div>
+        <div class="aj-nav">
+          <button type="button" class="btn aj-mini" id="aj-expand-all">Expand all</button>
+          <button type="button" class="btn aj-mini" id="aj-collapse-all">Collapse all</button>
+        </div>
+      </div>
       <div id="aj-list"><div class="empty">Loading…</div></div>
+      <div class="aj-legend" style="margin-top:10px"><span><i class="aj-m"></i>machines</span><span><i class="aj-p"></i>personnel</span><span>Tap a job or bar to open it</span></div>
     </div>
   </div>
   <div id="aj-detail" style="display:none">
@@ -2195,6 +2261,11 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
       <button class="btn" id="aj-back">&larr; Active jobs</button>
       <div id="aj-title" style="flex:1;min-width:0"></div>
       <button class="btn btn-primary" id="aj-edit-toggle">Edit</button>
+    </div>
+    <div class="ewt-section aj-foreman-row">
+      <span class="aj-glabel" style="margin:0">Foreman</span>
+      <select id="aj-foreman" aria-label="Foreman"><option value="">— not set —</option></select>
+      <span id="aj-foreman-status"></span>
     </div>
     <div class="ewt-section">
       <div class="aj-monthnav">
@@ -9860,6 +9931,31 @@ let ajEditing = false;
 let ajEditId = null;     // entry loaded into the form (null = adding)
 let ajKind = 'machine';
 let ajStateFilter = 'all';
+// Timeline board: a window of AJ_DAYS days starting at ajWinStart ('YYYY-MM-DD').
+const AJ_DAYS = 42, AJ_COLW = 30;
+let ajWinStart = '';
+let ajOpenRows = {};          // code -> true when a job's entries are expanded
+let AJ_DIRECTORY = null;      // [{id,email,name}] for the foreman picker
+function ajAddDays(iso, n) { const d = ajParse(iso); d.setDate(d.getDate() + n); return ajIso(d); }
+function ajDefaultWindow() {
+  // Start on the Sunday on or before a week ago, so today sits near the left.
+  const d = ajParse(ajToday()); d.setDate(d.getDate() - 7 - d.getDay()); return ajIso(d);
+}
+function ajDayIndex(iso) { return Math.round((ajParse(iso) - ajParse(ajWinStart)) / 86400000); }
+// Bar geometry for a start/end (end '' = ongoing) clipped to the window.
+function ajBar(start, end) {
+  const a = Math.max(0, ajDayIndex(start));
+  const bRaw = end ? ajDayIndex(end) : AJ_DAYS - 1;
+  const b = Math.min(AJ_DAYS - 1, bRaw);
+  if (a > AJ_DAYS - 1 || b < 0 || b < a) return null;
+  return { left: a * AJ_COLW, width: (b - a + 1) * AJ_COLW, clipL: ajDayIndex(start) < 0, clipR: !end || bRaw > AJ_DAYS - 1 };
+}
+function ajSpan(sched) {
+  if (!sched.length) return null;
+  let start = sched[0].start, end = '', ongoing = false;
+  sched.forEach(e => { if (e.start < start) start = e.start; if (!e.end) ongoing = true; else if (e.end > end) end = e.end; });
+  return { start, end: ongoing ? '' : end };
+}
 
 function ajIso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function ajToday() { return ajIso(new Date()); }
@@ -9890,30 +9986,93 @@ function ajRefresh() {
 function ajRenderHome() {
   const list = document.getElementById('aj-list');
   if (!list) return;
+  if (!ajWinStart) ajWinStart = ajDefaultWindow();
   const all = ajActiveJobs();
   const today = ajToday();
   statePillsRender('aj-state-row', ajStateFilter, all);
   document.getElementById('aj-state-row').style.display = all.length ? '' : 'none';
+  document.querySelector('.aj-toolbar').style.display = all.length ? '' : 'none';
   if (!all.length) {
     list.innerHTML = '<div class="empty">No active jobs yet.' + (window.EBCC_IS_ADMIN ? ' Pick a project above to make it active.' : ' An admin can make a job active.') + '</div>';
     return;
   }
   const projs = all.filter(p => stateMatch(p, ajStateFilter));
   if (!projs.length) { list.innerHTML = '<div class="empty">No active jobs with that state.</div>'; return; }
-  // Grouped by state — CA, TX, then jobs with no state set
+
+  // Header: month labels over the day numbers
+  const days = []; for (let i = 0; i < AJ_DAYS; i++) days.push(ajAddDays(ajWinStart, i));
+  let months = '', run = 0, cur = '';
+  days.forEach((d, i) => {
+    const m = d.slice(0, 7);
+    if (m !== cur) { if (run) months += '<div class="aj-mh" style="width:' + (run * AJ_COLW) + 'px">' + ajParse(days[i - run]).toLocaleDateString([], { month: 'short', year: 'numeric' }) + '</div>'; cur = m; run = 0; }
+    run++;
+  });
+  if (run) months += '<div class="aj-mh" style="width:' + (run * AJ_COLW) + 'px">' + ajParse(days[AJ_DAYS - run]).toLocaleDateString([], { month: 'short', year: 'numeric' }) + '</div>';
+  const dayCells = (cls) => days.map(d => {
+    const dow = ajParse(d).getDay();
+    return '<div class="aj-dc' + (dow === 0 || dow === 6 ? ' is-we' : '') + (d === today ? ' is-today' : '') + (cls ? ' ' + cls : '') + '">' + (cls ? '' : ajParse(d).getDate()) + '</div>';
+  }).join('');
+  const trackW = AJ_DAYS * AJ_COLW;
+  const head = '<div class="aj-trow aj-thead"><div class="aj-tname"><div class="aj-mh">&nbsp;</div><div class="aj-dh">Job</div></div>' +
+    '<div class="aj-track" style="width:' + trackW + 'px"><div class="aj-months">' + months + '</div><div class="aj-days">' + dayCells('') + '</div></div></div>';
+
+  const barHtml = (geo, cls, label, code) => geo
+    ? '<button type="button" class="aj-bar ' + cls + (geo.clipL ? ' clip-l' : '') + (geo.clipR ? ' clip-r' : '') + '" style="left:' + geo.left + 'px;width:' + geo.width + 'px" data-aj-open="' + escAttr(code) + '" title="' + escAttr(label) + '"><span>' + escHTML(label) + '</span></button>'
+    : '';
   const groups = [['CA', 'California'], ['TX', 'Texas'], ['', 'No state set']]
-    .map(g => ({ key: g[0], label: g[1], jobs: projs.filter(p => (p.state === 'CA' || p.state === 'TX' ? p.state : '') === g[0]) }))
+    .map(g => ({ label: g[1], jobs: projs.filter(p => (p.state === 'CA' || p.state === 'TX' ? p.state : '') === g[0]) }))
     .filter(g => g.jobs.length);
-  list.innerHTML = groups.map(g => '<div class="aj-glabel" style="margin-top:14px">' + g.label + ' (' + g.jobs.length + ')</div>' + g.jobs.map(p => {
-    const sched = ajSchedule(p);
-    const m = sched.filter(e => !ajIsPerson(e) && ajOnDay(e, today)).length;
-    const n = sched.filter(e => ajIsPerson(e) && ajOnDay(e, today)).length;
-    const meta = p.code + (p.state ? ' · ' + p.state : '') + ' · today: ' + m + ' machine' + (m === 1 ? '' : 's') + ', ' + n + ' ' + (n === 1 ? 'person' : 'people');
-    return '<div class="equipment-card aj-card" data-aj-open="' + escAttr(p.code) + '" role="button" tabindex="0">' +
-      '<div style="min-width:0"><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(meta) + '</div></div>' +
-      '<svg class="adm-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>' +
-    '</div>';
-  }).join('')).join('');
+  const rows = groups.map(g => {
+    const gh = '<div class="aj-trow aj-tgroup"><div class="aj-tname">' + g.label + ' (' + g.jobs.length + ')</div><div class="aj-track" style="width:' + trackW + 'px"></div></div>';
+    return gh + g.jobs.map(p => {
+      const sched = ajSchedule(p);
+      const m = sched.filter(e => !ajIsPerson(e)).length, n = sched.filter(e => ajIsPerson(e)).length;
+      const span = ajSpan(sched);
+      const open = !!ajOpenRows[p.code];
+      const label = sched.length ? m + ' machine' + (m === 1 ? '' : 's') + ' · ' + n + ' ' + (n === 1 ? 'person' : 'people') : 'nothing scheduled';
+      const jobRow = '<div class="aj-trow aj-tjob">' +
+        '<div class="aj-tname">' +
+          '<button type="button" class="aj-tog' + (open ? ' open' : '') + '" data-aj-tog="' + escAttr(p.code) + '" aria-label="' + (open ? 'Collapse' : 'Expand') + '"' + (sched.length ? '' : ' disabled') + '>' + (sched.length ? '&#9656;' : '&middot;') + '</button>' +
+          '<div class="aj-tjt" data-aj-open="' + escAttr(p.code) + '" role="button" tabindex="0"><div class="aj-tjn">' + escHTML(p.name) + '</div>' +
+          '<div class="aj-tjs">' + escHTML(p.code) + (p.foreman && p.foreman.name ? ' · ' + escHTML(p.foreman.name) : '') + '</div></div>' +
+        '</div>' +
+        '<div class="aj-track" style="width:' + trackW + 'px">' + dayCells('bg') + (span ? barHtml(ajBar(span.start, span.end), 'is-job', label, p.code) : '') + '</div>' +
+      '</div>';
+      const kids = open ? sched.slice().sort((a, b) => (ajIsPerson(a) - ajIsPerson(b)) || a.start.localeCompare(b.start) || a.name.localeCompare(b.name)).map(e => {
+        const len = ajLength(e);
+        const sub = ajFmt(e.start) + (e.end ? ' – ' + ajFmt(e.end) + ' · ' + len + 'd' : ' → ongoing');
+        return '<div class="aj-trow aj-tkid' + (ajIsPerson(e) ? ' is-person' : '') + '">' +
+          '<div class="aj-tname"><span class="aj-dot"></span><div class="aj-tjt" data-aj-open="' + escAttr(p.code) + '" data-aj-day="' + escAttr(e.start) + '" role="button" tabindex="0"><div class="aj-tkn">' + escHTML(e.name) + '</div><div class="aj-tjs">' + escHTML(sub) + '</div></div></div>' +
+          '<div class="aj-track" style="width:' + trackW + 'px">' + dayCells('bg') + barHtml(ajBar(e.start, e.end), ajIsPerson(e) ? 'is-person' : 'is-machine', e.note || e.name, p.code).replace('data-aj-open=', 'data-aj-day="' + escAttr(e.start) + '" data-aj-open=') + '</div>' +
+        '</div>';
+      }).join('') : '';
+      return jobRow + kids;
+    }).join('');
+  }).join('');
+  list.innerHTML = '<div class="aj-board" id="aj-board">' + head + rows + '</div>';
+  // Keep today in view on first paint
+  const board = document.getElementById('aj-board');
+  const ti = ajDayIndex(today);
+  if (ti >= 0 && ti < AJ_DAYS) board.scrollLeft = Math.max(0, ti * AJ_COLW - 60);
+}
+
+function ajLoadDirectory() {
+  if (AJ_DIRECTORY) return Promise.resolve(AJ_DIRECTORY);
+  return fetch('/api/users?scope=directory').then(r => r.ok ? r.json() : null).then(j => {
+    AJ_DIRECTORY = (j && Array.isArray(j.users)) ? j.users : [];
+    return AJ_DIRECTORY;
+  }).catch(() => (AJ_DIRECTORY = []));
+}
+function ajRenderForeman(p) {
+  const sel = document.getElementById('aj-foreman');
+  const st = document.getElementById('aj-foreman-status');
+  const cur = (p.foreman && p.foreman.email) || '';
+  const dir = AJ_DIRECTORY || [];
+  const known = dir.some(u => u.email === cur);
+  sel.innerHTML = '<option value="">— not set —</option>' +
+    (cur && !known ? '<option value="' + escAttr(cur) + '" selected>' + escHTML((p.foreman && p.foreman.name) || cur) + '</option>' : '') +
+    dir.map(u => '<option value="' + escAttr(u.email) + '"' + (u.email === cur ? ' selected' : '') + '>' + escHTML(u.name) + '</option>').join('');
+  st.textContent = AJ_DIRECTORY ? '' : 'Loading accounts…';
 }
 
 function ajOpen(code) {
@@ -9923,6 +10082,8 @@ function ajOpen(code) {
   document.getElementById('aj-home').style.display = 'none';
   document.getElementById('aj-detail').style.display = '';
   ajRenderDetail();
+  const p = ajProj();
+  if (p) { ajRenderForeman(p); ajLoadDirectory().then(() => { const q = ajProj(); if (q && q.code === code) ajRenderForeman(q); }); }
   window.scrollTo(0, 0);
 }
 function ajBack() {
@@ -10058,7 +10219,33 @@ function ajSaveSchedule(next) {
 (function () {
   // Home: open a job; admin picker promotes one
   document.getElementById('aj-list').addEventListener('click', e => {
-    const c = e.target.closest('[data-aj-open]'); if (c) ajOpen(c.getAttribute('data-aj-open'));
+    const t = e.target.closest('[data-aj-tog]');
+    if (t) { const code = t.getAttribute('data-aj-tog'); ajOpenRows[code] = !ajOpenRows[code]; ajRenderHome(); return; }
+    const c = e.target.closest('[data-aj-open]');
+    if (!c) return;
+    ajOpen(c.getAttribute('data-aj-open'));
+    const day = c.getAttribute('data-aj-day');
+    if (day) { ajDay = day; ajMonth = day.slice(0, 7); ajRenderDetail(); }
+  });
+  document.getElementById('aj-win-prev').addEventListener('click', () => { ajWinStart = ajAddDays(ajWinStart || ajDefaultWindow(), -14); ajRenderHome(); });
+  document.getElementById('aj-win-next').addEventListener('click', () => { ajWinStart = ajAddDays(ajWinStart || ajDefaultWindow(), 14); ajRenderHome(); });
+  document.getElementById('aj-win-today').addEventListener('click', () => { ajWinStart = ajDefaultWindow(); ajRenderHome(); });
+  document.getElementById('aj-expand-all').addEventListener('click', () => { ajActiveJobs().forEach(p => { ajOpenRows[p.code] = true; }); ajRenderHome(); });
+  document.getElementById('aj-collapse-all').addEventListener('click', () => { ajOpenRows = {}; ajRenderHome(); });
+  document.getElementById('aj-foreman').addEventListener('change', () => {
+    const p = ajProj(); if (!p) return;
+    const sel = document.getElementById('aj-foreman'), st = document.getElementById('aj-foreman-status');
+    const email = sel.value;
+    const u = (AJ_DIRECTORY || []).find(x => x.email === email);
+    const prev = p.foreman;
+    st.textContent = 'Saving…';
+    ajPost({ mode: 'setForeman', code: p.code, email: email, name: u ? u.name : '' }).then(out => {
+      if (!out.ok) { p.foreman = prev; ajRenderForeman(p); st.textContent = (out.j && out.j.error) || 'Could not save.'; return; }
+      p.foreman = email ? { email: email, name: u ? u.name : email } : undefined;
+      if (!email) delete p.foreman;
+      st.textContent = 'Saved';
+      setTimeout(() => { if (st.textContent === 'Saved') st.textContent = ''; }, 1500);
+    });
   });
   document.getElementById('aj-state-row').addEventListener('click', e => {
     const b = e.target.closest('[data-state-filter]'); if (!b) return;
