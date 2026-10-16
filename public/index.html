@@ -2186,6 +2186,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
           <div class="search-results" id="aj-proj-results"></div>
         </div>
       </div>
+      <div class="adm-filters" id="aj-state-row" style="margin:8px 0 10px"><button type="button" class="adm-cat on" data-state-filter="all">All <b>0</b></button><button type="button" class="adm-cat" data-state-filter="CA">CA <b>0</b></button><button type="button" class="adm-cat" data-state-filter="TX">TX <b>0</b></button><button type="button" class="adm-cat" data-state-filter="none">No state <b>0</b></button></div>
       <div id="aj-list"><div class="empty">Loading…</div></div>
     </div>
   </div>
@@ -3084,6 +3085,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
     <div class="section-header">Projects <span id="jb-count" style="text-transform:none;letter-spacing:0"></span></div>
     <input type="search" id="jb-search" placeholder="Search projects — name or job #…" autocomplete="off"
       style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--card);color:var(--dark);margin-bottom:8px">
+    <div class="adm-filters" id="jb-state-row" style="margin:8px 0 10px"><button type="button" class="adm-cat on" data-state-filter="all">All <b>0</b></button><button type="button" class="adm-cat" data-state-filter="CA">CA <b>0</b></button><button type="button" class="adm-cat" data-state-filter="TX">TX <b>0</b></button><button type="button" class="adm-cat" data-state-filter="none">No state <b>0</b></button></div>
     <div class="controls" id="jb-sort-row" style="gap:6px">
       <span style="font-size:11px;color:var(--gray);align-self:center;text-transform:uppercase;letter-spacing:.08em;font-weight:600">Sort</span>
       <button class="btn btn-primary" data-jb-sort="code">Job #</button>
@@ -8035,6 +8037,21 @@ function jbLoadProjects() {
 let jbSort = 'code';
 
 let jbSearchQuery = '';
+let jbStateFilter = 'all';
+// State filter pills: 'all' | 'CA' | 'TX' | 'none' (no state set yet)
+function stateMatch(p, filter) {
+  if (filter === 'all') return true;
+  if (filter === 'none') return p.state !== 'CA' && p.state !== 'TX';
+  return p.state === filter;
+}
+function statePillsRender(rowId, current, projs) {
+  document.querySelectorAll('#' + rowId + ' [data-state-filter]').forEach(b => {
+    const k = b.getAttribute('data-state-filter');
+    b.classList.toggle('on', k === current);
+    const n = b.querySelector('b');
+    if (n) n.textContent = projs.filter(p => stateMatch(p, k)).length;
+  });
+}
 
 // Latest activity on a project: created, newest file upload, link added, or
 // fuel rate set — whichever is most recent. Drives the "Most recent" sort.
@@ -8047,10 +8064,12 @@ function jbRenderList() {
   const count = document.getElementById('jb-count');
   const all = (window.EBCC_PROJECTS || []).slice();
   const q = jbSearchQuery.trim().toLowerCase();
-  const projs = q ? all.filter(p => (String(p.name) + ' ' + String(p.code)).toLowerCase().includes(q)) : all;
-  if (count) count.textContent = q ? '(' + projs.length + ' of ' + all.length + ')' : '(' + all.length + ')';
+  const searched = q ? all.filter(p => (String(p.name) + ' ' + String(p.code)).toLowerCase().includes(q)) : all;
+  statePillsRender('jb-state-row', jbStateFilter, searched);
+  const projs = searched.filter(p => stateMatch(p, jbStateFilter));
+  if (count) count.textContent = projs.length === all.length ? '(' + all.length + ')' : '(' + projs.length + ' of ' + all.length + ')';
   if (!all.length) { list.innerHTML = '<div class="empty">No projects yet — create the first one above.</div>'; return; }
-  if (!projs.length) { list.innerHTML = '<div class="empty">No projects match "' + escHTML(jbSearchQuery.trim()) + '".</div>'; return; }
+  if (!projs.length) { list.innerHTML = '<div class="empty">No projects match' + (q ? ' "' + escHTML(jbSearchQuery.trim()) + '"' : '') + (jbStateFilter !== 'all' ? ' with that state' : '') + '.</div>'; return; }
   if (jbSort === 'name') projs.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   else if (jbSort === 'size') projs.sort((a, b) => (b.totalSize || 0) - (a.totalSize || 0));
   else if (jbSort === 'recent') projs.sort((a, b) => jbRecentTs(b) - jbRecentTs(a) || String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
@@ -8074,6 +8093,12 @@ document.getElementById('jb-search').addEventListener('input', (e) => {
   jbRenderList();
 });
 
+document.getElementById('jb-state-row').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-state-filter]');
+  if (!btn) return;
+  jbStateFilter = btn.getAttribute('data-state-filter');
+  jbRenderList();
+});
 document.getElementById('jb-sort-row').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-jb-sort]');
   if (!btn) return;
@@ -9834,6 +9859,7 @@ let ajDay = '';          // selected 'YYYY-MM-DD'
 let ajEditing = false;
 let ajEditId = null;     // entry loaded into the form (null = adding)
 let ajKind = 'machine';
+let ajStateFilter = 'all';
 
 function ajIso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function ajToday() { return ajIso(new Date()); }
@@ -9864,13 +9890,21 @@ function ajRefresh() {
 function ajRenderHome() {
   const list = document.getElementById('aj-list');
   if (!list) return;
-  const projs = ajActiveJobs();
+  const all = ajActiveJobs();
   const today = ajToday();
-  if (!projs.length) {
+  statePillsRender('aj-state-row', ajStateFilter, all);
+  document.getElementById('aj-state-row').style.display = all.length ? '' : 'none';
+  if (!all.length) {
     list.innerHTML = '<div class="empty">No active jobs yet.' + (window.EBCC_IS_ADMIN ? ' Pick a project above to make it active.' : ' An admin can make a job active.') + '</div>';
     return;
   }
-  list.innerHTML = projs.map(p => {
+  const projs = all.filter(p => stateMatch(p, ajStateFilter));
+  if (!projs.length) { list.innerHTML = '<div class="empty">No active jobs with that state.</div>'; return; }
+  // Grouped by state — CA, TX, then jobs with no state set
+  const groups = [['CA', 'California'], ['TX', 'Texas'], ['', 'No state set']]
+    .map(g => ({ key: g[0], label: g[1], jobs: projs.filter(p => (p.state === 'CA' || p.state === 'TX' ? p.state : '') === g[0]) }))
+    .filter(g => g.jobs.length);
+  list.innerHTML = groups.map(g => '<div class="aj-glabel" style="margin-top:14px">' + g.label + ' (' + g.jobs.length + ')</div>' + g.jobs.map(p => {
     const sched = ajSchedule(p);
     const m = sched.filter(e => !ajIsPerson(e) && ajOnDay(e, today)).length;
     const n = sched.filter(e => ajIsPerson(e) && ajOnDay(e, today)).length;
@@ -9879,7 +9913,7 @@ function ajRenderHome() {
       '<div style="min-width:0"><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(meta) + '</div></div>' +
       '<svg class="adm-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>' +
     '</div>';
-  }).join('');
+  }).join('')).join('');
 }
 
 function ajOpen(code) {
@@ -10025,6 +10059,11 @@ function ajSaveSchedule(next) {
   // Home: open a job; admin picker promotes one
   document.getElementById('aj-list').addEventListener('click', e => {
     const c = e.target.closest('[data-aj-open]'); if (c) ajOpen(c.getAttribute('data-aj-open'));
+  });
+  document.getElementById('aj-state-row').addEventListener('click', e => {
+    const b = e.target.closest('[data-state-filter]'); if (!b) return;
+    ajStateFilter = b.getAttribute('data-state-filter');
+    ajRenderHome();
   });
   document.getElementById('aj-list').addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
