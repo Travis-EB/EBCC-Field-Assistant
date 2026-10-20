@@ -249,6 +249,13 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 .aj-dc.is-we { background: var(--light-gray); }
 .aj-dc.is-today { color: var(--orange); font-weight: 800; box-shadow: inset 2px 0 0 var(--orange); }
 .aj-dc.bg { padding: 0; min-height: 100%; }
+.aj-dc.aj-mc { font-size: 11px; font-weight: 600; }
+.aj-dc.aj-mc.is-cur:not(.bg) { color: var(--orange); font-weight: 800; }
+.aj-dc.aj-mc:nth-child(even) { background: var(--light-gray); }
+.aj-dc.aj-mc.bg:nth-child(even) { background: var(--light-gray); }
+.aj-today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--orange); pointer-events: none; }
+.aj-toolbar .seg { margin: 0; width: 130px; }
+.aj-toolbar .seg button { padding: 6px 8px; font-size: 12.5px; }
 .aj-tjob .aj-track { height: 56px; }
 .aj-tkid .aj-track { height: 44px; }
 .aj-tjob .aj-bar { top: 15px; }
@@ -2283,6 +2290,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
           <button type="button" class="btn aj-mini" id="aj-win-today">Today</button>
           <button type="button" class="btn aj-mini" id="aj-win-next" aria-label="Later">&rsaquo;</button>
         </div>
+        <div class="seg aj-scale" id="aj-scale"><button type="button" data-aj-scale="day">Day</button><button type="button" data-aj-scale="month">Month</button></div>
         <div class="aj-nav">
           <button type="button" class="btn aj-mini" id="aj-expand-all">Expand all</button>
           <button type="button" class="btn aj-mini" id="aj-collapse-all">Collapse all</button>
@@ -2310,6 +2318,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
           <button type="button" class="btn aj-mini" id="aj-dwin-today">Today</button>
           <button type="button" class="btn aj-mini" id="aj-dwin-next" aria-label="Later">&rsaquo;</button>
         </div>
+        <div class="seg aj-scale" id="aj-dscale"><button type="button" data-aj-scale="day">Day</button><button type="button" data-aj-scale="month">Month</button></div>
         <div id="aj-dsum" class="aj-tjs" style="align-self:center"></div>
       </div>
       <div id="aj-dboard"></div>
@@ -9996,18 +10005,35 @@ let ajWinStart = '';
 let ajOpenRows = {};          // code -> true when a job's entries are expanded
 let AJ_DIRECTORY = null;      // [{id,email,name}] for the foreman picker
 function ajAddDays(iso, n) { const d = ajParse(iso); d.setDate(d.getDate() + n); return ajIso(d); }
+// Time scale: 'day' = 6 weeks at 30px/day; 'month' = 12 months at 3px/day
+// (bars stay date-accurate, columns are months). Remembered per device.
+let ajScale = (function () { try { return localStorage.getItem('ebcc_aj_scale') === 'month' ? 'month' : 'day'; } catch (_) { return 'day'; } })();
+function ajPpd() { return ajScale === 'month' ? 3 : AJ_COLW; }
+function ajAddMonths(iso, n) { const d = ajParse(iso); return ajIso(new Date(d.getFullYear(), d.getMonth() + n, 1)); }
+function ajWinDays() {
+  if (ajScale !== 'month') return AJ_DAYS;
+  return Math.round((ajParse(ajAddMonths(ajWinStart, 12)) - ajParse(ajWinStart)) / 86400000);
+}
 function ajDefaultWindow() {
+  if (ajScale === 'month') return ajAddMonths(ajToday(), -1);   // last month through ten months out
   // Start on the Sunday on or before a week ago, so today sits near the left.
   const d = ajParse(ajToday()); d.setDate(d.getDate() - 7 - d.getDay()); return ajIso(d);
+}
+function ajSetScale(k) {
+  ajScale = k === 'month' ? 'month' : 'day';
+  try { localStorage.setItem('ebcc_aj_scale', ajScale); } catch (_) {}
+  ajWinStart = ajDefaultWindow();
+  document.querySelectorAll('.aj-scale [data-aj-scale]').forEach(b => b.classList.toggle('on', b.getAttribute('data-aj-scale') === ajScale));
 }
 function ajDayIndex(iso) { return Math.round((ajParse(iso) - ajParse(ajWinStart)) / 86400000); }
 // Bar geometry for a start/end (end '' = ongoing) clipped to the window.
 function ajBar(start, end) {
+  const N = ajWinDays(), ppd = ajPpd();
   const a = Math.max(0, ajDayIndex(start));
-  const bRaw = end ? ajDayIndex(end) : AJ_DAYS - 1;
-  const b = Math.min(AJ_DAYS - 1, bRaw);
-  if (a > AJ_DAYS - 1 || b < 0 || b < a) return null;
-  return { left: a * AJ_COLW, width: (b - a + 1) * AJ_COLW, clipL: ajDayIndex(start) < 0, clipR: !end || bRaw > AJ_DAYS - 1 };
+  const bRaw = end ? ajDayIndex(end) : N - 1;
+  const b = Math.min(N - 1, bRaw);
+  if (a > N - 1 || b < 0 || b < a) return null;
+  return { left: a * ppd, width: Math.max(4, (b - a + 1) * ppd), clipL: ajDayIndex(start) < 0, clipR: !end || bRaw > N - 1 };
 }
 function ajSpan(sched) {
   if (!sched.length) return null;
@@ -10057,20 +10083,35 @@ function ajWhen(e) {
 function ajBoardHtml(rows, nameHead) {
   if (!ajWinStart) ajWinStart = ajDefaultWindow();
   const today = ajToday();
-  const days = []; for (let i = 0; i < AJ_DAYS; i++) days.push(ajAddDays(ajWinStart, i));
-  let months = '', run = 0, cur = '';
-  const mh = (from, n) => '<div class="aj-mh" style="width:' + (n * AJ_COLW) + 'px">' + ajParse(from).toLocaleDateString([], { month: 'short', year: 'numeric' }) + '</div>';
-  days.forEach((d, i) => {
-    const m = d.slice(0, 7);
-    if (m !== cur) { if (run) months += mh(days[i - run], run); cur = m; run = 0; }
-    run++;
-  });
-  if (run) months += mh(days[AJ_DAYS - run], run);
-  const dayCells = (bg) => days.map(d => {
-    const dow = ajParse(d).getDay();
-    return '<div class="aj-dc' + (dow === 0 || dow === 6 ? ' is-we' : '') + (d === today ? ' is-today' : '') + (bg ? ' bg' : '') + '">' + (bg ? '' : ajParse(d).getDate()) + '</div>';
-  }).join('');
-  const trackW = AJ_DAYS * AJ_COLW;
+  const N = ajWinDays(), ppd = ajPpd();
+  const trackW = N * ppd;
+  let months = '', dayCells;
+  if (ajScale === 'month') {
+    // Top row: years; bottom row: month names, each as wide as its days.
+    const cols = []; let cur = ajWinStart;
+    for (let i = 0; i < 12; i++) { const next = ajAddMonths(cur, 1); cols.push({ iso: cur, days: Math.round((ajParse(next) - ajParse(cur)) / 86400000) }); cur = next; }
+    let years = '', run = 0, y = '';
+    cols.forEach((c, i) => { const yy = c.iso.slice(0, 4); if (yy !== y) { if (run) years += '<div class="aj-mh" style="width:' + run + 'px">' + y + '</div>'; y = yy; run = 0; } run += c.days * ppd; });
+    if (run) years += '<div class="aj-mh" style="width:' + run + 'px">' + y + '</div>';
+    months = years;
+    const ti = ajDayIndex(today);
+    const todayLine = (ti >= 0 && ti < N) ? '<div class="aj-today-line" style="left:' + (ti * ppd) + 'px"></div>' : '';
+    dayCells = (bg) => cols.map(c => '<div class="aj-dc aj-mc' + (c.iso === today.slice(0, 7) + '-01' ? ' is-cur' : '') + (bg ? ' bg' : '') + '" style="width:' + (c.days * ppd) + 'px">' + (bg ? '' : ajParse(c.iso).toLocaleDateString([], { month: 'short' })) + '</div>').join('') + (bg ? todayLine : '');
+  } else {
+    const days = []; for (let i = 0; i < N; i++) days.push(ajAddDays(ajWinStart, i));
+    let run = 0, cur = '';
+    const mh = (from, n) => '<div class="aj-mh" style="width:' + (n * ppd) + 'px">' + ajParse(from).toLocaleDateString([], { month: 'short', year: 'numeric' }) + '</div>';
+    days.forEach((d, i) => {
+      const m = d.slice(0, 7);
+      if (m !== cur) { if (run) months += mh(days[i - run], run); cur = m; run = 0; }
+      run++;
+    });
+    if (run) months += mh(days[N - run], run);
+    dayCells = (bg) => days.map(d => {
+      const dow = ajParse(d).getDay();
+      return '<div class="aj-dc' + (dow === 0 || dow === 6 ? ' is-we' : '') + (d === today ? ' is-today' : '') + (bg ? ' bg' : '') + '">' + (bg ? '' : ajParse(d).getDate()) + '</div>';
+    }).join('');
+  }
   const head = '<div class="aj-trow aj-thead"><div class="aj-tname"><div class="aj-mh">&nbsp;</div><div class="aj-dh">' + escHTML(nameHead || 'Job') + '</div></div>' +
     '<div class="aj-track" style="width:' + trackW + 'px"><div class="aj-months">' + months + '</div><div class="aj-days">' + dayCells(false) + '</div></div></div>';
   const bar = (b) => {
@@ -10100,7 +10141,7 @@ function ajMountBoard(container, html) {
   const board = container.querySelector('.aj-board');
   if (!board) return;
   if (keep != null) board.scrollLeft = keep;
-  else { const ti = ajDayIndex(ajToday()); if (ti >= 0 && ti < AJ_DAYS) board.scrollLeft = Math.max(0, ti * AJ_COLW - 60); }
+  else { const ti = ajDayIndex(ajToday()); if (ti >= 0 && ti < ajWinDays()) board.scrollLeft = Math.max(0, ti * ajPpd() - 60); }
 }
 
 function ajRenderHome() {
@@ -10321,7 +10362,15 @@ function ajSaveSchedule(next) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const c = e.target.closest('[data-aj-open]'); if (c) { e.preventDefault(); ajOpen(c.getAttribute('data-aj-open'), c.getAttribute('data-aj-id') || ''); }
   });
-  const shift = (n, render) => { ajWinStart = n == null ? ajDefaultWindow() : ajAddDays(ajWinStart || ajDefaultWindow(), n); render(); };
+  // ‹ › move two weeks on the day scale, three months on the month scale.
+  const shift = (n, render) => {
+    const base = ajWinStart || ajDefaultWindow();
+    ajWinStart = n == null ? ajDefaultWindow() : (ajScale === 'month' ? ajAddMonths(base, 3 * n / 14) : ajAddDays(base, n));
+    render();
+  };
+  ajSetScale(ajScale);
+  document.getElementById('aj-scale').addEventListener('click', e => { const b = e.target.closest('[data-aj-scale]'); if (b) { ajSetScale(b.getAttribute('data-aj-scale')); ajRenderHome(); } });
+  document.getElementById('aj-dscale').addEventListener('click', e => { const b = e.target.closest('[data-aj-scale]'); if (b) { ajSetScale(b.getAttribute('data-aj-scale')); ajRenderDetail(); } });
   document.getElementById('aj-win-prev').addEventListener('click', () => shift(-14, ajRenderHome));
   document.getElementById('aj-win-next').addEventListener('click', () => shift(14, ajRenderHome));
   document.getElementById('aj-win-today').addEventListener('click', () => shift(null, ajRenderHome));
