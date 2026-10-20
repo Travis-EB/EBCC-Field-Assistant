@@ -191,8 +191,12 @@ module.exports = async function (context, req) {
             qty: it.kind === 'person' ? 1 : Math.min(99, Math.max(1, parseInt(it.qty, 10) || 1)),
             start, end,
             note: String(it.note || '').trim().slice(0, 200),
+            // a person may be linked to one machine entry (operator / crew on it)
+            linkId: it.kind === 'person' ? String(it.linkId || '').slice(0, 40) : '',
           });
         }
+        const machineIds = new Set(schedule.filter((x) => x.kind === 'machine').map((x) => x.id));
+        schedule.forEach((x) => { if (!x.linkId || !machineIds.has(x.linkId)) delete x.linkId; });
         if (schedule.some((x) => !x.name)) return json(context, 400, { error: 'Every entry needs a name.' });
         const p = await updateProject(records, code, (x) => { x.schedule = schedule; x.scheduleSetBy = me.email; x.scheduleSetAt = new Date().toISOString(); });
         if (!p) return json(context, 404, { error: 'Project not found.' });

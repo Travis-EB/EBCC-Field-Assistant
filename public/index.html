@@ -263,6 +263,12 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 .aj-tkn { font-weight: 600; font-size: 12.5px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aj-tjs { font-size: 10.5px; color: var(--gray); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aj-tkid .aj-tname { padding-left: 16px; }
+.aj-tkid.is-linked .aj-tname { padding-left: 34px; }
+.aj-tkid.is-linked .aj-tname::before { content: '↳'; color: var(--gray); font-size: 12px; margin-right: -2px; }
+.aj-form select {
+  width: 100%; box-sizing: border-box; font-family: inherit; font-size: 16px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark); margin-bottom: 8px;
+}
 .aj-tkid .aj-dot { width: 8px; height: 8px; }
 .aj-bar {
   position: absolute; top: 9px; height: 26px; box-sizing: border-box; border: none; border-radius: 6px; cursor: pointer;
@@ -2298,14 +2304,16 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
       <span id="aj-foreman-status"></span>
     </div>
     <div class="ewt-section">
-      <div class="aj-monthnav">
-        <button type="button" class="btn aj-mini" id="aj-prev" aria-label="Previous month">&lsaquo;</button>
-        <div id="aj-month"></div>
-        <button type="button" class="btn aj-mini" id="aj-next" aria-label="Next month">&rsaquo;</button>
+      <div class="aj-toolbar">
+        <div class="aj-nav">
+          <button type="button" class="btn aj-mini" id="aj-dwin-prev" aria-label="Earlier">&lsaquo;</button>
+          <button type="button" class="btn aj-mini" id="aj-dwin-today">Today</button>
+          <button type="button" class="btn aj-mini" id="aj-dwin-next" aria-label="Later">&rsaquo;</button>
+        </div>
+        <div id="aj-dsum" class="aj-tjs" style="align-self:center"></div>
       </div>
-      <div class="aj-dow"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
-      <div class="aj-grid" id="aj-cal"></div>
-      <div class="aj-legend"><span><i class="aj-m"></i>machines</span><span><i class="aj-p"></i>personnel</span></div>
+      <div id="aj-dboard"></div>
+      <div class="aj-legend" style="margin-top:10px"><span><i class="aj-m"></i>machines</span><span><i class="aj-p"></i>personnel</span><span id="aj-dhint">Tap a bar to edit it</span></div>
     </div>
     <div class="ewt-section aj-form" id="aj-editor" style="display:none">
       <h3 id="aj-form-title">Add to the schedule</h3>
@@ -2318,24 +2326,21 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
         <label id="aj-qty-wrap">Qty<input type="number" id="aj-qty" min="1" max="99" step="1" value="1" inputmode="numeric"></label>
       </div>
       <datalist id="aj-names"></datalist>
+      <label id="aj-link-wrap" style="display:none">
+        <span class="aj-glabel" style="margin:0 0 4px;display:block">Linked to equipment</span>
+        <select id="aj-link"><option value="">— none —</option></select>
+      </label>
       <div class="aj-dates">
         <label>Start<input type="date" id="aj-start"></label>
         <label>End <small>(blank = ongoing)</small><input type="date" id="aj-end"></label>
       </div>
-      <input type="text" id="aj-note" placeholder="Note (optional) — operator, shift, unit #…" autocomplete="off">
+      <input type="text" id="aj-note" placeholder="Note (optional) — shift, unit #…" autocomplete="off">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-primary" id="aj-save-entry">Add</button>
         <button class="btn" id="aj-cancel-entry" style="display:none">Cancel</button>
+        <button class="btn" id="aj-remove-entry" style="display:none;margin-left:auto;color:var(--red);border-color:var(--red)">Remove</button>
       </div>
       <div id="aj-form-msg" style="font-size:12.5px;font-weight:600;color:var(--red);min-height:16px;margin-top:6px"></div>
-    </div>
-    <div class="ewt-section">
-      <h3 id="aj-daytitle"></h3>
-      <div id="aj-daylist"></div>
-    </div>
-    <div class="ewt-section" id="aj-allwrap" style="display:none">
-      <h3>Everything scheduled</h3>
-      <div id="aj-all"></div>
     </div>
     <div id="aj-admin-foot" class="admin-only" style="display:none;margin:4px 0 20px">
       <button class="btn" id="aj-deactivate" style="color:var(--red);border-color:var(--red)">Remove from active jobs</button>
@@ -10041,77 +10046,103 @@ function ajRefresh() {
   else ajRenderHome();
 }
 
+function ajLinkedTo(e, sched) { return e.linkId ? sched.find(x => x.id === e.linkId && !ajIsPerson(x)) || null : null; }
+function ajWhen(e) {
+  const len = ajLength(e);
+  return ajFmt(e.start) + (e.end ? ' – ' + ajFmt(e.end) + ' · ' + len + 'd' : ' → ongoing');
+}
+
+// ---- Timeline board (shared by the Active Jobs list and the job page) ----
+// rows: { group } | { cls, big, dot:'machine'|'person'|'', tog:{key,open,enabled}, name, sub, attrs, bar:{start,end,label,cls,attrs} }
+function ajBoardHtml(rows, nameHead) {
+  if (!ajWinStart) ajWinStart = ajDefaultWindow();
+  const today = ajToday();
+  const days = []; for (let i = 0; i < AJ_DAYS; i++) days.push(ajAddDays(ajWinStart, i));
+  let months = '', run = 0, cur = '';
+  const mh = (from, n) => '<div class="aj-mh" style="width:' + (n * AJ_COLW) + 'px">' + ajParse(from).toLocaleDateString([], { month: 'short', year: 'numeric' }) + '</div>';
+  days.forEach((d, i) => {
+    const m = d.slice(0, 7);
+    if (m !== cur) { if (run) months += mh(days[i - run], run); cur = m; run = 0; }
+    run++;
+  });
+  if (run) months += mh(days[AJ_DAYS - run], run);
+  const dayCells = (bg) => days.map(d => {
+    const dow = ajParse(d).getDay();
+    return '<div class="aj-dc' + (dow === 0 || dow === 6 ? ' is-we' : '') + (d === today ? ' is-today' : '') + (bg ? ' bg' : '') + '">' + (bg ? '' : ajParse(d).getDate()) + '</div>';
+  }).join('');
+  const trackW = AJ_DAYS * AJ_COLW;
+  const head = '<div class="aj-trow aj-thead"><div class="aj-tname"><div class="aj-mh">&nbsp;</div><div class="aj-dh">' + escHTML(nameHead || 'Job') + '</div></div>' +
+    '<div class="aj-track" style="width:' + trackW + 'px"><div class="aj-months">' + months + '</div><div class="aj-days">' + dayCells(false) + '</div></div></div>';
+  const bar = (b) => {
+    const geo = ajBar(b.start, b.end);
+    if (!geo) return '';
+    return '<button type="button" class="aj-bar ' + b.cls + (geo.clipL ? ' clip-l' : '') + (geo.clipR ? ' clip-r' : '') + '" style="left:' + geo.left + 'px;width:' + geo.width + 'px" ' + (b.attrs || '') + ' title="' + escAttr(b.label) + '"><span>' + escHTML(b.label) + '</span></button>';
+  };
+  const body = rows.map(r => {
+    if (r.group) return '<div class="aj-trow aj-tgroup"><div class="aj-tname">' + escHTML(r.group) + '</div><div class="aj-track" style="width:' + trackW + 'px"></div></div>';
+    const tog = r.tog ? '<button type="button" class="aj-tog' + (r.tog.open ? ' open' : '') + '" data-aj-tog="' + escAttr(r.tog.key) + '" aria-label="' + (r.tog.open ? 'Collapse' : 'Expand') + '"' + (r.tog.enabled ? '' : ' disabled') + '>' + (r.tog.enabled ? '&#9656;' : '&middot;') + '</button>' : '';
+    const dot = r.dot ? '<span class="aj-dot"></span>' : '';
+    return '<div class="aj-trow ' + r.cls + (r.dot === 'person' ? ' is-person' : '') + '">' +
+      '<div class="aj-tname">' + tog + dot +
+        '<div class="aj-tjt" ' + (r.attrs || '') + ' role="button" tabindex="0"><div class="' + (r.big ? 'aj-tjn' : 'aj-tkn') + '">' + escHTML(r.name) + '</div>' +
+        (r.sub ? '<div class="aj-tjs">' + escHTML(r.sub) + '</div>' : '') + '</div>' +
+      '</div>' +
+      '<div class="aj-track" style="width:' + trackW + 'px">' + dayCells(true) + (r.bar ? bar(r.bar) : '') + '</div>' +
+    '</div>';
+  }).join('');
+  return '<div class="aj-board">' + head + body + '</div>';
+}
+// Paint a board into a container, keeping the horizontal scroll (or landing on today).
+function ajMountBoard(container, html) {
+  const prev = container.querySelector('.aj-board');
+  const keep = prev ? prev.scrollLeft : null;
+  container.innerHTML = html;
+  const board = container.querySelector('.aj-board');
+  if (!board) return;
+  if (keep != null) board.scrollLeft = keep;
+  else { const ti = ajDayIndex(ajToday()); if (ti >= 0 && ti < AJ_DAYS) board.scrollLeft = Math.max(0, ti * AJ_COLW - 60); }
+}
+
 function ajRenderHome() {
   const list = document.getElementById('aj-list');
   if (!list) return;
-  if (!ajWinStart) ajWinStart = ajDefaultWindow();
   const all = ajActiveJobs();
-  const today = ajToday();
   statePillsRender('aj-state-row', ajStateFilter, all);
   document.getElementById('aj-state-row').style.display = all.length ? '' : 'none';
-  document.querySelector('.aj-toolbar').style.display = all.length ? '' : 'none';
+  document.querySelector('#aj-home .aj-toolbar').style.display = all.length ? '' : 'none';
   if (!all.length) {
     list.innerHTML = '<div class="empty">No active jobs yet.' + (window.EBCC_IS_ADMIN ? ' Pick a project above to make it active.' : ' An admin can make a job active.') + '</div>';
     return;
   }
   const projs = all.filter(p => stateMatch(p, ajStateFilter));
   if (!projs.length) { list.innerHTML = '<div class="empty">No active jobs with that state.</div>'; return; }
-
-  // Header: month labels over the day numbers
-  const days = []; for (let i = 0; i < AJ_DAYS; i++) days.push(ajAddDays(ajWinStart, i));
-  let months = '', run = 0, cur = '';
-  days.forEach((d, i) => {
-    const m = d.slice(0, 7);
-    if (m !== cur) { if (run) months += '<div class="aj-mh" style="width:' + (run * AJ_COLW) + 'px">' + ajParse(days[i - run]).toLocaleDateString([], { month: 'short', year: 'numeric' }) + '</div>'; cur = m; run = 0; }
-    run++;
-  });
-  if (run) months += '<div class="aj-mh" style="width:' + (run * AJ_COLW) + 'px">' + ajParse(days[AJ_DAYS - run]).toLocaleDateString([], { month: 'short', year: 'numeric' }) + '</div>';
-  const dayCells = (cls) => days.map(d => {
-    const dow = ajParse(d).getDay();
-    return '<div class="aj-dc' + (dow === 0 || dow === 6 ? ' is-we' : '') + (d === today ? ' is-today' : '') + (cls ? ' ' + cls : '') + '">' + (cls ? '' : ajParse(d).getDate()) + '</div>';
-  }).join('');
-  const trackW = AJ_DAYS * AJ_COLW;
-  const head = '<div class="aj-trow aj-thead"><div class="aj-tname"><div class="aj-mh">&nbsp;</div><div class="aj-dh">Job</div></div>' +
-    '<div class="aj-track" style="width:' + trackW + 'px"><div class="aj-months">' + months + '</div><div class="aj-days">' + dayCells('') + '</div></div></div>';
-
-  const barHtml = (geo, cls, label, code) => geo
-    ? '<button type="button" class="aj-bar ' + cls + (geo.clipL ? ' clip-l' : '') + (geo.clipR ? ' clip-r' : '') + '" style="left:' + geo.left + 'px;width:' + geo.width + 'px" data-aj-open="' + escAttr(code) + '" title="' + escAttr(label) + '"><span>' + escHTML(label) + '</span></button>'
-    : '';
-  const groups = [['CA', 'California'], ['TX', 'Texas'], ['', 'No state set']]
-    .map(g => ({ label: g[1], jobs: projs.filter(p => (p.state === 'CA' || p.state === 'TX' ? p.state : '') === g[0]) }))
-    .filter(g => g.jobs.length);
-  const rows = groups.map(g => {
-    const gh = '<div class="aj-trow aj-tgroup"><div class="aj-tname">' + g.label + ' (' + g.jobs.length + ')</div><div class="aj-track" style="width:' + trackW + 'px"></div></div>';
-    return gh + g.jobs.map(p => {
+  const rows = [];
+  [['CA', 'California'], ['TX', 'Texas'], ['', 'No state set']].forEach(g => {
+    const jobs = projs.filter(p => (p.state === 'CA' || p.state === 'TX' ? p.state : '') === g[0]);
+    if (!jobs.length) return;
+    rows.push({ group: g[1] + ' (' + jobs.length + ')' });
+    jobs.forEach(p => {
       const sched = ajSchedule(p);
       const m = ajCount(sched, false), n = ajCount(sched, true);
       const span = ajSpan(sched);
       const open = !!ajOpenRows[p.code];
-      const label = sched.length ? m + ' machine' + (m === 1 ? '' : 's') + ' · ' + n + ' ' + (n === 1 ? 'person' : 'people') : 'nothing scheduled';
-      const jobRow = '<div class="aj-trow aj-tjob">' +
-        '<div class="aj-tname">' +
-          '<button type="button" class="aj-tog' + (open ? ' open' : '') + '" data-aj-tog="' + escAttr(p.code) + '" aria-label="' + (open ? 'Collapse' : 'Expand') + '"' + (sched.length ? '' : ' disabled') + '>' + (sched.length ? '&#9656;' : '&middot;') + '</button>' +
-          '<div class="aj-tjt" data-aj-open="' + escAttr(p.code) + '" role="button" tabindex="0"><div class="aj-tjn">' + escHTML(p.name) + '</div>' +
-          '<div class="aj-tjs">' + escHTML(p.code) + (p.foreman && p.foreman.name ? ' · ' + escHTML(p.foreman.name) : '') + '</div></div>' +
-        '</div>' +
-        '<div class="aj-track" style="width:' + trackW + 'px">' + dayCells('bg') + (span ? barHtml(ajBar(span.start, span.end), 'is-job', label, p.code) : '') + '</div>' +
-      '</div>';
-      const kids = open ? sched.slice().sort((a, b) => (ajIsPerson(a) - ajIsPerson(b)) || a.start.localeCompare(b.start) || a.name.localeCompare(b.name)).map(e => {
-        const len = ajLength(e);
-        const sub = ajFmt(e.start) + (e.end ? ' – ' + ajFmt(e.end) + ' · ' + len + 'd' : ' → ongoing');
-        return '<div class="aj-trow aj-tkid' + (ajIsPerson(e) ? ' is-person' : '') + '">' +
-          '<div class="aj-tname"><span class="aj-dot"></span><div class="aj-tjt" data-aj-open="' + escAttr(p.code) + '" data-aj-day="' + escAttr(e.start) + '" role="button" tabindex="0"><div class="aj-tkn">' + escHTML(ajLabel(e)) + '</div><div class="aj-tjs">' + escHTML(sub) + '</div></div></div>' +
-          '<div class="aj-track" style="width:' + trackW + 'px">' + dayCells('bg') + barHtml(ajBar(e.start, e.end), ajIsPerson(e) ? 'is-person' : 'is-machine', (ajQty(e) > 1 ? '×' + ajQty(e) + ' ' : '') + (e.note || e.name), p.code).replace('data-aj-open=', 'data-aj-day="' + escAttr(e.start) + '" data-aj-open=') + '</div>' +
-        '</div>';
-      }).join('') : '';
-      return jobRow + kids;
-    }).join('');
-  }).join('');
-  list.innerHTML = '<div class="aj-board" id="aj-board">' + head + rows + '</div>';
-  // Keep today in view on first paint
-  const board = document.getElementById('aj-board');
-  const ti = ajDayIndex(today);
-  if (ti >= 0 && ti < AJ_DAYS) board.scrollLeft = Math.max(0, ti * AJ_COLW - 60);
+      const openAttr = 'data-aj-open="' + escAttr(p.code) + '"';
+      rows.push({
+        cls: 'aj-tjob', big: true, tog: { key: p.code, open: open, enabled: sched.length > 0 },
+        name: p.name, sub: p.code + (p.foreman && p.foreman.name ? ' · ' + p.foreman.name : ''), attrs: openAttr,
+        bar: span ? { start: span.start, end: span.end, cls: 'is-job', attrs: openAttr, label: m + ' machine' + (m === 1 ? '' : 's') + ' · ' + n + ' ' + (n === 1 ? 'person' : 'people') } : null,
+      });
+      if (open) sched.slice().sort((a, b) => (ajIsPerson(a) - ajIsPerson(b)) || a.start.localeCompare(b.start) || a.name.localeCompare(b.name)).forEach(e => {
+        const attrs = openAttr + ' data-aj-id="' + escAttr(e.id) + '"';
+        const link = ajLinkedTo(e, sched);
+        rows.push({
+          cls: 'aj-tkid', dot: ajIsPerson(e) ? 'person' : 'machine', name: ajLabel(e), sub: ajWhen(e) + (link ? ' · on ' + link.name : ''), attrs: attrs,
+          bar: { start: e.start, end: e.end, cls: ajIsPerson(e) ? 'is-person' : 'is-machine', attrs: attrs, label: (ajQty(e) > 1 ? '×' + ajQty(e) + ' ' : '') + (e.note || e.name) },
+        });
+      });
+    });
+  });
+  ajMountBoard(list, ajBoardHtml(rows, 'Job'));
 }
 
 function ajLoadDirectory() {
@@ -10133,15 +10164,15 @@ function ajRenderForeman(p) {
   st.textContent = AJ_DIRECTORY ? '' : 'Loading accounts…';
 }
 
-function ajOpen(code) {
-  ajCode = code; ajEditing = false; ajEditId = null;
-  const today = ajToday();
-  ajMonth = today.slice(0, 7); ajDay = today;
+// Open a job; with entryId, go straight to editing that entry.
+function ajOpen(code, entryId) {
+  ajCode = code; ajEditing = false; ajEditId = null; ajDay = ajToday();
   document.getElementById('aj-home').style.display = 'none';
   document.getElementById('aj-detail').style.display = '';
-  ajRenderDetail();
   const p = ajProj();
   if (p) { ajRenderForeman(p); ajLoadDirectory().then(() => { const q = ajProj(); if (q && q.code === code) ajRenderForeman(q); }); }
+  ajRenderDetail();
+  if (entryId) { const e = ajSchedule(p).find(x => x.id === entryId); if (e) ajStartEdit(e); }
   window.scrollTo(0, 0);
 }
 function ajBack() {
@@ -10151,69 +10182,52 @@ function ajBack() {
   ajRenderHome();
 }
 
-function ajRow(e) {
-  const len = ajLength(e);
-  const when = ajFmt(e.start) + (e.end ? ' – ' + ajFmt(e.end) + ' · ' + len + ' day' + (len === 1 ? '' : 's') : ' → ongoing');
-  return '<div class="aj-row' + (ajIsPerson(e) ? ' is-person' : '') + '">' +
-    '<span class="aj-dot"></span>' +
-    '<div style="min-width:0;flex:1"><div class="aj-name">' + escHTML(ajLabel(e)) + '</div>' +
-    '<div class="aj-when">' + escHTML(when) + (e.note ? ' · ' + escHTML(e.note) : '') + '</div></div>' +
-    (ajEditing ? '<button type="button" class="btn aj-mini" data-aj-edit="' + escAttr(e.id) + '">Edit</button>' +
-                 '<button type="button" class="btn aj-mini" data-aj-rm="' + escAttr(e.id) + '" aria-label="Remove" style="color:var(--red)">&times;</button>' : '') +
-  '</div>';
-}
-function ajGroups(items) {
-  const g = (isPerson, label) => {
-    const xs = items.filter(e => ajIsPerson(e) === isPerson);
-    return xs.length ? '<div class="aj-glabel">' + label + ' (' + ajCount(xs, isPerson) + ')</div>' + xs.map(ajRow).join('') : '';
-  };
-  return g(false, 'Machines') + g(true, 'Personnel');
-}
-
+// Job page: same board, rows are the job's machines (with their linked
+// people underneath) and the rest of the crew.
 function ajRenderDetail() {
   const p = ajProj();
   if (!p) { ajBack(); return; }
   const sched = ajSchedule(p);
-  const today = ajToday();
   document.getElementById('aj-title').innerHTML =
     '<div style="font-weight:650;font-size:16px;letter-spacing:-0.01em;overflow-wrap:anywhere">' + escHTML(p.name) + '</div>' +
     '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.code + (p.state ? ' · ' + p.state : '')) + '</div>';
-  document.getElementById('aj-edit-toggle').textContent = ajEditing ? 'Done' : 'Edit';
-  document.getElementById('aj-edit-toggle').classList.toggle('btn-primary', !ajEditing);
-
-  // Month grid — each day shows how many machines / people are on site.
-  const ym = ajMonth.split('-').map(Number);
-  const first = new Date(ym[0], ym[1] - 1, 1);
-  const daysIn = new Date(ym[0], ym[1], 0).getDate();
-  document.getElementById('aj-month').textContent = first.toLocaleDateString([], { month: 'long', year: 'numeric' });
-  let cells = '';
-  for (let i = 0; i < first.getDay(); i++) cells += '<div class="aj-cell aj-pad"></div>';
-  for (let d = 1; d <= daysIn; d++) {
-    const iso = ajIso(new Date(ym[0], ym[1] - 1, d));
-    const onIso = sched.filter(e => ajOnDay(e, iso));
-    const m = ajCount(onIso, false), n = ajCount(onIso, true);
-    cells += '<button type="button" class="aj-cell' + (iso === today ? ' is-today' : '') + (iso === ajDay ? ' is-sel' : '') + ((m || n) ? ' has' : '') + '" data-aj-day="' + iso + '" aria-label="' + iso + '">' +
-      '<span class="aj-dn">' + d + '</span>' +
-      ((m || n) ? '<span class="aj-cnt">' + (m ? '<b class="aj-m">' + m + '</b>' : '') + (n ? '<b class="aj-p">' + n + '</b>' : '') + '</span>' : '') +
-    '</button>';
-  }
-  document.getElementById('aj-cal').innerHTML = cells;
-
-  // Selected day
-  const onDay = sched.filter(e => ajOnDay(e, ajDay));
-  document.getElementById('aj-daytitle').textContent = 'On site ' + (ajDay === today ? 'today — ' : '') + ajFmt(ajDay, true);
-  document.getElementById('aj-daylist').innerHTML = onDay.length ? ajGroups(onDay)
-    : '<div class="empty">Nothing scheduled for this day.' + (ajEditing ? '' : ' Tap Edit to add machines or people.') + '</div>';
-
-  // Edit mode: the form plus the full schedule
+  const tog = document.getElementById('aj-edit-toggle');
+  tog.textContent = ajEditing ? 'Done' : 'Edit';
+  tog.classList.toggle('btn-primary', !ajEditing);
   document.getElementById('aj-editor').style.display = ajEditing ? '' : 'none';
-  const allWrap = document.getElementById('aj-allwrap');
-  allWrap.style.display = ajEditing ? '' : 'none';
-  if (ajEditing) {
-    const all = sched.slice().sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name));
-    document.getElementById('aj-all').innerHTML = all.length ? ajGroups(all) : '<div class="empty">Nothing scheduled yet.</div>';
-    ajFillNames(p);
+  document.getElementById('aj-dhint').textContent = ajEditing ? 'Tap a bar to change it' : 'Tap a bar to edit it';
+
+  const m = ajCount(sched, false), n = ajCount(sched, true);
+  document.getElementById('aj-dsum').textContent = sched.length ? m + ' machine' + (m === 1 ? '' : 's') + ' · ' + n + ' ' + (n === 1 ? 'person' : 'people') : '';
+  const byStart = (a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name);
+  const machines = sched.filter(e => !ajIsPerson(e)).sort(byStart);
+  const people = sched.filter(e => ajIsPerson(e)).sort(byStart);
+  const linked = (mid) => people.filter(e => e.linkId === mid);
+  const loose = people.filter(e => !ajLinkedTo(e, sched));
+  const rows = [];
+  const rowFor = (e, extraCls, sub) => {
+    const attrs = 'data-aj-id="' + escAttr(e.id) + '"';
+    return {
+      cls: 'aj-tkid' + (extraCls || ''), dot: ajIsPerson(e) ? 'person' : 'machine', name: ajLabel(e), sub: sub, attrs: attrs,
+      bar: { start: e.start, end: e.end, cls: ajIsPerson(e) ? 'is-person' : 'is-machine', attrs: attrs, label: (ajQty(e) > 1 ? '×' + ajQty(e) + ' ' : '') + (e.note || e.name) },
+    };
+  };
+  if (machines.length) {
+    rows.push({ group: 'Machines (' + m + ')' });
+    machines.forEach(mc => {
+      const crew = linked(mc.id);
+      rows.push(rowFor(mc, '', ajWhen(mc) + (crew.length ? ' · ' + crew.length + ' linked' : '')));
+      crew.forEach(e => rows.push(rowFor(e, ' is-linked', ajWhen(e))));
+    });
   }
+  if (loose.length) {
+    rows.push({ group: 'Personnel (' + loose.length + ')' });
+    loose.forEach(e => rows.push(rowFor(e, '', ajWhen(e))));
+  }
+  const box = document.getElementById('aj-dboard');
+  if (!rows.length) { box.innerHTML = '<div class="empty">Nothing scheduled yet. Tap Edit to add machines and people.</div>'; return; }
+  ajMountBoard(box, ajBoardHtml(rows, 'On site'));
+  if (ajEditing) { ajFillNames(p); ajFillLinks(p); }
 }
 
 // Datalist: machines from the job's rate library (by state) plus anything
@@ -10231,19 +10245,30 @@ function ajFillNames(p) {
   dl.innerHTML = Array.from(names).sort().map(n => '<option value="' + escAttr(n) + '">').join('');
   document.getElementById('aj-name').placeholder = ajKind === 'machine' ? 'Machine — e.g. Scraper: CAT651' : 'Name — e.g. Maria Lopez';
   document.getElementById('aj-qty-wrap').style.display = ajKind === 'machine' ? '' : 'none';
+  document.getElementById('aj-link-wrap').style.display = ajKind === 'person' ? '' : 'none';
+}
+// "Linked to equipment" choices: this job's machine entries.
+function ajFillLinks(p, selected) {
+  const sel = document.getElementById('aj-link');
+  const cur = selected != null ? selected : sel.value;
+  const machines = ajSchedule(p).filter(e => !ajIsPerson(e)).sort((a, b) => a.name.localeCompare(b.name));
+  sel.innerHTML = '<option value="">— none —</option>' + machines.map(e =>
+    '<option value="' + escAttr(e.id) + '"' + (e.id === cur ? ' selected' : '') + '>' + escHTML(ajLabel(e) + ' · ' + ajWhen(e)) + '</option>').join('');
 }
 function ajSetKind(k) {
   ajKind = k;
   document.querySelectorAll('#aj-kind [data-aj-kind]').forEach(b => b.classList.toggle('on', b.getAttribute('data-aj-kind') === k));
-  const p = ajProj(); if (p) ajFillNames(p);
+  const p = ajProj(); if (p) { ajFillNames(p); ajFillLinks(p); }
 }
 function ajFormReset() {
   ajEditId = null;
   document.getElementById('aj-form-title').textContent = 'Add to the schedule';
   document.getElementById('aj-save-entry').textContent = 'Add';
   document.getElementById('aj-cancel-entry').style.display = 'none';
+  document.getElementById('aj-remove-entry').style.display = 'none';
   document.getElementById('aj-name').value = '';
   document.getElementById('aj-qty').value = '1';
+  document.getElementById('aj-link').value = '';
   document.getElementById('aj-start').value = ajDay || ajToday();
   document.getElementById('aj-end').value = '';
   document.getElementById('aj-note').value = '';
@@ -10253,15 +10278,22 @@ function ajFormLoad(e) {
   ajEditId = e.id;
   ajSetKind(ajIsPerson(e) ? 'person' : 'machine');
   document.getElementById('aj-form-title').textContent = 'Edit — ' + ajLabel(e);
-  document.getElementById('aj-qty').value = String(ajQty(e));
   document.getElementById('aj-save-entry').textContent = 'Save changes';
   document.getElementById('aj-cancel-entry').style.display = '';
+  document.getElementById('aj-remove-entry').style.display = '';
   document.getElementById('aj-name').value = e.name;
+  document.getElementById('aj-qty').value = String(ajQty(e));
+  const p = ajProj(); if (p) ajFillLinks(p, e.linkId || '');
   document.getElementById('aj-start').value = e.start;
   document.getElementById('aj-end').value = e.end || '';
   document.getElementById('aj-note').value = e.note || '';
   document.getElementById('aj-form-msg').textContent = '';
   document.getElementById('aj-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// Tapping a bar: switch on edit mode (if needed) and load that entry.
+function ajStartEdit(e) {
+  if (!ajEditing) { ajEditing = true; ajSetKind('machine'); ajFormReset(); ajRenderDetail(); }
+  ajFormLoad(e);
 }
 // Save the whole schedule: show it immediately, then persist; roll back on failure.
 function ajSaveSchedule(next) {
@@ -10270,7 +10302,7 @@ function ajSaveSchedule(next) {
   p.schedule = next;
   ajRenderDetail();
   ajPost({ mode: 'setSchedule', code: p.code, schedule: next }).then(out => {
-    if (out.ok) { if (Array.isArray(out.j.schedule)) p.schedule = out.j.schedule; return; }
+    if (out.ok) { if (Array.isArray(out.j.schedule)) { p.schedule = out.j.schedule; ajRenderDetail(); } return; }
     p.schedule = prev;
     ajRenderDetail();
     alert((out.j && out.j.error) || 'Could not save the schedule — check your connection and try again.');
@@ -10278,45 +10310,33 @@ function ajSaveSchedule(next) {
 }
 
 (function () {
-  // Home: open a job; admin picker promotes one
+  // Home board: expand/collapse, open a job (or one of its entries)
   document.getElementById('aj-list').addEventListener('click', e => {
     const t = e.target.closest('[data-aj-tog]');
     if (t) { const code = t.getAttribute('data-aj-tog'); ajOpenRows[code] = !ajOpenRows[code]; ajRenderHome(); return; }
     const c = e.target.closest('[data-aj-open]');
-    if (!c) return;
-    ajOpen(c.getAttribute('data-aj-open'));
-    const day = c.getAttribute('data-aj-day');
-    if (day) { ajDay = day; ajMonth = day.slice(0, 7); ajRenderDetail(); }
+    if (c) ajOpen(c.getAttribute('data-aj-open'), c.getAttribute('data-aj-id') || '');
   });
-  document.getElementById('aj-win-prev').addEventListener('click', () => { ajWinStart = ajAddDays(ajWinStart || ajDefaultWindow(), -14); ajRenderHome(); });
-  document.getElementById('aj-win-next').addEventListener('click', () => { ajWinStart = ajAddDays(ajWinStart || ajDefaultWindow(), 14); ajRenderHome(); });
-  document.getElementById('aj-win-today').addEventListener('click', () => { ajWinStart = ajDefaultWindow(); ajRenderHome(); });
+  document.getElementById('aj-list').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const c = e.target.closest('[data-aj-open]'); if (c) { e.preventDefault(); ajOpen(c.getAttribute('data-aj-open'), c.getAttribute('data-aj-id') || ''); }
+  });
+  const shift = (n, render) => { ajWinStart = n == null ? ajDefaultWindow() : ajAddDays(ajWinStart || ajDefaultWindow(), n); render(); };
+  document.getElementById('aj-win-prev').addEventListener('click', () => shift(-14, ajRenderHome));
+  document.getElementById('aj-win-next').addEventListener('click', () => shift(14, ajRenderHome));
+  document.getElementById('aj-win-today').addEventListener('click', () => shift(null, ajRenderHome));
+  document.getElementById('aj-dwin-prev').addEventListener('click', () => shift(-14, ajRenderDetail));
+  document.getElementById('aj-dwin-next').addEventListener('click', () => shift(14, ajRenderDetail));
+  document.getElementById('aj-dwin-today').addEventListener('click', () => shift(null, ajRenderDetail));
   document.getElementById('aj-expand-all').addEventListener('click', () => { ajActiveJobs().forEach(p => { ajOpenRows[p.code] = true; }); ajRenderHome(); });
   document.getElementById('aj-collapse-all').addEventListener('click', () => { ajOpenRows = {}; ajRenderHome(); });
-  document.getElementById('aj-foreman').addEventListener('change', () => {
-    const p = ajProj(); if (!p) return;
-    const sel = document.getElementById('aj-foreman'), st = document.getElementById('aj-foreman-status');
-    const email = sel.value;
-    const u = (AJ_DIRECTORY || []).find(x => x.email === email);
-    const prev = p.foreman;
-    st.textContent = 'Saving…';
-    ajPost({ mode: 'setForeman', code: p.code, email: email, name: u ? u.name : '' }).then(out => {
-      if (!out.ok) { p.foreman = prev; ajRenderForeman(p); st.textContent = (out.j && out.j.error) || 'Could not save.'; return; }
-      p.foreman = email ? { email: email, name: u ? u.name : email } : undefined;
-      if (!email) delete p.foreman;
-      st.textContent = 'Saved';
-      setTimeout(() => { if (st.textContent === 'Saved') st.textContent = ''; }, 1500);
-    });
-  });
   document.getElementById('aj-state-row').addEventListener('click', e => {
     const b = e.target.closest('[data-state-filter]'); if (!b) return;
     ajStateFilter = b.getAttribute('data-state-filter');
     ajRenderHome();
   });
-  document.getElementById('aj-list').addEventListener('keydown', e => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    const c = e.target.closest('[data-aj-open]'); if (c) { e.preventDefault(); ajOpen(c.getAttribute('data-aj-open')); }
-  });
+
+  // Admin: promote via the picker, demote from the job page
   const picker = projCombo('aj-proj-combo', 'aj-proj-results', p => {
     if (!p) return;
     if (p.active) { picker.clear(); alert(p.name + ' is already active.'); return; }
@@ -10338,15 +10358,13 @@ function ajSaveSchedule(next) {
     });
   });
 
-  // Detail
+  // Job page
   document.getElementById('aj-back').addEventListener('click', ajBack);
-  document.getElementById('aj-prev').addEventListener('click', () => { const ym = ajMonth.split('-').map(Number); ajMonth = ajIso(new Date(ym[0], ym[1] - 2, 1)).slice(0, 7); ajRenderDetail(); });
-  document.getElementById('aj-next').addEventListener('click', () => { const ym = ajMonth.split('-').map(Number); ajMonth = ajIso(new Date(ym[0], ym[1], 1)).slice(0, 7); ajRenderDetail(); });
-  document.getElementById('aj-cal').addEventListener('click', e => {
-    const c = e.target.closest('[data-aj-day]'); if (!c) return;
-    ajDay = c.getAttribute('data-aj-day');
-    if (ajEditing && ajEditId == null) document.getElementById('aj-start').value = ajDay;
-    ajRenderDetail();
+  document.getElementById('aj-dboard').addEventListener('click', e => {
+    const p = ajProj(); if (!p) return;
+    const c = e.target.closest('[data-aj-id]'); if (!c) return;
+    const x = ajSchedule(p).find(y => y.id === c.getAttribute('data-aj-id'));
+    if (x) ajStartEdit(x);
   });
   document.getElementById('aj-edit-toggle').addEventListener('click', () => {
     ajEditing = !ajEditing;
@@ -10357,6 +10375,15 @@ function ajSaveSchedule(next) {
     const b = e.target.closest('[data-aj-kind]'); if (b) ajSetKind(b.getAttribute('data-aj-kind'));
   });
   document.getElementById('aj-cancel-entry').addEventListener('click', ajFormReset);
+  document.getElementById('aj-remove-entry').addEventListener('click', () => {
+    const p = ajProj(); if (!p || !ajEditId) return;
+    const x = ajSchedule(p).find(y => y.id === ajEditId); if (!x) return;
+    const crew = ajIsPerson(x) ? [] : ajSchedule(p).filter(y => y.linkId === x.id);
+    if (!confirm('Remove ' + ajLabel(x) + ' from the schedule?' + (crew.length ? ' The ' + crew.length + ' linked ' + (crew.length === 1 ? 'person stays' : 'people stay') + ' on the job, unlinked.' : ''))) return;
+    const next = ajSchedule(p).filter(y => y.id !== x.id).map(y => (y.linkId === x.id ? Object.assign({}, y, { linkId: '' }) : y));
+    ajFormReset();
+    ajSaveSchedule(next);
+  });
   document.getElementById('aj-save-entry').addEventListener('click', () => {
     const p = ajProj(); if (!p) return;
     const msg = document.getElementById('aj-form-msg');
@@ -10369,23 +10396,28 @@ function ajSaveSchedule(next) {
     if (!start) { msg.textContent = 'Pick a start date.'; return; }
     if (end && end < start) { msg.textContent = 'End date is before the start date.'; return; }
     const qty = ajKind === 'machine' ? Math.min(99, Math.max(1, parseInt(document.getElementById('aj-qty').value, 10) || 1)) : 1;
-    const entry = { id: ajEditId || Math.random().toString(36).slice(2, 10), kind: ajKind, name: name, qty: qty, start: start, end: end, note: note };
+    const linkId = ajKind === 'person' ? document.getElementById('aj-link').value : '';
+    const entry = { id: ajEditId || Math.random().toString(36).slice(2, 10), kind: ajKind, name: name, qty: qty, linkId: linkId, start: start, end: end, note: note };
     const next = ajSchedule(p).filter(e => e.id !== entry.id).concat([entry]);
-    ajSaveSchedule(next);
     ajFormReset();
-    ajSetKind(ajKind); // refresh datalist with the new name
+    ajSaveSchedule(next);
+    ajSetKind(ajKind); // refresh suggestions + link choices
   });
-  // Edit / remove rows (both the day list and the full list)
-  ['aj-daylist', 'aj-all'].forEach(id => document.getElementById(id).addEventListener('click', e => {
+  document.getElementById('aj-foreman').addEventListener('change', () => {
     const p = ajProj(); if (!p) return;
-    const ed = e.target.closest('[data-aj-edit]');
-    if (ed) { const x = ajSchedule(p).find(y => y.id === ed.getAttribute('data-aj-edit')); if (x) ajFormLoad(x); return; }
-    const rm = e.target.closest('[data-aj-rm]');
-    if (rm) {
-      const x = ajSchedule(p).find(y => y.id === rm.getAttribute('data-aj-rm'));
-      if (x && confirm('Remove ' + x.name + ' from the schedule?')) { if (ajEditId === x.id) ajFormReset(); ajSaveSchedule(ajSchedule(p).filter(y => y.id !== x.id)); }
-    }
-  }));
+    const sel = document.getElementById('aj-foreman'), st = document.getElementById('aj-foreman-status');
+    const email = sel.value;
+    const u = (AJ_DIRECTORY || []).find(x => x.email === email);
+    const prev = p.foreman;
+    st.textContent = 'Saving…';
+    ajPost({ mode: 'setForeman', code: p.code, email: email, name: u ? u.name : '' }).then(out => {
+      if (!out.ok) { p.foreman = prev; ajRenderForeman(p); st.textContent = (out.j && out.j.error) || 'Could not save.'; return; }
+      p.foreman = email ? { email: email, name: u ? u.name : email } : undefined;
+      if (!email) delete p.foreman;
+      st.textContent = 'Saved';
+      setTimeout(() => { if (st.textContent === 'Saved') st.textContent = ''; }, 1500);
+    });
+  });
   document.querySelector('.tab[data-tab="activejobs"]').addEventListener('click', () => {
     ajRefresh();
     jbLoadProjects(); // fresh board — ajRefresh runs again on load
