@@ -330,6 +330,31 @@ body.tv-mode .aj-legend { font-size: 14px; }
   border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark); margin-bottom: 8px;
 }
 #aj-notes { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 15px; line-height: 1.45; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark); margin: 8px 0; resize: vertical; }
+.aj-min { border-bottom: 1px solid var(--hairline); padding: 8px 0; }
+.aj-min > summary { cursor: pointer; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.aj-min > summary::-webkit-details-marker { display: none; }
+.aj-min > summary::before { content: '▸'; color: var(--gray); font-size: 12px; transition: transform .12s; }
+.aj-min[open] > summary::before { transform: rotate(90deg); }
+.aj-kind { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; background: var(--orange); color: #fff; }
+.aj-kind.is-la { background: #3b82f6; }
+.aj-min-date { color: var(--gray); font-size: 12.5px; }
+.aj-min-title { font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
+.aj-min-body { white-space: pre-wrap; font-size: 14.5px; line-height: 1.45; margin: 8px 0 0 20px; overflow-wrap: anywhere; }
+.aj-link { border: none; background: none; padding: 0; font: inherit; color: var(--orange); font-weight: 600; cursor: pointer; }
+.aj-contact { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
+.aj-contact-main { min-width: 0; flex: 1 1 180px; }
+.aj-contact-name { font-weight: 650; font-size: 15px; overflow-wrap: anywhere; }
+.aj-contact-links { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex: 0 1 auto; max-width: 100%; }
+.aj-contact-links .btn { text-decoration: none; text-align: left; overflow-wrap: anywhere; }
+.aj-cform-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; padding: 8px 0 10px; border-bottom: 1px solid var(--hairline); margin-bottom: 4px; }
+.aj-cform-row input { margin-bottom: 0; }
+.aj-cform-row [data-cf="role"] { grid-column: 1; }
+.aj-cform-row [data-cf="name"] { grid-column: 2; }
+.aj-cform-row [data-aj-crm] { grid-column: 3; grid-row: 1; align-self: start; }
+.aj-cform-row [data-cf="company"] { grid-column: 1 / 3; }
+.aj-cform-row [data-cf="phone"] { grid-column: 1; }
+.aj-cform-row [data-cf="email"] { grid-column: 2 / 4; }
+.aj-cform-row [data-cf="note"] { grid-column: 1 / 4; }
 .aj-notes-ul { margin: 6px 0; padding-left: 20px; }
 .aj-notes-ul li, #aj-notes-view p { font-size: 14.5px; line-height: 1.45; margin: 3px 0; overflow-wrap: anywhere; }
 .aj-bar.is-machine { background: var(--orange); }
@@ -2454,8 +2479,53 @@ body.tv-mode .aj-legend { font-size: 14px; }
         <div id="aj-notes-by" class="aj-tjs" style="margin-top:6px"></div>
       </div>
     </div>
-    <div id="aj-pane-minutes" style="display:none"><div class="ewt-section"><div class="empty">Meeting minutes are coming in the next update.</div></div></div>
-    <div id="aj-pane-contacts" style="display:none"><div class="ewt-section"><div class="empty">Job contacts are coming in the next update.</div></div></div>
+    <div id="aj-pane-minutes" style="display:none">
+      <div class="ewt-section">
+        <div class="aj-tasks-sum"><h3 style="margin:0">Meeting minutes &amp; look-aheads</h3><span class="aj-tjs" id="aj-min-count"></span></div>
+        <div class="ewt-hint">The Earth Basics parts of each GC meeting, and the 3-week look-ahead — not the whole transcript. Minutes PDFs go in the job book's Meeting Minutes folder.</div>
+        <div style="margin:8px 0 4px"><button type="button" class="btn aj-mini" id="aj-min-files">PDFs in Job Books &rsaquo; Meeting Minutes</button></div>
+        <div id="aj-min-list"></div>
+      </div>
+      <div class="ewt-section aj-form" id="aj-mform" style="display:none">
+        <h3 id="aj-mform-title">Add an entry</h3>
+        <div class="seg" id="aj-mform-kind">
+          <button type="button" data-aj-mkind="minutes" class="on">Meeting minutes</button>
+          <button type="button" data-aj-mkind="lookahead">3-week look-ahead</button>
+        </div>
+        <div class="aj-dates">
+          <label>Date<input type="date" id="aj-mform-date"></label>
+          <label>Title<input type="text" id="aj-mform-name" placeholder="e.g. GC weekly meeting" autocomplete="off"></label>
+        </div>
+        <textarea id="aj-mform-body" rows="7" placeholder="What came out of it for Earth Basics — one item per line"></textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="aj-mform-save">Add entry</button>
+          <button class="btn" id="aj-mform-cancel" style="display:none">Cancel</button>
+          <button class="btn" id="aj-mform-delete" style="display:none;margin-left:auto;color:var(--red);border-color:var(--red)">Delete</button>
+        </div>
+        <div id="aj-mform-msg" style="font-size:12.5px;font-weight:600;color:var(--red);min-height:16px;margin-top:6px"></div>
+      </div>
+    </div>
+    <div id="aj-pane-contacts" style="display:none">
+      <div class="ewt-section">
+        <div class="aj-tasks-sum"><h3 style="margin:0">Job contacts</h3><span class="aj-tjs" id="aj-con-count"></span></div>
+        <div class="ewt-hint">Tap a number to call, an email to write.</div>
+        <div id="aj-con-list"></div>
+        <div style="margin-top:10px"><button type="button" class="btn" id="aj-con-edit" style="display:none">Edit contacts</button></div>
+      </div>
+      <div class="ewt-section aj-form" id="aj-cform" style="display:none">
+        <h3>Edit contacts</h3>
+        <div id="aj-cform-rows"></div>
+        <datalist id="aj-roles">
+          <option value="GC Superintendent"><option value="GC Project Manager"><option value="Trucking"><option value="Lime"><option value="Saw cut"><option value="Erosion control"><option value="Materials"><option value="Surveyor"><option value="Concrete"><option value="Landscaper"><option value="Other">
+        </datalist>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn" id="aj-cform-add">+ Add contact</button>
+          <button class="btn btn-primary" id="aj-cform-save">Save contacts</button>
+          <button class="btn" id="aj-cform-cancel">Cancel</button>
+          <span id="aj-cform-msg" style="font-size:12.5px;font-weight:600;color:var(--red)"></span>
+        </div>
+      </div>
+    </div>
     <div id="aj-pane-safety" style="display:none"><div class="ewt-section"><div class="empty">Safety records by job are coming in the next update.</div></div></div>
     <div id="aj-pane-photos" style="display:none"><div class="ewt-section"><div class="empty">Site photos are coming in the next update.</div></div></div>
     <div id="aj-admin-foot" class="admin-only" style="display:none;margin:4px 0 20px">
@@ -8370,6 +8440,8 @@ const JB_FOLDERS = [
   { id: 'Takeoffs',            color: '#d97706' },
   { id: 'Project Information', color: '#0891b2' },
   { id: 'Contract',            color: '#dc2626' },
+  { id: 'Meeting Minutes',     color: '#4f46e5' },
+  { id: 'Site Photos',         color: '#0d9488' },
 ];
 // Links (Procore / Autodesk / etc.) — a color-coded category of their own,
 // stored on the shared project record rather than in blob storage.
@@ -8512,14 +8584,14 @@ function jbMoveFile(name, from, to) {
 function jbStateText(p) {
   return p.state ? 'Cost Per Yard and Flat Work use ' + p.state + ' rates on this job' : '⚠ No state set — calculators fall back to CA rates';
 }
-function jbOpenProject(code) {
+function jbOpenProject(code, folder) {
   const p = (window.EBCC_PROJECTS || []).find(x => x.code === code);
   if (!p) return;
   // The job opens as its own page: home view hides, Back returns to the list.
   jbCurrentCode = code;
   jbCurrentFiles = [];
   jbCurrentLinks = Array.isArray(p.links) ? p.links.slice() : [];
-  jbActiveFolder = 'ALL';
+  jbActiveFolder = folder && JB_FOLDERS.some(x => x.id === folder) ? folder : 'ALL';
   document.getElementById('jb-home').style.display = 'none';
   const box = document.getElementById('jb-detail');
   box.style.display = '';
@@ -10448,6 +10520,8 @@ function ajRenderPane() {
   const openN = b ? (b.tasks || []).filter(t => !t.done).length : (p.board ? p.board.open : null);
   document.getElementById('aj-tab-open').textContent = openN != null && openN > 0 ? String(openN) : '';
   if (ajTab === 'tasks') ajRenderTasks();
+  if (ajTab === 'minutes') ajRenderMinutes();
+  if (ajTab === 'contacts') ajRenderContacts();
 }
 
 // ---- Action items + notes ----
@@ -10546,6 +10620,109 @@ function ajRenderTasks() {
   const ta = document.getElementById('aj-notes');
   if (admin && document.activeElement !== ta) ta.value = b.notes || '';
   document.getElementById('aj-notes-by').textContent = b.notesAt ? 'Last edited by ' + (b.notesBy || '—') + ' · ' + ajAgo(b.notesAt) : '';
+}
+// ---- Minutes / look-aheads ----
+let ajMformId = null, ajMformKind = 'minutes';
+function ajMformSetKind(k) {
+  ajMformKind = k === 'lookahead' ? 'lookahead' : 'minutes';
+  document.querySelectorAll('#aj-mform-kind [data-aj-mkind]').forEach(b => b.classList.toggle('on', b.getAttribute('data-aj-mkind') === ajMformKind));
+}
+function ajMformReset() {
+  ajMformId = null;
+  document.getElementById('aj-mform-title').textContent = 'Add an entry';
+  document.getElementById('aj-mform-save').textContent = 'Add entry';
+  document.getElementById('aj-mform-cancel').style.display = 'none';
+  document.getElementById('aj-mform-delete').style.display = 'none';
+  document.getElementById('aj-mform-date').value = ajToday();
+  document.getElementById('aj-mform-name').value = '';
+  document.getElementById('aj-mform-body').value = '';
+  document.getElementById('aj-mform-msg').textContent = '';
+  ajMformSetKind('minutes');
+}
+function ajMformLoad(e) {
+  ajMformId = e.id;
+  document.getElementById('aj-mform-title').textContent = 'Edit entry';
+  document.getElementById('aj-mform-save').textContent = 'Save changes';
+  document.getElementById('aj-mform-cancel').style.display = '';
+  document.getElementById('aj-mform-delete').style.display = '';
+  document.getElementById('aj-mform-date').value = e.date || '';
+  document.getElementById('aj-mform-name').value = e.title || '';
+  document.getElementById('aj-mform-body').value = e.body || '';
+  document.getElementById('aj-mform-msg').textContent = '';
+  ajMformSetKind(e.kind);
+  document.getElementById('aj-mform').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function ajRenderMinutes() {
+  const p = ajProj(); if (!p) return;
+  const admin = !!window.EBCC_IS_ADMIN;
+  const list = document.getElementById('aj-min-list');
+  const b = AJ_BOARDS[p.code];
+  document.getElementById('aj-mform').style.display = admin ? '' : 'none';
+  if (admin && ajMformId == null && !document.getElementById('aj-mform-date').value) ajMformReset();
+  if (!b) { list.innerHTML = '<div class="empty">Loading…</div>'; return; }
+  const entries = (b.minutes || []).slice().sort((x, y) => String(y.date).localeCompare(String(x.date)) || String(y.createdAt).localeCompare(String(x.createdAt)));
+  document.getElementById('aj-min-count').textContent = entries.length ? entries.length + ' entr' + (entries.length === 1 ? 'y' : 'ies') : 'Nothing yet';
+  list.innerHTML = entries.length ? entries.map((e, i) =>
+    '<details class="aj-min"' + (i === 0 ? ' open' : '') + '><summary>' +
+      '<span class="aj-kind' + (e.kind === 'lookahead' ? ' is-la' : '') + '">' + (e.kind === 'lookahead' ? 'Look-ahead' : 'Minutes') + '</span>' +
+      '<span class="aj-min-date">' + ajFmt(e.date) + '</span><span class="aj-min-title">' + escHTML(e.title) + '</span></summary>' +
+      '<div class="aj-min-body">' + escHTML(e.body) + '</div>' +
+      '<div class="aj-tjs" style="margin-top:6px">' + escHTML((e.createdBy && e.createdBy.name) || '') + (e.updatedAt ? ' · ' + ajAgo(e.updatedAt) : '') +
+        (admin ? ' · <button type="button" class="aj-link" data-aj-min-edit="' + escAttr(e.id) + '">Edit</button>' : '') + '</div>' +
+    '</details>').join('')
+    : '<div class="empty">' + (admin ? 'Add the first entry below.' : 'No minutes posted yet.') + '</div>';
+}
+// ---- Contacts ----
+function ajTelHref(phone) { const d = String(phone || '').replace(/[^0-9+]/g, ''); return d ? 'tel:' + d : ''; }
+function ajRenderContacts() {
+  const p = ajProj(); if (!p) return;
+  const admin = !!window.EBCC_IS_ADMIN;
+  const list = document.getElementById('aj-con-list');
+  const b = AJ_BOARDS[p.code];
+  document.getElementById('aj-con-edit').style.display = admin ? '' : 'none';
+  if (!b) { list.innerHTML = '<div class="empty">Loading…</div>'; return; }
+  const cs = b.contacts || [];
+  document.getElementById('aj-con-count').textContent = cs.length ? cs.length + ' contact' + (cs.length === 1 ? '' : 's') : 'None yet';
+  list.innerHTML = cs.length ? cs.map(c =>
+    '<div class="aj-contact">' +
+      '<div class="aj-contact-main">' +
+        (c.role ? '<div class="aj-glabel" style="margin:0 0 2px">' + escHTML(c.role) + '</div>' : '') +
+        '<div class="aj-contact-name">' + escHTML(c.name || c.company || '—') + '</div>' +
+        (c.name && c.company ? '<div class="aj-tjs">' + escHTML(c.company) + '</div>' : '') +
+        (c.note ? '<div class="aj-tjs">' + escHTML(c.note) + '</div>' : '') +
+      '</div>' +
+      '<div class="aj-contact-links">' +
+        (c.phone ? '<a class="btn aj-mini" href="' + escAttr(ajTelHref(c.phone)) + '">&#9742; ' + escHTML(c.phone) + '</a>' : '') +
+        (c.email ? '<a class="btn aj-mini" href="mailto:' + escAttr(c.email) + '">&#9993; ' + escHTML(c.email) + '</a>' : '') +
+      '</div>' +
+    '</div>').join('')
+    : '<div class="empty">' + (admin ? 'No contacts yet — tap Edit contacts.' : 'No contacts posted yet.') + '</div>';
+}
+function ajCformRow(c) {
+  c = c || {};
+  return '<div class="aj-cform-row" data-aj-crow>' +
+    '<input type="text" list="aj-roles" data-cf="role" placeholder="Role (Trucking, Lime…)" value="' + escAttr(c.role || '') + '" autocomplete="off">' +
+    '<input type="text" data-cf="name" placeholder="Name" value="' + escAttr(c.name || '') + '" autocomplete="off">' +
+    '<input type="text" data-cf="company" placeholder="Company" value="' + escAttr(c.company || '') + '" autocomplete="off">' +
+    '<input type="tel" data-cf="phone" placeholder="Phone" value="' + escAttr(c.phone || '') + '" autocomplete="off">' +
+    '<input type="email" data-cf="email" placeholder="Email" value="' + escAttr(c.email || '') + '" autocomplete="off" autocapitalize="off">' +
+    '<input type="text" data-cf="note" placeholder="Note" value="' + escAttr(c.note || '') + '" autocomplete="off">' +
+    '<input type="hidden" data-cf="id" value="' + escAttr(c.id || '') + '">' +
+    '<button type="button" class="btn aj-mini" data-aj-crm aria-label="Remove" style="color:var(--red)">&times;</button>' +
+  '</div>';
+}
+function ajCformRead() {
+  return [...document.querySelectorAll('#aj-cform-rows [data-aj-crow]')].map(r => {
+    const o = {}; r.querySelectorAll('[data-cf]').forEach(i => { o[i.getAttribute('data-cf')] = i.value.trim(); }); return o;
+  });
+}
+function ajCformOpen() {
+  const p = ajProj(); const b = p && AJ_BOARDS[p.code]; if (!b) return;
+  const rows = (b.contacts || []).map(ajCformRow).join('') || ajCformRow();
+  document.getElementById('aj-cform-rows').innerHTML = rows;
+  document.getElementById('aj-cform-msg').textContent = '';
+  document.getElementById('aj-cform').style.display = '';
+  document.getElementById('aj-cform').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function ajTaskToggle(id, done) {
   const p = ajProj(); const b = p && AJ_BOARDS[p.code]; if (!b) return;
@@ -10808,6 +10985,63 @@ function ajSaveSchedule(next) {
         if (!out.ok) { st.textContent = (out.j && out.j.error) || 'Could not save.'; return; }
         ajAdoptBoard(p.code, out.j.board); ajRenderPane(); st.textContent = 'Saved';
         setTimeout(() => { if (st.textContent === 'Saved') st.textContent = ''; }, 1500);
+      });
+    }
+  });
+  // Minutes pane
+  const minPane = document.getElementById('aj-pane-minutes');
+  minPane.addEventListener('click', e => {
+    const p = ajProj(); if (!p) return;
+    if (e.target.id === 'aj-min-files') {
+      jbOpenProject(p.code, 'Meeting Minutes');
+      ajOrigin = ''; ajCode = null;
+      document.getElementById('aj-detail').style.display = 'none'; document.getElementById('aj-home').style.display = '';
+      const t = document.querySelector('.tab[data-tab="jobbooks"]'); if (t) t.click();
+      return;
+    }
+    const k = e.target.closest('[data-aj-mkind]'); if (k) { ajMformSetKind(k.getAttribute('data-aj-mkind')); return; }
+    const ed = e.target.closest('[data-aj-min-edit]');
+    if (ed) { const x = (AJ_BOARDS[p.code].minutes || []).find(y => y.id === ed.getAttribute('data-aj-min-edit')); if (x) ajMformLoad(x); return; }
+    if (e.target.id === 'aj-mform-cancel') { ajMformReset(); return; }
+    if (e.target.id === 'aj-mform-delete') {
+      const x = (AJ_BOARDS[p.code].minutes || []).find(y => y.id === ajMformId); if (!x) return;
+      if (!confirm('Delete "' + x.title + '" (' + ajFmt(x.date) + ')?')) return;
+      ajBoardPost({ mode: 'deleteMinutes', code: p.code, id: x.id }).then(out => {
+        if (!out.ok) { alert((out.j && out.j.error) || 'Could not delete.'); return; }
+        ajMformReset(); ajAdoptBoard(p.code, out.j.board); ajRenderPane();
+      });
+      return;
+    }
+    if (e.target.id === 'aj-mform-save') {
+      const msg = document.getElementById('aj-mform-msg');
+      const entry = { id: ajMformId || '', kind: ajMformKind, date: document.getElementById('aj-mform-date').value, title: document.getElementById('aj-mform-name').value.trim(), body: document.getElementById('aj-mform-body').value.trim() };
+      if (!entry.date) { msg.textContent = 'Pick the meeting date.'; return; }
+      if (!entry.body) { msg.textContent = 'Add the notes first.'; document.getElementById('aj-mform-body').focus(); return; }
+      msg.textContent = '';
+      ajBoardPost({ mode: 'upsertMinutes', code: p.code, entry: entry }).then(out => {
+        if (!out.ok) { msg.textContent = (out.j && out.j.error) || 'Could not save.'; return; }
+        ajMformReset(); ajAdoptBoard(p.code, out.j.board); ajRenderPane();
+      });
+    }
+  });
+  // Contacts pane
+  const conPane = document.getElementById('aj-pane-contacts');
+  conPane.addEventListener('click', e => {
+    const p = ajProj(); if (!p) return;
+    if (e.target.id === 'aj-con-edit') { ajCformOpen(); return; }
+    if (e.target.id === 'aj-cform-cancel') { document.getElementById('aj-cform').style.display = 'none'; return; }
+    if (e.target.id === 'aj-cform-add') { document.getElementById('aj-cform-rows').insertAdjacentHTML('beforeend', ajCformRow()); const rows = document.querySelectorAll('#aj-cform-rows [data-aj-crow]'); rows[rows.length - 1].querySelector('input').focus(); return; }
+    const rm = e.target.closest('[data-aj-crm]'); if (rm) { rm.closest('[data-aj-crow]').remove(); return; }
+    if (e.target.id === 'aj-cform-save') {
+      const msg = document.getElementById('aj-cform-msg');
+      const contacts = ajCformRead().filter(c => c.name || c.company || c.phone || c.email);
+      const badEmail = contacts.find(c => c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email));
+      if (badEmail) { msg.textContent = 'Check the email for ' + (badEmail.name || badEmail.company || 'that contact') + '.'; return; }
+      msg.textContent = 'Saving…';
+      ajBoardPost({ mode: 'setContacts', code: p.code, contacts: contacts }).then(out => {
+        if (!out.ok) { msg.textContent = (out.j && out.j.error) || 'Could not save.'; return; }
+        msg.textContent = ''; document.getElementById('aj-cform').style.display = 'none';
+        ajAdoptBoard(p.code, out.j.board); ajRenderPane();
       });
     }
   });
