@@ -296,6 +296,20 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
   border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark);
 }
 #aj-dates-status { font-size: 12px; font-weight: 600; color: var(--gray); }
+/* Wall display — the office TV. Only the Active Jobs board, large. */
+body.tv-mode { display: block; max-width: none; padding: 12px 18px; }
+body.tv-mode header, body.tv-mode > .tabs, body.tv-mode #nav-scrim,
+body.tv-mode #aj-admin, body.tv-mode #aj-state-row, body.tv-mode #aj-home .aj-toolbar { display: none !important; }
+body.tv-mode #aj-home .ewt-section > h3 { font-size: 26px; margin-bottom: 12px; }
+body.tv-mode .aj-board { --aj-namew: 340px; }
+body.tv-mode .aj-tjn { font-size: 19px; }
+body.tv-mode .aj-tjs { font-size: 14px; }
+body.tv-mode .aj-tjob .aj-track { height: 74px; }
+body.tv-mode .aj-tjob .aj-bar { top: 20px; height: 34px; font-size: 15px; }
+body.tv-mode .aj-tgroup .aj-tname, body.tv-mode .aj-dc, body.tv-mode .aj-mh, body.tv-mode .aj-dh { font-size: 13px; }
+body.tv-mode .aj-tgroup .aj-track { height: 30px; }
+body.tv-mode .aj-legend { font-size: 14px; }
+#aj-tv-exit { position: fixed; right: 16px; bottom: 16px; z-index: 50; }
 .aj-bar.is-machine { background: var(--orange); }
 .aj-bar.is-person { background: #3b82f6; }
 .aj-bar.clip-l { border-top-left-radius: 0; border-bottom-left-radius: 0; }
@@ -2305,9 +2319,11 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
         <div class="aj-nav">
           <button type="button" class="btn aj-mini" id="aj-expand-all">Expand all</button>
           <button type="button" class="btn aj-mini" id="aj-collapse-all">Collapse all</button>
+          <button type="button" class="btn aj-mini" id="aj-tv" title="Full-screen board for the office TV">Wall display</button>
         </div>
       </div>
       <div id="aj-list"><div class="empty">Loading…</div></div>
+      <button type="button" class="btn btn-primary" id="aj-tv-exit" style="display:none">Exit wall display</button>
       <div class="aj-legend" style="margin-top:10px"><span><i class="aj-m"></i>machines</span><span><i class="aj-p"></i>personnel</span><span><i class="aj-s"></i>finishing within 7 days</span><span><i class="aj-l"></i>past finish</span><span>Tap a job or bar to open it</span></div>
     </div>
   </div>
@@ -10024,7 +10040,7 @@ function ajAddDays(iso, n) { const d = ajParse(iso); d.setDate(d.getDate() + n);
 // Time scale: 'day' = 6 weeks at 30px/day; 'month' = 12 months at 3px/day
 // (bars stay date-accurate, columns are months). Remembered per device.
 let ajScale = (function () { try { return localStorage.getItem('ebcc_aj_scale') === 'month' ? 'month' : 'day'; } catch (_) { return 'day'; } })();
-function ajPpd() { return ajScale === 'month' ? 3 : AJ_COLW; }
+function ajPpd() { return ajScale === 'month' ? (document.body.classList.contains('tv-mode') ? 4 : 3) : AJ_COLW; }
 function ajAddMonths(iso, n) { const d = ajParse(iso); return ajIso(new Date(d.getFullYear(), d.getMonth() + n, 1)); }
 function ajWinDays() {
   if (ajScale !== 'month') return AJ_DAYS;
@@ -10222,6 +10238,29 @@ function ajRenderHome() {
   ajMountBoard(list, ajBoardHtml(rows, 'Job'));
 }
 
+// Wall display: the home board alone, big type, Month scale, auto-refreshing.
+// `?tv=1` in the URL turns it on at load so the office PC can bookmark it.
+let ajTvTimer = null, ajTvReload = null;
+function ajSetTv(on) {
+  on = !!on;
+  document.body.classList.toggle('tv-mode', on);
+  document.getElementById('aj-tv-exit').style.display = on ? '' : 'none';
+  clearInterval(ajTvTimer); clearInterval(ajTvReload); ajTvTimer = ajTvReload = null;
+  if (on) {
+    ajSetScale('month'); ajOpenRows = {};
+    if (ajCode) ajBack();
+    ajTvTimer = setInterval(() => { if (typeof jbLoadProjects === 'function') jbLoadProjects(); }, 5 * 60 * 1000);
+    ajTvReload = setInterval(() => location.reload(), 6 * 60 * 60 * 1000); // pick up new app versions
+  }
+  ajRenderHome();
+  try {
+    const u = new URL(location.href);
+    if (on) u.searchParams.set('tv', '1'); else u.searchParams.delete('tv');
+    history.replaceState(null, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '') + u.hash);
+  } catch (_) {}
+  window.scrollTo(0, 0);
+}
+
 function ajLoadDirectory() {
   if (AJ_DIRECTORY) return Promise.resolve(AJ_DIRECTORY);
   return fetch('/api/users?scope=directory').then(r => r.ok ? r.json() : null).then(j => {
@@ -10416,6 +10455,12 @@ function ajSaveSchedule(next) {
   document.getElementById('aj-dwin-next').addEventListener('click', () => shift(14, ajRenderDetail));
   document.getElementById('aj-dwin-today').addEventListener('click', () => shift(null, ajRenderDetail));
   document.getElementById('aj-expand-all').addEventListener('click', () => { ajActiveJobs().forEach(p => { ajOpenRows[p.code] = true; }); ajRenderHome(); });
+  document.getElementById('aj-tv').addEventListener('click', () => ajSetTv(true));
+  document.getElementById('aj-tv-exit').addEventListener('click', () => ajSetTv(false));
+  if (/[?&]tv=1(&|$)/.test(location.search)) {
+    document.querySelector('.tab[data-tab="activejobs"]').click();
+    ajSetTv(true);
+  }
   document.getElementById('aj-collapse-all').addEventListener('click', () => { ajOpenRows = {}; ajRenderHome(); });
   document.getElementById('aj-state-row').addEventListener('click', e => {
     const b = e.target.closest('[data-state-filter]'); if (!b) return;
