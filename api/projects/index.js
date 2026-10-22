@@ -85,9 +85,17 @@ module.exports = async function (context, req) {
           if (t > sizes[seg].t) sizes[seg].t = t;
         }
       } catch (e) { /* blob not configured — totals stay zero */ }
+      // Action-item summaries from the per-job board docs (one cheap
+      // single-partition query) so the Active Jobs board can show "3 open".
+      const boards = {};
+      try {
+        const q = { query: "SELECT c.code, c.summary FROM c WHERE c.ownerId = @pk AND c.type = 'project_board'", parameters: [{ name: '@pk', value: DOC_PK }] };
+        const { resources } = await records.items.query(q, { partitionKey: DOC_PK }).fetchAll();
+        resources.forEach((b) => { if (b && b.code) boards[String(b.code).toLowerCase()] = b.summary || null; });
+      } catch (e) { context.log.warn('projects board join: ' + (e.message || e)); }
       const list = (doc.data || []).map((p) => {
         const s = sizes[safeName(p.code)] || { n: 0, b: 0, t: 0 };
-        return Object.assign({}, p, { fileCount: s.n, totalSize: s.b, lastFileAt: s.t ? new Date(s.t).toISOString() : '' });
+        return Object.assign({}, p, { fileCount: s.n, totalSize: s.b, lastFileAt: s.t ? new Date(s.t).toISOString() : '', board: boards[String(p.code).toLowerCase()] || null });
       }).sort((a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
       return json(context, 200, { projects: list });
     }

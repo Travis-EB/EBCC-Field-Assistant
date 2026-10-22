@@ -24,6 +24,20 @@ $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$Port/")
 $listener.Start()
 $ticketCounter = 21099
+# Mock per-job board (Active Jobs hub). Mutated in memory by POST /api/project-board.
+$d0 = (Get-Date).ToString('yyyy-MM-dd'); $dm3 = (Get-Date).AddDays(-3).ToString('yyyy-MM-dd'); $dp4 = (Get-Date).AddDays(4).ToString('yyyy-MM-dd'); $dm1 = (Get-Date).AddDays(-1).ToString('yyyy-MM-dd')
+$boardJson = '{"id":"board:26-292-03","type":"project_board","code":"26-292-03","tasks":[' +
+  '{"id":"t1","text":"Plans sent to the model guys","phase":"1st move","assignee":null,"due":"","done":true,"doneBy":{"email":"travis@earthbasics.net","name":"Travis Pecoy"},"doneAt":"2026-10-02T15:00:00Z","createdBy":{"email":"travis@earthbasics.net","name":"Travis Pecoy"},"createdAt":"2026-10-01T15:00:00Z","updatedAt":"2026-10-02T15:00:00Z"},' +
+  '{"id":"t2","text":"Job book created","phase":"1st move","assignee":null,"due":"","done":true,"doneBy":{"email":"travis@earthbasics.net","name":"Travis Pecoy"},"doneAt":"2026-10-02T15:00:00Z","createdBy":{"email":"travis@earthbasics.net","name":"Travis Pecoy"},"createdAt":"2026-10-01T15:00:00Z","updatedAt":"2026-10-02T15:00:00Z"},' +
+  '{"id":"t3","text":"Walk the site with the superintendent","phase":"1st move","assignee":{"email":"maria.lopez@earthbasics.net","name":"Maria Lopez"},"due":"' + $dm3 + '","done":false,"doneBy":null,"doneAt":"","createdBy":{"email":"travis@earthbasics.net","name":"Travis Pecoy"},"createdAt":"2026-10-01T15:00:00Z","updatedAt":"2026-10-01T15:00:00Z"},' +
+  '{"id":"t4","text":"Lime scheduled (note the date)","phase":"1st move","assignee":{"email":"ben.carter@earthbasics.net","name":"Ben Carter"},"due":"' + $dp4 + '","done":false,"doneBy":null,"doneAt":"","createdBy":{"email":"travis@earthbasics.net","name":"Travis Pecoy"},"createdAt":"2026-10-01T15:00:00Z","updatedAt":"2026-10-01T15:00:00Z"},' +
+  '{"id":"t5","text":"Count all loads, but only signed tickets for Durango","phase":"General","assignee":null,"due":"","done":false,"doneBy":null,"doneAt":"","createdBy":{"email":"ncowles@earthbasics.net","name":"Nick Cowles"},"createdAt":"2026-10-05T15:00:00Z","updatedAt":"2026-10-05T15:00:00Z"},' +
+  '{"id":"t6","text":"Walk with the concrete guy before demob","phase":"2nd move","assignee":null,"due":"","done":true,"doneBy":{"email":"maria.lopez@earthbasics.net","name":"Maria Lopez"},"doneAt":"2026-10-12T15:00:00Z","createdBy":{"email":"travis@earthbasics.net","name":"Travis Pecoy"},"createdAt":"2026-10-01T15:00:00Z","updatedAt":"2026-10-12T15:00:00Z"}' +
+  '],"notes":"- Trucking is Durango on this one - count all loads but only signed tickets get paid\n- Super is Mike (GC) - on site after 7am\n- Haul road off the north entrance only","notesBy":"Nick Cowles","notesAt":"' + $dm1 + 'T14:00:00Z","minutes":[],"contacts":[],"summary":{"open":3,"done":3,"updatedAt":"' + $dm1 + 'T14:00:00Z"},"updatedAt":"' + $dm1 + 'T14:00:00Z"}'
+$script:board = $boardJson | ConvertFrom-Json
+function New-BoardId { return ([guid]::NewGuid().ToString('N').Substring(0, 10)) }
+function Board-Recompute { $open = @($script:board.tasks | Where-Object { -not $_.done }).Count; $script:board.summary.open = $open; $script:board.summary.done = @($script:board.tasks).Count - $open; $script:board.summary.updatedAt = (Get-Date).ToUniversalTime().ToString('o'); $script:board.updatedAt = $script:board.summary.updatedAt }
+function Board-Json { return (ConvertTo-Json -InputObject $script:board -Depth 10 -Compress) }
 Write-Host "EBCC dev preview on http://localhost:$Port/  root=$Root  (MOCK admin auth)"
 while ($listener.IsListening) {
   try {
@@ -68,6 +82,42 @@ while ($listener.IsListening) {
         $json = '{"ok":true,"sent":true,"recipients":["office@earthbasics.net"],"archived":true}'
       } elseif ($path -eq '/api/ewt-pdf' -and $req.HttpMethod -eq 'POST') {
         $json = '{"ok":true,"path":"dev-admin/mock-' + [DateTime]::Now.Ticks + '.pdf"}'
+      } elseif ($path -eq '/api/project-board' -and $req.HttpMethod -eq 'GET') {
+        if ($req.Url.Query -like '*code=26-292-03*') { $json = '{"board":' + (Board-Json) + '}' }
+        else { $code = ($req.QueryString['code']); $json = '{"board":{"id":"board:' + $code + '","type":"project_board","code":"' + $code + '","tasks":[],"notes":"","notesBy":"","notesAt":"","minutes":[],"contacts":[],"summary":{"open":0,"done":0,"updatedAt":""},"updatedAt":""}}' }
+      } elseif ($path -eq '/api/project-board' -and $req.HttpMethod -eq 'POST') {
+        $rb = New-Object IO.StreamReader($req.InputStream); $bb = $rb.ReadToEnd(); $rb.Close()
+        $b = $bb | ConvertFrom-Json
+        $now = (Get-Date).ToUniversalTime().ToString('o'); $me = [pscustomobject]@{ email = 'travis@earthbasics.net'; name = 'Travis Pecoy' }
+        $added = $null
+        switch ($b.mode) {
+          'upsertTask' {
+            $t = $b.task; $cur = $null; if ($t.id) { $cur = $script:board.tasks | Where-Object { $_.id -eq $t.id } }
+            if ($cur) { $cur.text = $t.text; $cur.phase = $t.phase; $cur.assignee = $t.assignee; $cur.due = $t.due; $cur.updatedAt = $now }
+            else { $script:board.tasks = @($script:board.tasks) + [pscustomobject]@{ id = (New-BoardId); text = $t.text; phase = $t.phase; assignee = $t.assignee; due = $t.due; done = $false; doneBy = $null; doneAt = ''; createdBy = $me; createdAt = $now; updatedAt = $now } }
+          }
+          'addTemplate' {
+            $tpl = @{ '1st move' = @('Plans sent to the model guys','Job book created','Walk the site with the superintendent','Bench the building','Finished floor on the pad confirmed with the PM','Lime scheduled (note the date)','Erosion control in place'); '2nd move' = @('Walk with the concrete guy before demob','Landscape plans received','Walk with the landscaper before mobilizing','Plan changes checked','Rock / base scheduled'); '3rd move' = @('Backfill curbs','Grade sidewalks','Free-spread topsoil','Final walk with the superintendent','Machines called off / equipment released') }
+            $added = 0
+            foreach ($txt in $tpl[$b.phase]) {
+              $dup = $script:board.tasks | Where-Object { $_.phase -eq $b.phase -and $_.text.ToLower() -eq $txt.ToLower() }
+              if (-not $dup) { $script:board.tasks = @($script:board.tasks) + [pscustomobject]@{ id = (New-BoardId); text = $txt; phase = $b.phase; assignee = $null; due = ''; done = $false; doneBy = $null; doneAt = ''; createdBy = $me; createdAt = $now; updatedAt = $now }; $added++ }
+            }
+          }
+          'deleteTask' { $script:board.tasks = @($script:board.tasks | Where-Object { $_.id -ne $b.id }) }
+          'toggleTask' { $t = $script:board.tasks | Where-Object { $_.id -eq $b.id }; if ($t) { $t.done = [bool]$b.done; if ($b.done) { $t.doneBy = $me; $t.doneAt = $now } else { $t.doneBy = $null; $t.doneAt = '' }; $t.updatedAt = $now } }
+          'setNotes' { $script:board.notes = [string]$b.notes; $script:board.notesBy = $me.name; $script:board.notesAt = $now }
+          'upsertMinutes' {
+            $e = $b.entry; $cur = $null; if ($e.id) { $cur = $script:board.minutes | Where-Object { $_.id -eq $e.id } }
+            if ($cur) { $cur.kind = $e.kind; $cur.date = $e.date; $cur.title = $e.title; $cur.body = $e.body; $cur.updatedAt = $now }
+            else { $script:board.minutes = @($script:board.minutes) + [pscustomobject]@{ id = (New-BoardId); kind = $e.kind; date = $e.date; title = $e.title; body = $e.body; createdBy = $me; createdAt = $now; updatedAt = $now } }
+          }
+          'deleteMinutes' { $script:board.minutes = @($script:board.minutes | Where-Object { $_.id -ne $b.id }) }
+          'setContacts' { $script:board.contacts = @($b.contacts) }
+        }
+        Board-Recompute
+        $extra = ''; if ($added -ne $null) { $extra = ',"added":' + $added }
+        $json = '{"ok":true,"board":' + (Board-Json) + $extra + '}'
       } elseif ($path -eq '/api/projects' -and $req.HttpMethod -eq 'DELETE') {
         $json = '{"ok":true}'
       } elseif ($path -eq '/api/projects' -and $req.HttpMethod -eq 'POST') {
@@ -81,7 +131,7 @@ while ($listener.IsListening) {
         else { $json = '{"ok":true,"project":{"code":"NEW","name":"NEW"}}' }
       } elseif ($path -eq '/api/projects') {
         $soon = (Get-Date).AddDays(5).ToString('yyyy-MM-dd'); $late = (Get-Date).AddDays(-3).ToString('yyyy-MM-dd')
-        $json = '{"projects":[{"code":"26-292-03","name":"PROSPER RETAIL","start":"2026-10-01","finish":"' + $soon + '","createdAt":"2026-06-01T10:00:00Z","lastFileAt":"2026-08-04T10:00:00Z","fuelRate":4.74,"state":"TX","active":true,"foreman":{"email":"maria.lopez@earthbasics.net","name":"Maria Lopez"},"schedule":[{"id":"a1","kind":"machine","name":"Scraper: CAT651","qty":4,"start":"2026-10-10","end":"2026-10-25","note":""},{"id":"a2","kind":"machine","name":"Dozer: CAT D6","start":"2026-10-14","end":"","note":"unit 212"},{"id":"a3","kind":"person","name":"Maria Lopez","start":"2026-10-10","end":"2026-10-25","note":"Foreman","linkId":"a1"},{"id":"a4","kind":"person","name":"Ben Carter","start":"2026-10-20","end":"2026-10-22","note":""}],"fileCount":2,"totalSize":3300000,"links":[{"name":"Procore","url":"https://app.procore.com/2024/project/home"},{"name":"Autodesk Docs","url":"https://acc.autodesk.com/docs/files/projects/abc123"}]},{"code":"26-100-03","name":"NL35 III PH 1 - SITE & BUILDING 7","start":"2026-09-01","finish":"' + $late + '","createdAt":"2026-05-01T10:00:00Z","lastFileAt":"2026-09-20T10:00:00Z","state":"CA","active":true,"fileCount":5,"totalSize":12000000},{"code":"25-079-02","name":"FOX FIELD WEST BUILDING 1","createdAt":"2026-09-28T10:00:00Z","fileCount":0,"totalSize":0}]}'
+        $json = '{"projects":[{"code":"26-292-03","name":"PROSPER RETAIL","start":"2026-10-01","finish":"' + $soon + '","board":{"open":3,"done":3,"updatedAt":"' + $dm1 + 'T14:00:00Z"},"createdAt":"2026-06-01T10:00:00Z","lastFileAt":"2026-08-04T10:00:00Z","fuelRate":4.74,"state":"TX","active":true,"foreman":{"email":"maria.lopez@earthbasics.net","name":"Maria Lopez"},"schedule":[{"id":"a1","kind":"machine","name":"Scraper: CAT651","qty":4,"start":"2026-10-10","end":"2026-10-25","note":""},{"id":"a2","kind":"machine","name":"Dozer: CAT D6","start":"2026-10-14","end":"","note":"unit 212"},{"id":"a3","kind":"person","name":"Maria Lopez","start":"2026-10-10","end":"2026-10-25","note":"Foreman","linkId":"a1"},{"id":"a4","kind":"person","name":"Ben Carter","start":"2026-10-20","end":"2026-10-22","note":""}],"fileCount":2,"totalSize":3300000,"links":[{"name":"Procore","url":"https://app.procore.com/2024/project/home"},{"name":"Autodesk Docs","url":"https://acc.autodesk.com/docs/files/projects/abc123"}]},{"code":"26-100-03","name":"NL35 III PH 1 - SITE & BUILDING 7","start":"2026-09-01","finish":"' + $late + '","createdAt":"2026-05-01T10:00:00Z","lastFileAt":"2026-09-20T10:00:00Z","state":"CA","active":true,"fileCount":5,"totalSize":12000000},{"code":"25-079-02","name":"FOX FIELD WEST BUILDING 1","createdAt":"2026-09-28T10:00:00Z","fileCount":0,"totalSize":0}]}'
       } elseif ($path -eq '/api/project-files' -and $req.HttpMethod -eq 'DELETE') {
         $json = '{"ok":true}'
       } elseif ($path -eq '/api/project-files' -and $req.HttpMethod -eq 'POST') {

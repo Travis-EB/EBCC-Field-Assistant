@@ -310,6 +310,28 @@ body.tv-mode .aj-tgroup .aj-tname, body.tv-mode .aj-dc, body.tv-mode .aj-mh, bod
 body.tv-mode .aj-tgroup .aj-track { height: 30px; }
 body.tv-mode .aj-legend { font-size: 14px; }
 #aj-tv-exit { position: fixed; right: 16px; bottom: 16px; z-index: 50; }
+/* Job hub */
+#aj-tabs { margin: 0 0 12px; }
+#aj-tabs .adm-cat b:empty { display: none; }
+.aj-tasks-sum { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.aj-template { font-family: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark); margin-bottom: 4px; }
+.aj-task { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
+.aj-task input[type="checkbox"] { width: 22px; height: 22px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--orange); }
+.aj-task-body { min-width: 0; flex: 1; }
+.aj-task-body[data-aj-task-edit] { cursor: pointer; }
+.aj-task-text { font-weight: 600; font-size: 14.5px; line-height: 1.3; overflow-wrap: anywhere; }
+.aj-task.is-done .aj-task-text { text-decoration: line-through; color: var(--gray); font-weight: 500; }
+.aj-task-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--gray); margin-top: 3px; }
+.aj-chip { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--light-gray); color: var(--dark); font-weight: 600; font-size: 11.5px; }
+.aj-chip.is-me { background: var(--orange); color: #fff; }
+.is-overdue { color: var(--red); font-weight: 700; }
+.aj-form select, .aj-form textarea {
+  width: 100%; box-sizing: border-box; font-family: inherit; font-size: 16px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark); margin-bottom: 8px;
+}
+#aj-notes { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 15px; line-height: 1.45; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark); margin: 8px 0; resize: vertical; }
+.aj-notes-ul { margin: 6px 0; padding-left: 20px; }
+.aj-notes-ul li, #aj-notes-view p { font-size: 14.5px; line-height: 1.45; margin: 3px 0; overflow-wrap: anywhere; }
 .aj-bar.is-machine { background: var(--orange); }
 .aj-bar.is-person { background: #3b82f6; }
 .aj-bar.clip-l { border-top-left-radius: 0; border-bottom-left-radius: 0; }
@@ -2333,6 +2355,14 @@ body.tv-mode .aj-legend { font-size: 14px; }
       <div id="aj-title" style="flex:1;min-width:0"></div>
       <button class="btn btn-primary" id="aj-edit-toggle">Edit</button>
     </div>
+    <div class="adm-cats" id="aj-tabs" role="tablist">
+      <button type="button" role="tab" class="adm-cat on" data-aj-tab="schedule">Schedule</button>
+      <button type="button" role="tab" class="adm-cat" data-aj-tab="tasks">Action Items <b id="aj-tab-open"></b></button>
+      <button type="button" role="tab" class="adm-cat" data-aj-tab="minutes">Minutes</button>
+      <button type="button" role="tab" class="adm-cat" data-aj-tab="contacts">Contacts</button>
+      <button type="button" role="tab" class="adm-cat" data-aj-tab="safety">Safety</button>
+      <button type="button" role="tab" class="adm-cat" data-aj-tab="photos">Photos</button>
+    </div>
     <div class="ewt-section aj-foreman-row">
       <span class="aj-glabel" style="margin:0">Foreman</span>
       <select id="aj-foreman" aria-label="Foreman"><option value="">— not set —</option></select>
@@ -2343,6 +2373,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
         <span id="aj-dates-status"></span>
       </div>
     </div>
+    <div id="aj-pane-schedule">
     <div class="ewt-section">
       <div class="aj-toolbar">
         <div class="aj-nav">
@@ -2383,7 +2414,52 @@ body.tv-mode .aj-legend { font-size: 14px; }
       </div>
       <div id="aj-form-msg" style="font-size:12.5px;font-weight:600;color:var(--red);min-height:16px;margin-top:6px"></div>
     </div>
+    </div>
+    <div id="aj-pane-tasks" style="display:none">
+      <div class="ewt-section">
+        <div id="aj-tasks-head"></div>
+        <div id="aj-tasks-list"></div>
+      </div>
+      <div class="ewt-section aj-form" id="aj-tform" style="display:none">
+        <h3 id="aj-tform-title">Add an action item</h3>
+        <input type="text" id="aj-tform-text" placeholder="What needs to happen" autocomplete="off">
+        <div class="seg" id="aj-tform-phase">
+          <button type="button" data-aj-phase="1st move">1st move</button>
+          <button type="button" data-aj-phase="2nd move">2nd move</button>
+          <button type="button" data-aj-phase="3rd move">3rd move</button>
+          <button type="button" data-aj-phase="General" class="on">General</button>
+        </div>
+        <div class="aj-dates">
+          <label>Assigned to<select id="aj-tform-assignee"><option value="">— unassigned —</option></select></label>
+          <label>Due <small>(optional)</small><input type="date" id="aj-tform-due"></label>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="aj-tform-save">Add</button>
+          <button class="btn" id="aj-tform-cancel" style="display:none">Cancel</button>
+          <button class="btn" id="aj-tform-delete" style="display:none;margin-left:auto;color:var(--red);border-color:var(--red)">Delete</button>
+        </div>
+        <div id="aj-tform-msg" style="font-size:12.5px;font-weight:600;color:var(--red);min-height:16px;margin-top:6px"></div>
+      </div>
+      <div class="ewt-section" id="aj-notes-wrap">
+        <h3>Job notes</h3>
+        <div class="ewt-hint">Deal details, who's who, anything the next person on this job needs to know.</div>
+        <div id="aj-notes-view"></div>
+        <div id="aj-notes-edit" style="display:none">
+          <textarea id="aj-notes" rows="6" placeholder="- Start lines with a dash for bullets"></textarea>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary" id="aj-notes-save">Save notes</button>
+            <span id="aj-notes-status" style="font-size:12px;font-weight:600;color:var(--gray)"></span>
+          </div>
+        </div>
+        <div id="aj-notes-by" class="aj-tjs" style="margin-top:6px"></div>
+      </div>
+    </div>
+    <div id="aj-pane-minutes" style="display:none"><div class="ewt-section"><div class="empty">Meeting minutes are coming in the next update.</div></div></div>
+    <div id="aj-pane-contacts" style="display:none"><div class="ewt-section"><div class="empty">Job contacts are coming in the next update.</div></div></div>
+    <div id="aj-pane-safety" style="display:none"><div class="ewt-section"><div class="empty">Safety records by job are coming in the next update.</div></div></div>
+    <div id="aj-pane-photos" style="display:none"><div class="ewt-section"><div class="empty">Site photos are coming in the next update.</div></div></div>
     <div id="aj-admin-foot" class="admin-only" style="display:none;margin:4px 0 20px">
+      <button class="btn btn-primary" id="aj-activate" style="display:none">Make this an active job</button>
       <button class="btn" id="aj-deactivate" style="color:var(--red);border-color:var(--red)">Remove from active jobs</button>
     </div>
   </div>
@@ -8452,7 +8528,8 @@ function jbOpenProject(code) {
       '<button class="btn" id="jb-back-btn">&larr; Back</button>' +
       '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.name) + '</div>' +
       '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.code) + '</div></div>' +
-      (window.EBCC_IS_ADMIN ? '<button class="btn" id="jb-delete-project" style="margin-left:auto;flex-shrink:0;color:var(--red);border-color:var(--red)">Delete project</button>' : '') +
+      '<button class="btn" id="jb-hub-btn" style="margin-left:auto;flex-shrink:0" title="Action items, notes, schedule and more for this job">Project hub</button>' +
+      (window.EBCC_IS_ADMIN ? '<button class="btn" id="jb-delete-project" style="flex-shrink:0;color:var(--red);border-color:var(--red)">Delete project</button>' : '') +
     '</div>' +
     // State picks the CA/TX rate library on Cost Per Yard and Flat Work for this job.
     '<div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px;flex-wrap:wrap">' +
@@ -8489,6 +8566,10 @@ function jbOpenProject(code) {
     '<div class="section-header">Files</div>' +
     '<div id="jb-files"><div class="empty">Loading files…</div></div>';
   window.scrollTo(0, 0);
+  document.getElementById('jb-hub-btn').onclick = () => {
+    ajOpen(code, '', { origin: 'jobbooks', tab: 'tasks' });
+    document.querySelector('.tab[data-tab="activejobs"]').click();
+  };
   document.getElementById('jb-state-seg').onclick = (e) => {
     const b = e.target.closest('[data-jb-state]');
     if (!b) return;
@@ -10031,6 +10112,48 @@ let ajEditing = false;
 let ajEditId = null;     // entry loaded into the form (null = adding)
 let ajKind = 'machine';
 let ajStateFilter = 'all';
+// ---- Job hub (action items / notes / minutes / contacts) ----
+let ajTab = 'schedule';     // which pane is open on the job page
+let ajOrigin = '';          // 'jobbooks' when opened from a Job Book — Back returns there
+let ajTaskFilter = 'all';   // all | mine | open | done
+let ajTformId = null;       // action item loaded into the form (null = adding)
+let ajTformPhase = 'General';
+const AJ_BOARDS = {};       // code -> board doc
+const AJ_BOARD_AT = {};     // code -> ms fetched
+// Must match api/shared/boardTemplates.js — the server inserts, the client previews.
+const BOARD_PHASES = ['1st move', '2nd move', '3rd move', 'General'];
+const BOARD_TEMPLATES = {
+  '1st move': ['Plans sent to the model guys', 'Job book created', 'Walk the site with the superintendent', 'Bench the building', 'Finished floor on the pad confirmed with the PM', 'Lime scheduled (note the date)', 'Erosion control in place'],
+  '2nd move': ['Walk with the concrete guy before demob', 'Landscape plans received', 'Walk with the landscaper before mobilizing', 'Plan changes checked', 'Rock / base scheduled'],
+  '3rd move': ['Backfill curbs', 'Grade sidewalks', 'Free-spread topsoil', 'Final walk with the superintendent', 'Machines called off / equipment released'],
+};
+function ajAgo(iso) {
+  if (!iso) return '';
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (!isFinite(m) || m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.round(m / 60); if (h < 24) return h + 'h ago';
+  const d = Math.round(h / 24); if (d < 14) return d + 'd ago';
+  return ajFmt(String(iso).slice(0, 10));
+}
+function ajMeEmail() { return String((window.EBCC_ME && window.EBCC_ME.email) || '').toLowerCase(); }
+function ajBoardPost(body) {
+  return fetch('/api/project-board', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => r.json().then(j => ({ ok: r.ok && j && j.ok, j: j })).catch(() => ({ ok: false, j: null })))
+    .catch(() => ({ ok: false, j: null }));
+}
+function ajAdoptBoard(code, board) {
+  AJ_BOARDS[code] = board; AJ_BOARD_AT[code] = Date.now();
+  const p = (window.EBCC_PROJECTS || []).find(x => x.code === code);
+  if (p && board && board.summary) p.board = board.summary;
+}
+function ajLoadBoard(code, force) {
+  if (!force && AJ_BOARDS[code] && Date.now() - (AJ_BOARD_AT[code] || 0) < 60000) return Promise.resolve(AJ_BOARDS[code]);
+  return fetch('/api/project-board?code=' + encodeURIComponent(code)).then(r => r.ok ? r.json() : null).then(j => {
+    if (j && j.board) { ajAdoptBoard(code, j.board); if (ajCode === code) ajRenderPane(); }
+    return AJ_BOARDS[code] || null;
+  }).catch(() => null);
+}
 // Timeline board: a window of AJ_DAYS days starting at ajWinStart ('YYYY-MM-DD').
 const AJ_DAYS = 42, AJ_COLW = 30;
 let ajWinStart = '';
@@ -10221,7 +10344,9 @@ function ajRenderHome() {
         : '';
       rows.push({
         cls: 'aj-tjob', big: true, tog: { key: p.code, open: open, enabled: sched.length > 0 },
-        name: p.name, sub: p.code + (p.foreman && p.foreman.name ? ' · ' + p.foreman.name : '') + finishNote, attrs: openAttr,
+        name: p.name, sub: p.code + (p.foreman && p.foreman.name ? ' · ' + p.foreman.name : '') + finishNote +
+          (p.board && p.board.open ? ' · ' + p.board.open + ' open item' + (p.board.open === 1 ? '' : 's') : '') +
+          (function () { const ts = [p.board && p.board.updatedAt, p.scheduleSetAt, p.datesSetAt].filter(Boolean).sort().pop(); return ts ? ' · updated ' + ajAgo(ts) : ''; })(), attrs: openAttr,
         bar: win ? { start: win.start, end: win.end, cls: 'is-job' + (fs ? ' is-' + fs : ''), attrs: openAttr,
           label: sched.length ? m + ' machine' + (m === 1 ? '' : 's') + ' · ' + n + ' ' + (n === 1 ? 'person' : 'people') : (fs === 'late' ? 'past finish date' : 'nothing scheduled') } : null,
       });
@@ -10281,21 +10406,158 @@ function ajRenderForeman(p) {
 }
 
 // Open a job; with entryId, go straight to editing that entry.
-function ajOpen(code, entryId) {
+function ajOpen(code, entryId, opts) {
+  opts = opts || {};
   ajCode = code; ajEditing = false; ajEditId = null; ajDay = ajToday();
+  ajTab = opts.tab || (entryId ? 'schedule' : ajTab) || 'schedule';
+  ajOrigin = opts.origin || '';
+  ajTaskFilter = 'all'; ajTformId = null;
   document.getElementById('aj-home').style.display = 'none';
   document.getElementById('aj-detail').style.display = '';
   const p = ajProj();
-  if (p) { ajRenderForeman(p); ajLoadDirectory().then(() => { const q = ajProj(); if (q && q.code === code) ajRenderForeman(q); }); }
+  if (p) { ajRenderForeman(p); ajLoadDirectory().then(() => { const q = ajProj(); if (q && q.code === code) { ajRenderForeman(q); ajFillAssignees(); } }); }
   ajRenderDetail();
+  ajLoadBoard(code);
   if (entryId) { const e = ajSchedule(p).find(x => x.id === entryId); if (e) ajStartEdit(e); }
   window.scrollTo(0, 0);
 }
 function ajBack() {
-  ajCode = null; ajEditing = false; ajEditId = null;
+  const origin = ajOrigin;
+  ajCode = null; ajEditing = false; ajEditId = null; ajOrigin = '';
   document.getElementById('aj-detail').style.display = 'none';
   document.getElementById('aj-home').style.display = '';
   ajRenderHome();
+  if (origin === 'jobbooks') { const t = document.querySelector('.tab[data-tab="jobbooks"]'); if (t) t.click(); }
+}
+function ajShowTab(tab) {
+  ajTab = tab;
+  ajRenderDetail();
+  if (tab !== 'schedule') ajLoadBoard(ajCode);
+}
+function ajRenderPane() {
+  const p = ajProj(); if (!p) return;
+  document.querySelectorAll('#aj-tabs [data-aj-tab]').forEach(b => {
+    const on = b.getAttribute('data-aj-tab') === ajTab;
+    b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  ['schedule', 'tasks', 'minutes', 'contacts', 'safety', 'photos'].forEach(k => {
+    const el = document.getElementById('aj-pane-' + k); if (el) el.style.display = k === ajTab ? '' : 'none';
+  });
+  document.getElementById('aj-edit-toggle').style.display = ajTab === 'schedule' ? '' : 'none';
+  const b = AJ_BOARDS[p.code];
+  const openN = b ? (b.tasks || []).filter(t => !t.done).length : (p.board ? p.board.open : null);
+  document.getElementById('aj-tab-open').textContent = openN != null && openN > 0 ? String(openN) : '';
+  if (ajTab === 'tasks') ajRenderTasks();
+}
+
+// ---- Action items + notes ----
+function ajNotesHtml(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  let html = '', inList = false;
+  lines.forEach(l => {
+    const m = l.match(/^\s*[-•*]\s+(.*)$/);
+    if (m) { if (!inList) { html += '<ul class="aj-notes-ul">'; inList = true; } html += '<li>' + escHTML(m[1]) + '</li>'; }
+    else { if (inList) { html += '</ul>'; inList = false; } if (l.trim()) html += '<p>' + escHTML(l) + '</p>'; }
+  });
+  if (inList) html += '</ul>';
+  return html || '<div class="empty">No notes yet.</div>';
+}
+function ajFillAssignees(selected) {
+  const sel = document.getElementById('aj-tform-assignee');
+  const cur = selected != null ? selected : sel.value;
+  sel.innerHTML = '<option value="">— unassigned —</option>' + (AJ_DIRECTORY || []).map(u =>
+    '<option value="' + escAttr(u.email) + '"' + (u.email === cur ? ' selected' : '') + '>' + escHTML(u.name) + '</option>').join('');
+}
+function ajSetTformPhase(ph) {
+  ajTformPhase = BOARD_PHASES.includes(ph) ? ph : 'General';
+  document.querySelectorAll('#aj-tform-phase [data-aj-phase]').forEach(b => b.classList.toggle('on', b.getAttribute('data-aj-phase') === ajTformPhase));
+}
+function ajTformReset() {
+  ajTformId = null;
+  document.getElementById('aj-tform-title').textContent = 'Add an action item';
+  document.getElementById('aj-tform-save').textContent = 'Add';
+  document.getElementById('aj-tform-cancel').style.display = 'none';
+  document.getElementById('aj-tform-delete').style.display = 'none';
+  document.getElementById('aj-tform-text').value = '';
+  document.getElementById('aj-tform-due').value = '';
+  ajFillAssignees('');
+  ajSetTformPhase('General');
+  document.getElementById('aj-tform-msg').textContent = '';
+}
+function ajTformLoad(t) {
+  ajTformId = t.id;
+  document.getElementById('aj-tform-title').textContent = 'Edit action item';
+  document.getElementById('aj-tform-save').textContent = 'Save changes';
+  document.getElementById('aj-tform-cancel').style.display = '';
+  document.getElementById('aj-tform-delete').style.display = '';
+  document.getElementById('aj-tform-text').value = t.text;
+  document.getElementById('aj-tform-due').value = t.due || '';
+  ajFillAssignees(t.assignee ? t.assignee.email : '');
+  ajSetTformPhase(t.phase);
+  document.getElementById('aj-tform-msg').textContent = '';
+  document.getElementById('aj-tform').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function ajRenderTasks() {
+  const p = ajProj(); if (!p) return;
+  const admin = !!window.EBCC_IS_ADMIN;
+  const head = document.getElementById('aj-tasks-head'), list = document.getElementById('aj-tasks-list');
+  const b = AJ_BOARDS[p.code];
+  document.getElementById('aj-tform').style.display = admin ? '' : 'none';
+  if (!b) { head.innerHTML = ''; list.innerHTML = '<div class="empty">Loading…</div>'; return; }
+  const tasks = b.tasks || [];
+  const me = ajMeEmail(), today = ajToday();
+  const doneN = tasks.filter(t => t.done).length;
+  const counts = {
+    all: tasks.length, mine: tasks.filter(t => t.assignee && t.assignee.email === me).length,
+    open: tasks.length - doneN, done: doneN,
+  };
+  head.innerHTML =
+    '<div class="aj-tasks-sum"><h3 style="margin:0">Action items</h3><span class="aj-tjs">' + (tasks.length ? doneN + ' of ' + tasks.length + ' done' : 'Nothing here yet') + '</span></div>' +
+    '<div class="adm-cats" style="margin:8px 0 10px">' + [['all', 'All'], ['mine', 'Mine'], ['open', 'Open'], ['done', 'Done']].map(x =>
+      '<button type="button" class="adm-cat' + (ajTaskFilter === x[0] ? ' on' : '') + '" data-aj-tf="' + x[0] + '">' + x[1] + ' <b>' + counts[x[0]] + '</b></button>').join('') + '</div>' +
+    (admin ? '<select id="aj-template" class="aj-template"><option value="">Add a checklist…</option>' + Object.keys(BOARD_TEMPLATES).map(k =>
+      '<option value="' + escAttr(k) + '">' + escHTML(k) + ' checklist (' + BOARD_TEMPLATES[k].length + ' items)</option>').join('') + '</select>' : '');
+  const shown = tasks.filter(t => ajTaskFilter === 'mine' ? (t.assignee && t.assignee.email === me) : ajTaskFilter === 'open' ? !t.done : ajTaskFilter === 'done' ? t.done : true);
+  const row = t => {
+    const overdue = !t.done && t.due && t.due < today;
+    return '<div class="aj-task' + (t.done ? ' is-done' : '') + '" data-aj-task-row="' + escAttr(t.id) + '">' +
+      '<input type="checkbox" data-aj-task="' + escAttr(t.id) + '"' + (t.done ? ' checked' : '') + ' aria-label="Done">' +
+      '<div class="aj-task-body"' + (admin ? ' data-aj-task-edit="' + escAttr(t.id) + '" title="Tap to edit"' : '') + '>' +
+        '<div class="aj-task-text">' + escHTML(t.text) + '</div>' +
+        '<div class="aj-task-meta">' +
+          (t.assignee ? '<span class="aj-chip' + (t.assignee.email === me ? ' is-me' : '') + '">' + escHTML(t.assignee.name) + '</span>' : '') +
+          (t.due ? '<span' + (overdue ? ' class="is-overdue"' : '') + '>' + (overdue ? 'overdue · ' : 'due ') + ajFmt(t.due) + '</span>' : '') +
+          (t.done && t.doneBy ? '<span>done by ' + escHTML(t.doneBy.name) + (t.doneAt ? ' · ' + ajFmt(String(t.doneAt).slice(0, 10)) : '') + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  };
+  const byPhase = BOARD_PHASES.map(ph => {
+    const xs = shown.filter(t => t.phase === ph).sort((a, b) => (a.done - b.done) || (a.due || '9').localeCompare(b.due || '9') || String(a.createdAt).localeCompare(String(b.createdAt)));
+    if (!xs.length) return '';
+    const open = xs.filter(t => !t.done).length;
+    return '<div class="aj-glabel">' + ph + ' (' + (open ? open + ' open' : 'all done') + ')</div>' + xs.map(row).join('');
+  }).join('');
+  list.innerHTML = byPhase || '<div class="empty">' + (tasks.length ? 'Nothing matches that filter.' : (admin ? 'Add an action item below, or start from a checklist.' : 'No action items yet.')) + '</div>';
+  // notes
+  document.getElementById('aj-notes-view').innerHTML = admin ? '' : ajNotesHtml(b.notes);
+  document.getElementById('aj-notes-view').style.display = admin ? 'none' : '';
+  document.getElementById('aj-notes-edit').style.display = admin ? '' : 'none';
+  const ta = document.getElementById('aj-notes');
+  if (admin && document.activeElement !== ta) ta.value = b.notes || '';
+  document.getElementById('aj-notes-by').textContent = b.notesAt ? 'Last edited by ' + (b.notesBy || '—') + ' · ' + ajAgo(b.notesAt) : '';
+}
+function ajTaskToggle(id, done) {
+  const p = ajProj(); const b = p && AJ_BOARDS[p.code]; if (!b) return;
+  const t = (b.tasks || []).find(x => x.id === id); if (!t) return;
+  const prev = { done: t.done, doneBy: t.doneBy, doneAt: t.doneAt };
+  t.done = done; t.doneBy = done ? { email: ajMeEmail(), name: (window.EBCC_ME && window.EBCC_ME.name) || 'you' } : null; t.doneAt = done ? new Date().toISOString() : '';
+  ajRenderPane();
+  ajBoardPost({ mode: 'toggleTask', code: p.code, id: id, done: done }).then(out => {
+    if (out.ok) { ajAdoptBoard(p.code, out.j.board); ajRenderPane(); return; }
+    Object.assign(t, prev); ajRenderPane();
+    alert((out.j && out.j.error) || 'Could not save — check your connection.');
+  });
 }
 
 // Job page: same board, rows are the job's machines (with their linked
@@ -10313,6 +10575,9 @@ function ajRenderDetail() {
   tog.textContent = ajEditing ? 'Done' : 'Edit';
   tog.classList.toggle('btn-primary', !ajEditing);
   document.getElementById('aj-editor').style.display = ajEditing ? '' : 'none';
+  document.getElementById('aj-activate').style.display = p.active ? 'none' : '';
+  document.getElementById('aj-deactivate').style.display = p.active ? '' : 'none';
+  ajRenderPane();
   document.getElementById('aj-dhint').textContent = ajEditing ? 'Tap a bar to change it' : 'Tap a bar to edit it';
 
   const m = ajCount(sched, false), n = ajCount(sched, true);
@@ -10479,6 +10744,72 @@ function ajSaveSchedule(next) {
       p.active = true;
       ajRenderHome();
     });
+  });
+  document.getElementById('aj-tabs').addEventListener('click', e => { const b = e.target.closest('[data-aj-tab]'); if (b) ajShowTab(b.getAttribute('data-aj-tab')); });
+  document.getElementById('aj-activate').addEventListener('click', () => {
+    const p = ajProj(); if (!p) return;
+    if (!confirm('Make "' + p.name + '" an active job? It will show under Active Jobs for everyone.')) return;
+    ajPost({ mode: 'setActive', code: p.code, active: true }).then(out => {
+      if (!out.ok) { alert((out.j && out.j.error) || 'Could not update the job.'); return; }
+      p.active = true; ajRenderDetail();
+    });
+  });
+  // Action items pane
+  const tasksPane = document.getElementById('aj-pane-tasks');
+  tasksPane.addEventListener('change', e => {
+    const cb = e.target.closest('[data-aj-task]');
+    if (cb) { ajTaskToggle(cb.getAttribute('data-aj-task'), cb.checked); return; }
+    if (e.target.id === 'aj-template') {
+      const ph = e.target.value; e.target.value = '';
+      const p = ajProj(); if (!ph || !p) return;
+      if (!confirm('Add the ' + ph + ' checklist (' + BOARD_TEMPLATES[ph].length + ' items)? Items already on the list are skipped.')) return;
+      ajBoardPost({ mode: 'addTemplate', code: p.code, phase: ph }).then(out => {
+        if (!out.ok) { alert((out.j && out.j.error) || 'Could not add the checklist.'); return; }
+        ajAdoptBoard(p.code, out.j.board); ajRenderPane();
+      });
+    }
+  });
+  tasksPane.addEventListener('click', e => {
+    const p = ajProj(); if (!p) return;
+    const tf = e.target.closest('[data-aj-tf]');
+    if (tf) { ajTaskFilter = tf.getAttribute('data-aj-tf'); ajRenderTasks(); return; }
+    const ed = e.target.closest('[data-aj-task-edit]');
+    if (ed) { const t = (AJ_BOARDS[p.code].tasks || []).find(x => x.id === ed.getAttribute('data-aj-task-edit')); if (t) ajTformLoad(t); return; }
+    const ph = e.target.closest('[data-aj-phase]');
+    if (ph) { ajSetTformPhase(ph.getAttribute('data-aj-phase')); return; }
+    if (e.target.id === 'aj-tform-cancel') { ajTformReset(); return; }
+    if (e.target.id === 'aj-tform-delete') {
+      const t = (AJ_BOARDS[p.code].tasks || []).find(x => x.id === ajTformId); if (!t) return;
+      if (!confirm('Delete "' + t.text + '"?')) return;
+      ajBoardPost({ mode: 'deleteTask', code: p.code, id: t.id }).then(out => {
+        if (!out.ok) { alert((out.j && out.j.error) || 'Could not delete.'); return; }
+        ajTformReset(); ajAdoptBoard(p.code, out.j.board); ajRenderPane();
+      });
+      return;
+    }
+    if (e.target.id === 'aj-tform-save') {
+      const msg = document.getElementById('aj-tform-msg');
+      const text = document.getElementById('aj-tform-text').value.replace(/\s+/g, ' ').trim();
+      if (!text) { msg.textContent = 'Type the action item first.'; document.getElementById('aj-tform-text').focus(); return; }
+      const email = document.getElementById('aj-tform-assignee').value;
+      const u = (AJ_DIRECTORY || []).find(x => x.email === email);
+      const task = { id: ajTformId || '', text: text, phase: ajTformPhase, assignee: u ? { email: u.email, name: u.name } : null, due: document.getElementById('aj-tform-due').value || '' };
+      msg.textContent = '';
+      ajBoardPost({ mode: 'upsertTask', code: p.code, task: task }).then(out => {
+        if (!out.ok) { msg.textContent = (out.j && out.j.error) || 'Could not save.'; return; }
+        ajTformReset(); ajAdoptBoard(p.code, out.j.board); ajRenderPane();
+      });
+      return;
+    }
+    if (e.target.id === 'aj-notes-save') {
+      const st = document.getElementById('aj-notes-status');
+      st.textContent = 'Saving…';
+      ajBoardPost({ mode: 'setNotes', code: p.code, notes: document.getElementById('aj-notes').value }).then(out => {
+        if (!out.ok) { st.textContent = (out.j && out.j.error) || 'Could not save.'; return; }
+        ajAdoptBoard(p.code, out.j.board); ajRenderPane(); st.textContent = 'Saved';
+        setTimeout(() => { if (st.textContent === 'Saved') st.textContent = ''; }, 1500);
+      });
+    }
   });
   document.getElementById('aj-deactivate').addEventListener('click', () => {
     const p = ajProj(); if (!p) return;
