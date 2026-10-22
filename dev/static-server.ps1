@@ -91,6 +91,15 @@ while ($listener.IsListening) {
         $json = '{"ok":true,"sent":true,"recipients":["office@earthbasics.net"],"archived":true}'
       } elseif ($path -eq '/api/ewt-pdf' -and $req.HttpMethod -eq 'POST') {
         $json = '{"ok":true,"path":"dev-admin/mock-' + [DateTime]::Now.Ticks + '.pdf"}'
+      } elseif ($path -eq '/api/project-records') {
+        if ($req.Url.Query -like '*code=26-292-03*') {
+          $json = '{"jha":[' +
+            '{"id":"j1","owner":"u2","ownerName":"Maria Lopez","date":"' + $dm1 + '","sent":true,"sentTs":"' + $dm1 + 'T13:00:00Z","emailedTo":["travis@earthbasics.net"],"pdfUrl":"/icons/logo.png","preparedBy":"Maria Lopez","contractor":"Earth Basics","description":"Fine grade pad, lime prep","hazards":["Heavy equipment","Dust"],"steps":3,"total":6,"signedCount":6,"injuredCount":0},' +
+            '{"id":"j2","owner":"u2","ownerName":"Maria Lopez","date":"' + $dm3 + '","sent":false,"sentTs":"' + $dm3 + 'T13:00:00Z","emailedTo":[],"pdfUrl":null,"preparedBy":"Maria Lopez","contractor":"Earth Basics","description":"Haul road, water truck","hazards":["Traffic"],"steps":2,"total":5,"signedCount":4,"injuredCount":1}' +
+            '],"talks":[{"id":"tb1","owner":"u2","ownerName":"Maria Lopez","date":"' + $dm3 + '","sent":true,"sentTs":"' + $dm3 + 'T12:00:00Z","emailedTo":["travis@earthbasics.net"],"pdfUrl":"/icons/logo.png","leader":"Maria Lopez","topics":["Heat illness","PPE"],"comments":"Hydrate","attendees":7,"signedCount":7}],' +
+            '"incidents":[{"id":"ir1","owner":"u3","ownerName":"Ben Carter","date":"2026-10-12","sent":true,"sentTs":"2026-10-12T22:00:00Z","emailedTo":["travis@earthbasics.net"],"pdfUrl":"/icons/logo.png","time":"14:30","type":"Near Miss","reporter":"Ben Carter","involved":"Jose R.","location":"North lot","desc":"Scraper backed toward the water truck","injury":"","action":"Spotter assigned","witnesses":"","photoCount":2,"photoUrls":["/icons/logo.png","/icons/logo.png"],"thumb":""}],' +
+            '"generatedAt":"' + $d0 + 'T00:00:00Z"}'
+        } else { $json = '{"jha":[],"talks":[],"incidents":[],"generatedAt":"' + $d0 + 'T00:00:00Z"}' }
       } elseif ($path -eq '/api/project-board' -and $req.HttpMethod -eq 'GET') {
         if ($req.Url.Query -like '*code=26-292-03*') { $json = '{"board":' + (Board-Json) + '}' }
         else { $code = ($req.QueryString['code']); $json = '{"board":{"id":"board:' + $code + '","type":"project_board","code":"' + $code + '","tasks":[],"notes":"","notesBy":"","notesAt":"","minutes":[],"contacts":[],"summary":{"open":0,"done":0,"updatedAt":""},"updatedAt":""}}' }

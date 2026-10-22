@@ -337,6 +337,12 @@ body.tv-mode .aj-legend { font-size: 14px; }
 .aj-min[open] > summary::before { transform: rotate(90deg); }
 .aj-kind { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; background: var(--orange); color: #fff; }
 .aj-kind.is-la { background: #3b82f6; }
+.aj-kind.is-jha { background: #059669; }
+.aj-kind.is-ir { background: #dc2626; }
+.aj-saf-body { font-size: 14px; line-height: 1.45; margin: 8px 0 0 20px; overflow-wrap: anywhere; }
+.aj-saf-body > div { margin: 2px 0; }
+.aj-saf-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.aj-saf-photos img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
 .aj-min-date { color: var(--gray); font-size: 12.5px; }
 .aj-min-title { font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
 .aj-min-body { white-space: pre-wrap; font-size: 14.5px; line-height: 1.45; margin: 8px 0 0 20px; overflow-wrap: anywhere; }
@@ -2526,7 +2532,13 @@ body.tv-mode .aj-legend { font-size: 14px; }
         </div>
       </div>
     </div>
-    <div id="aj-pane-safety" style="display:none"><div class="ewt-section"><div class="empty">Safety records by job are coming in the next update.</div></div></div>
+    <div id="aj-pane-safety" style="display:none">
+      <div class="ewt-section">
+        <div class="aj-tasks-sum"><h3 style="margin:0">Safety records on this job</h3><span class="aj-tjs" id="aj-saf-sum"></span><button type="button" class="btn aj-mini" id="aj-saf-refresh" style="margin-left:auto">Refresh</button></div>
+        <div class="ewt-hint">Every JHA, tailgate talk and incident report anyone has filed against this job. Open PDF shows the signed copy.</div>
+        <div id="aj-saf-list"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
     <div id="aj-pane-photos" style="display:none"><div class="ewt-section"><div class="empty">Site photos are coming in the next update.</div></div></div>
     <div id="aj-admin-foot" class="admin-only" style="display:none;margin:4px 0 20px">
       <button class="btn btn-primary" id="aj-activate" style="display:none">Make this an active job</button>
@@ -10505,6 +10517,7 @@ function ajShowTab(tab) {
   ajTab = tab;
   ajRenderDetail();
   if (tab !== 'schedule') ajLoadBoard(ajCode);
+  if (tab === 'safety') ajLoadSafety(ajCode);
 }
 function ajRenderPane() {
   const p = ajProj(); if (!p) return;
@@ -10521,6 +10534,7 @@ function ajRenderPane() {
   document.getElementById('aj-tab-open').textContent = openN != null && openN > 0 ? String(openN) : '';
   if (ajTab === 'tasks') ajRenderTasks();
   if (ajTab === 'minutes') ajRenderMinutes();
+  if (ajTab === 'safety') ajRenderSafety();
   if (ajTab === 'contacts') ajRenderContacts();
 }
 
@@ -10671,6 +10685,45 @@ function ajRenderMinutes() {
         (admin ? ' · <button type="button" class="aj-link" data-aj-min-edit="' + escAttr(e.id) + '">Edit</button>' : '') + '</div>' +
     '</details>').join('')
     : '<div class="empty">' + (admin ? 'Add the first entry below.' : 'No minutes posted yet.') + '</div>';
+}
+// ---- Safety records by job (cross-user, server-trimmed) ----
+const AJ_SAFETY = {};   // code -> { at, data }
+function ajLoadSafety(code, force) {
+  const c = AJ_SAFETY[code];
+  if (!force && c && c.data && Date.now() - c.at < 5 * 60 * 1000) return Promise.resolve(c.data);
+  AJ_SAFETY[code] = { at: Date.now(), data: null, loading: true };
+  return fetch('/api/project-records?code=' + encodeURIComponent(code)).then(r => r.ok ? r.json() : null).then(j => {
+    AJ_SAFETY[code] = { at: Date.now(), data: j || { error: true } };
+    if (ajCode === code && ajTab === 'safety') ajRenderSafety();
+    return j;
+  }).catch(() => { AJ_SAFETY[code] = { at: 0, data: { error: true } }; if (ajCode === code && ajTab === 'safety') ajRenderSafety(); return null; });
+}
+function ajRenderSafety() {
+  const p = ajProj(); if (!p) return;
+  const list = document.getElementById('aj-saf-list'), sum = document.getElementById('aj-saf-sum');
+  const c = AJ_SAFETY[p.code];
+  if (!c || (!c.data && !c.loading)) { ajLoadSafety(p.code); }
+  if (!c || !c.data) { list.innerHTML = '<div class="empty">Loading…</div>'; sum.textContent = ''; return; }
+  const d = c.data;
+  if (d.error) { list.innerHTML = '<div class="empty">Could not load the records — tap Refresh to try again.</div>'; sum.textContent = ''; return; }
+  const jha = d.jha || [], talks = d.talks || [], irs = d.incidents || [];
+  sum.textContent = (jha.length + talks.length + irs.length) ? jha.length + ' JHA' + (jha.length === 1 ? '' : 's') + ' · ' + talks.length + ' talk' + (talks.length === 1 ? '' : 's') + ' · ' + irs.length + ' incident' + (irs.length === 1 ? '' : 's') : 'Nothing filed yet';
+  const sent = r => r.sentTs ? '<div class="aj-tjs">' + (r.sent ? 'Emailed ' : 'Saved ') + ajAgo(r.sentTs) + (r.emailedTo && r.emailedTo.length ? ' to ' + escHTML(r.emailedTo.join(', ')) : '') + '</div>' : '';
+  const pdf = r => r.pdfUrl ? '<a class="btn aj-mini" href="' + escAttr(r.pdfUrl) + '" target="_blank" rel="noopener">Open PDF</a>' : '<span class="aj-tjs">PDF not archived</span>';
+  const card = (kind, cls, title, r, body) =>
+    '<details class="aj-min"><summary><span class="aj-kind' + cls + '">' + kind + '</span><span class="aj-min-date">' + ajFmt(r.date) + '</span><span class="aj-min-title">' + escHTML(title) + '</span><span class="aj-tjs">' + escHTML(r.ownerName || '') + '</span></summary>' +
+    '<div class="aj-saf-body">' + body + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + pdf(r) + '</div>' + sent(r) + '</div></details>';
+  const line = (k, v) => v ? '<div><span class="aj-tjs">' + k + ':</span> ' + escHTML(v) + '</div>' : '';
+  let html = '';
+  if (jha.length) html += '<div class="aj-glabel">JHAs (' + jha.length + ')</div>' + jha.map(r => card('JHA', ' is-jha', (r.preparedBy ? 'Prepared by ' + r.preparedBy : 'JHA') + ' · ' + r.signedCount + ' of ' + r.total + ' signed' + (r.injuredCount ? ' · ⚠ ' + r.injuredCount + ' injured' : ''), r,
+    line('Work', r.description) + line('Hazards marked yes', (r.hazards || []).join(', ')) + (r.steps ? '<div><span class="aj-tjs">Steps:</span> ' + r.steps + '</div>' : ''))).join('');
+  if (talks.length) html += '<div class="aj-glabel">Tailgate talks (' + talks.length + ')</div>' + talks.map(r => card('Talk', ' is-la', (r.leader ? r.leader + ' · ' : '') + r.attendees + ' attendee' + (r.attendees === 1 ? '' : 's'), r,
+    line('Topics', (r.topics || []).join(', ')) + line('Comments', r.comments))).join('');
+  if (irs.length) html += '<div class="aj-glabel">Incident reports (' + irs.length + ')</div>' + irs.map(r => card('Incident', ' is-ir', (r.type || 'Incident') + (r.time ? ' · ' + r.time : '') + (r.involved ? ' · ' + r.involved : ''), r,
+    line('What happened', r.desc) + line('Where', r.location) + line('Injuries', r.injury) + line('Action taken', r.action) + line('Reported by', r.reporter) +
+    ((r.photoUrls && r.photoUrls.length) ? '<div class="aj-saf-photos">' + r.photoUrls.map(u => '<a href="' + escAttr(u) + '" target="_blank" rel="noopener"><img src="' + escAttr(u) + '" loading="lazy" alt="Incident photo"></a>').join('') + '</div>'
+      : (r.thumb ? '<div class="aj-saf-photos"><img src="' + escAttr(r.thumb) + '" alt="Incident photo"></div>' : '')))).join('');
+  list.innerHTML = html || '<div class="empty">No JHAs, tailgate talks or incident reports have been filed against this job yet.</div>';
 }
 // ---- Contacts ----
 function ajTelHref(phone) { const d = String(phone || '').replace(/[^0-9+]/g, ''); return d ? 'tel:' + d : ''; }
@@ -11024,6 +11077,7 @@ function ajSaveSchedule(next) {
       });
     }
   });
+  document.getElementById('aj-saf-refresh').addEventListener('click', () => { if (ajCode) { ajLoadSafety(ajCode, true); ajRenderSafety(); } });
   // Contacts pane
   const conPane = document.getElementById('aj-pane-contacts');
   conPane.addEventListener('click', e => {
