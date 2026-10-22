@@ -11,9 +11,7 @@
 // with retries (same pattern as the ticket-number counter).
 const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
 const { getJobBooksContainer, safeName } = require('../shared/blob');
-
-const DOC_ID = 'projects';
-const DOC_PK = '__shared__';
+const { DOC_ID, DOC_PK, readDoc, updateProject } = require('../shared/projects');
 
 // Starter job books provided by Travis (2026-08)
 const SEED = [
@@ -44,35 +42,6 @@ const SEED = [
   ['24-926-00', 'WEST CREEK'],
   ['24-279-02', 'AMAZON HESPERIA CAZ5'],
 ];
-
-// Apply `fn(project)` to one project with an etag-checked replace, retrying
-// when another writer got in first. Returns the project, or null if absent.
-async function updateProject(records, code, fn) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const doc = await readDoc(records);
-    if (!doc) return null;
-    const p = (doc.data || []).find((x) => x && String(x.code).toLowerCase() === String(code).toLowerCase());
-    if (!p) return null;
-    fn(p);
-    try {
-      await records.item(DOC_ID, DOC_PK).replace(doc, { accessCondition: { type: 'IfMatch', condition: doc._etag } });
-      return p;
-    } catch (e) {
-      if (e.code !== 412) throw e; // 412 = raced another writer — retry
-    }
-  }
-  throw new Error('projects doc contention');
-}
-
-async function readDoc(records) {
-  try {
-    const { resource } = await records.item(DOC_ID, DOC_PK).read();
-    return resource || null;
-  } catch (e) {
-    if (e.code !== 404) throw e;
-    return null;
-  }
-}
 
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
@@ -139,6 +108,24 @@ module.exports = async function (context, req) {
         const p = await updateProject(records, code, (x) => { x.state = state; x.stateSetBy = me.email; x.stateSetAt = new Date().toISOString(); });
         if (!p) return json(context, 404, { error: 'Project not found.' });
         return json(context, 200, { ok: true, state });
+      }
+
+      // ---- start / finish dates — drive the Active Jobs board colours ----
+      if (mode === 'setDates') {
+        const code = String((body && body.code) || '').trim();
+        if (!code) return json(context, 400, { error: 'code required.' });
+        const DATE_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+        const start = String((body && body.start) || '');
+        const finish = String((body && body.finish) || '');
+        if (start && !DATE_RE.test(start)) return json(context, 400, { error: 'Bad start date.' });
+        if (finish && !DATE_RE.test(finish)) return json(context, 400, { error: 'Bad finish date.' });
+        if (start && finish && finish < start) return json(context, 400, { error: 'Finish is before start.' });
+        const p = await updateProject(records, code, (x) => {
+          x.start = start; x.finish = finish;
+          x.datesSetBy = me.email; x.datesSetAt = new Date().toISOString();
+        });
+        if (!p) return json(context, 404, { error: 'Project not found.' });
+        return json(context, 200, { ok: true, start, finish });
       }
 
       // ---- foreman — one of the Field Assistant accounts ----

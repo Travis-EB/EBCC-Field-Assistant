@@ -285,6 +285,17 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
 /* Labels stick to the visible edge so a bar that starts off-screen still reads. */
 .aj-bar span { overflow: hidden; text-overflow: ellipsis; position: sticky; left: calc(var(--aj-namew) + 8px); }
 .aj-bar.is-job { background: var(--dark); color: var(--card, #fff); }
+.aj-bar.is-job.is-soon { background: #fbbf24; color: #1f2937; }
+.aj-bar.is-job.is-late { background: #dc2626; color: #fff; }
+.aj-s { background: #fbbf24; }
+.aj-l { background: #dc2626; }
+.aj-dates-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; width: 100%; }
+.aj-dates-row label { display: flex; align-items: center; gap: 6px; }
+.aj-dates-row input[type="date"] {
+  font-family: inherit; font-size: 14px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: var(--dark);
+}
+#aj-dates-status { font-size: 12px; font-weight: 600; color: var(--gray); }
 .aj-bar.is-machine { background: var(--orange); }
 .aj-bar.is-person { background: #3b82f6; }
 .aj-bar.clip-l { border-top-left-radius: 0; border-bottom-left-radius: 0; }
@@ -2297,7 +2308,7 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
         </div>
       </div>
       <div id="aj-list"><div class="empty">Loading…</div></div>
-      <div class="aj-legend" style="margin-top:10px"><span><i class="aj-m"></i>machines</span><span><i class="aj-p"></i>personnel</span><span>Tap a job or bar to open it</span></div>
+      <div class="aj-legend" style="margin-top:10px"><span><i class="aj-m"></i>machines</span><span><i class="aj-p"></i>personnel</span><span><i class="aj-s"></i>finishing within 7 days</span><span><i class="aj-l"></i>past finish</span><span>Tap a job or bar to open it</span></div>
     </div>
   </div>
   <div id="aj-detail" style="display:none">
@@ -2310,6 +2321,11 @@ body.nav-open #nav-scrim { opacity: 1; pointer-events: auto; }
       <span class="aj-glabel" style="margin:0">Foreman</span>
       <select id="aj-foreman" aria-label="Foreman"><option value="">— not set —</option></select>
       <span id="aj-foreman-status"></span>
+      <div class="aj-dates-row">
+        <label><span class="aj-glabel" style="margin:0">Start</span><input type="date" id="aj-start-date"></label>
+        <label><span class="aj-glabel" style="margin:0">Finish</span><input type="date" id="aj-finish-date"></label>
+        <span id="aj-dates-status"></span>
+      </div>
     </div>
     <div class="ewt-section">
       <div class="aj-toolbar">
@@ -10035,6 +10051,21 @@ function ajBar(start, end) {
   if (a > N - 1 || b < 0 || b < a) return null;
   return { left: a * ppd, width: Math.max(4, (b - a + 1) * ppd), clipL: ajDayIndex(start) < 0, clipR: !end || bRaw > N - 1 };
 }
+// Job window: the job's own start/finish when set, else the span of its schedule.
+function ajJobWindow(p) {
+  const span = ajSpan(ajSchedule(p));
+  const start = p.start || (span && span.start) || '';
+  const end = p.finish || (span ? span.end : '');
+  return start ? { start: start, end: end } : null;
+}
+// 'soon' = finish within 7 days (today counts), 'late' = past finish, '' otherwise.
+function ajFinishState(p) {
+  if (!p.finish) return '';
+  const d = Math.round((ajParse(p.finish) - ajParse(ajToday())) / 86400000);
+  if (d < 0) return 'late';
+  return d <= 7 ? 'soon' : '';
+}
+function ajDaysLeft(p) { return Math.round((ajParse(p.finish) - ajParse(ajToday())) / 86400000); }
 function ajSpan(sched) {
   if (!sched.length) return null;
   let start = sched[0].start, end = '', ongoing = false;
@@ -10165,13 +10196,18 @@ function ajRenderHome() {
     jobs.forEach(p => {
       const sched = ajSchedule(p);
       const m = ajCount(sched, false), n = ajCount(sched, true);
-      const span = ajSpan(sched);
+      const win = ajJobWindow(p);
+      const fs = ajFinishState(p);
       const open = !!ajOpenRows[p.code];
       const openAttr = 'data-aj-open="' + escAttr(p.code) + '"';
+      const finishNote = p.finish
+        ? ' · finish ' + ajFmt(p.finish) + (fs === 'late' ? ' · overdue' : fs === 'soon' ? ' · ' + ajDaysLeft(p) + ' day' + (ajDaysLeft(p) === 1 ? '' : 's') + ' left' : '')
+        : '';
       rows.push({
         cls: 'aj-tjob', big: true, tog: { key: p.code, open: open, enabled: sched.length > 0 },
-        name: p.name, sub: p.code + (p.foreman && p.foreman.name ? ' · ' + p.foreman.name : ''), attrs: openAttr,
-        bar: span ? { start: span.start, end: span.end, cls: 'is-job', attrs: openAttr, label: m + ' machine' + (m === 1 ? '' : 's') + ' · ' + n + ' ' + (n === 1 ? 'person' : 'people') } : null,
+        name: p.name, sub: p.code + (p.foreman && p.foreman.name ? ' · ' + p.foreman.name : '') + finishNote, attrs: openAttr,
+        bar: win ? { start: win.start, end: win.end, cls: 'is-job' + (fs ? ' is-' + fs : ''), attrs: openAttr,
+          label: sched.length ? m + ' machine' + (m === 1 ? '' : 's') + ' · ' + n + ' ' + (n === 1 ? 'person' : 'people') : (fs === 'late' ? 'past finish date' : 'nothing scheduled') } : null,
       });
       if (open) sched.slice().sort((a, b) => (ajIsPerson(a) - ajIsPerson(b)) || a.start.localeCompare(b.start) || a.name.localeCompare(b.name)).forEach(e => {
         const attrs = openAttr + ' data-aj-id="' + escAttr(e.id) + '"';
@@ -10232,6 +10268,8 @@ function ajRenderDetail() {
   document.getElementById('aj-title').innerHTML =
     '<div style="font-weight:650;font-size:16px;letter-spacing:-0.01em;overflow-wrap:anywhere">' + escHTML(p.name) + '</div>' +
     '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.code + (p.state ? ' · ' + p.state : '')) + '</div>';
+  document.getElementById('aj-start-date').value = p.start || '';
+  document.getElementById('aj-finish-date').value = p.finish || '';
   const tog = document.getElementById('aj-edit-toggle');
   tog.textContent = ajEditing ? 'Done' : 'Edit';
   tog.classList.toggle('btn-primary', !ajEditing);
@@ -10452,6 +10490,25 @@ function ajSaveSchedule(next) {
     ajSaveSchedule(next);
     ajSetKind(ajKind); // refresh suggestions + link choices
   });
+  ['aj-start-date', 'aj-finish-date'].forEach(id => document.getElementById(id).addEventListener('change', () => {
+    const p = ajProj(); if (!p) return;
+    const st = document.getElementById('aj-dates-status');
+    const start = document.getElementById('aj-start-date').value, finish = document.getElementById('aj-finish-date').value;
+    if (start && finish && finish < start) { st.style.color = 'var(--red)'; st.textContent = 'Finish is before start.'; return; }
+    const prev = { start: p.start, finish: p.finish };
+    p.start = start; p.finish = finish;
+    st.style.color = 'var(--gray)'; st.textContent = 'Saving…';
+    ajPost({ mode: 'setDates', code: p.code, start: start, finish: finish }).then(out => {
+      if (!out.ok) {
+        p.start = prev.start; p.finish = prev.finish;
+        document.getElementById('aj-start-date').value = p.start || ''; document.getElementById('aj-finish-date').value = p.finish || '';
+        st.style.color = 'var(--red)'; st.textContent = (out.j && out.j.error) || 'Could not save.';
+        return;
+      }
+      st.textContent = 'Saved';
+      setTimeout(() => { if (st.textContent === 'Saved') st.textContent = ''; }, 1500);
+    });
+  }));
   document.getElementById('aj-foreman').addEventListener('change', () => {
     const p = ajProj(); if (!p) return;
     const sel = document.getElementById('aj-foreman'), st = document.getElementById('aj-foreman-status');
