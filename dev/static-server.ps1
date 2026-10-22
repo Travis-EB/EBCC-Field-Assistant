@@ -154,6 +154,8 @@ while ($listener.IsListening) {
         $json = '{"ok":true}'
       } elseif ($path -eq '/api/project-files' -and $req.HttpMethod -eq 'POST') {
         $json = '{"ok":true,"name":"uploaded.pdf"}'
+      } elseif ($path -eq '/api/project-files' -and $req.Url.Query -like '*sas=list*') {
+        $json = '{"files":[{"name":"' + $d0 + '-1760000000000-1.jpg","folder":"Site Photos","size":180000,"lastModified":"' + $d0 + 'T14:00:00Z","contentType":"image/jpeg","url":"/icons/logo.png"},{"name":"' + $d0 + '-1760000000000-2.jpg","folder":"Site Photos","size":170000,"lastModified":"' + $d0 + 'T14:00:01Z","contentType":"image/jpeg","url":"/icons/logo.png"},{"name":"' + $dm3 + '-1759000000000-1.jpg","folder":"Site Photos","size":160000,"lastModified":"' + $dm3 + 'T15:00:00Z","contentType":"image/jpeg","url":"/icons/logo.png"}]}'
       } elseif ($path -eq '/api/project-files' -and $req.Url.Query -like '*sas=1*') {
         $json = '{"ok":true,"url":"/icons/logo.png"}'
       } elseif ($path -eq '/api/project-files') {

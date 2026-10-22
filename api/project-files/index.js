@@ -76,6 +76,21 @@ module.exports = async function (context, req) {
           });
         }
         files.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        // ?sas=list&folder=… : one folder with a read link on every file, so a
+        // photo grid needs one call instead of one per image. Signing is local.
+        if (req.query && req.query.sas === 'list') {
+          const subset = files.filter((x) => x.folder === folder);
+          for (const x of subset) {
+            try {
+              x.url = await container.getBlockBlobClient(project + '/' + (x.folder ? x.folder + '/' : '') + x.name).generateSasUrl({
+                permissions: BlobSASPermissions.parse('r'),
+                expiresOn: new Date(Date.now() + 15 * 60 * 1000),
+                contentType: typeFor(x.name),
+              });
+            } catch (e) { x.url = null; }
+          }
+          return json(context, 200, { files: subset });
+        }
         return json(context, 200, { files: files });
       }
 

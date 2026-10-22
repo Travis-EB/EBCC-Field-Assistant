@@ -342,6 +342,11 @@ body.tv-mode .aj-legend { font-size: 14px; }
 .aj-saf-body { font-size: 14px; line-height: 1.45; margin: 8px 0 0 20px; overflow-wrap: anywhere; }
 .aj-saf-body > div { margin: 2px 0; }
 .aj-saf-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.aj-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-bottom: 8px; }
+.aj-photo { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--light-gray); }
+.aj-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.aj-photo-none { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 11px; color: var(--gray); }
+.aj-photo-del { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; font-size: 17px; line-height: 1; cursor: pointer; }
 .aj-saf-photos img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
 .aj-min-date { color: var(--gray); font-size: 12.5px; }
 .aj-min-title { font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
@@ -2539,7 +2544,17 @@ body.tv-mode .aj-legend { font-size: 14px; }
         <div id="aj-saf-list"><div class="empty">Loading…</div></div>
       </div>
     </div>
-    <div id="aj-pane-photos" style="display:none"><div class="ewt-section"><div class="empty">Site photos are coming in the next update.</div></div></div>
+    <div id="aj-pane-photos" style="display:none">
+      <div class="ewt-section">
+        <div class="aj-tasks-sum">
+          <h3 style="margin:0">Site photos</h3><span class="aj-tjs" id="aj-ph-sum"></span>
+          <label class="btn btn-primary aj-mini" style="margin-left:auto;cursor:pointer">Add photos<input type="file" id="aj-ph-input" accept="image/*" multiple style="display:none"></label>
+        </div>
+        <div class="ewt-hint">Daily job photos — they file under this job's Site Photos folder in Job Books, so they're there when someone asks. Tap one to open it full size.</div>
+        <div id="aj-ph-status" class="aj-tjs" style="min-height:16px;margin:4px 0"></div>
+        <div id="aj-ph-list"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
     <div id="aj-admin-foot" class="admin-only" style="display:none;margin:4px 0 20px">
       <button class="btn btn-primary" id="aj-activate" style="display:none">Make this an active job</button>
       <button class="btn" id="aj-deactivate" style="color:var(--red);border-color:var(--red)">Remove from active jobs</button>
@@ -10518,6 +10533,7 @@ function ajShowTab(tab) {
   ajRenderDetail();
   if (tab !== 'schedule') ajLoadBoard(ajCode);
   if (tab === 'safety') ajLoadSafety(ajCode);
+  if (tab === 'photos') ajLoadPhotos(ajCode);
 }
 function ajRenderPane() {
   const p = ajProj(); if (!p) return;
@@ -10535,6 +10551,7 @@ function ajRenderPane() {
   if (ajTab === 'tasks') ajRenderTasks();
   if (ajTab === 'minutes') ajRenderMinutes();
   if (ajTab === 'safety') ajRenderSafety();
+  if (ajTab === 'photos') ajRenderPhotos();
   if (ajTab === 'contacts') ajRenderContacts();
 }
 
@@ -10724,6 +10741,66 @@ function ajRenderSafety() {
     ((r.photoUrls && r.photoUrls.length) ? '<div class="aj-saf-photos">' + r.photoUrls.map(u => '<a href="' + escAttr(u) + '" target="_blank" rel="noopener"><img src="' + escAttr(u) + '" loading="lazy" alt="Incident photo"></a>').join('') + '</div>'
       : (r.thumb ? '<div class="aj-saf-photos"><img src="' + escAttr(r.thumb) + '" alt="Incident photo"></div>' : '')))).join('');
   list.innerHTML = html || '<div class="empty">No JHAs, tailgate talks or incident reports have been filed against this job yet.</div>';
+}
+// ---- Site photos (job-books/<code>/Site Photos/<date>-<stamp>-<n>.jpg) ----
+const AJ_PHOTO_FOLDER = 'Site Photos';
+const AJ_PHOTOS = {};   // code -> { at, files, loading }
+function ajLoadPhotos(code, force) {
+  const c = AJ_PHOTOS[code];
+  if (!force && c && c.files && Date.now() - c.at < 10 * 60 * 1000) return Promise.resolve(c.files);
+  AJ_PHOTOS[code] = { at: Date.now(), files: null, loading: true };
+  return fetch('/api/project-files?project=' + encodeURIComponent(code) + '&folder=' + encodeURIComponent(AJ_PHOTO_FOLDER) + '&sas=list')
+    .then(r => r.ok ? r.json() : null).then(j => {
+      AJ_PHOTOS[code] = { at: Date.now(), files: (j && Array.isArray(j.files)) ? j.files : [], error: !j };
+      if (ajCode === code && ajTab === 'photos') ajRenderPhotos();
+      return AJ_PHOTOS[code].files;
+    }).catch(() => { AJ_PHOTOS[code] = { at: 0, files: [], error: true }; if (ajCode === code && ajTab === 'photos') ajRenderPhotos(); return []; });
+}
+function ajPhotoDay(f) {
+  const m = String(f.name || '').match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  return f.lastModified ? String(new Date(f.lastModified).toISOString()).slice(0, 10) : '';
+}
+function ajRenderPhotos() {
+  const p = ajProj(); if (!p) return;
+  const list = document.getElementById('aj-ph-list'), sum = document.getElementById('aj-ph-sum');
+  const c = AJ_PHOTOS[p.code];
+  if (!c || (!c.files && !c.loading)) ajLoadPhotos(p.code);
+  if (!c || !c.files) { list.innerHTML = '<div class="empty">Loading…</div>'; sum.textContent = ''; return; }
+  const files = c.files.filter(f => /\.(jpe?g|png|webp|heic|gif)$/i.test(f.name));
+  sum.textContent = files.length ? files.length + ' photo' + (files.length === 1 ? '' : 's') : (c.error ? 'Could not load' : 'None yet');
+  if (!files.length) { list.innerHTML = '<div class="empty">' + (c.error ? 'Could not load the photos — try again.' : 'No photos yet. Tap Add photos to file today\'s.') + '</div>'; return; }
+  const byDay = {};
+  files.forEach(f => { const d = ajPhotoDay(f); (byDay[d] = byDay[d] || []).push(f); });
+  const admin = !!window.EBCC_IS_ADMIN;
+  list.innerHTML = Object.keys(byDay).sort().reverse().map(day =>
+    '<div class="aj-glabel">' + (day ? ajFmt(day, true) : 'Undated') + ' (' + byDay[day].length + ')</div>' +
+    '<div class="aj-photo-grid">' + byDay[day].sort((a, b) => String(b.name).localeCompare(String(a.name))).map(f =>
+      '<div class="aj-photo">' +
+        (f.url ? '<a href="' + escAttr(f.url) + '" target="_blank" rel="noopener"><img src="' + escAttr(f.url) + '" loading="lazy" alt="' + escAttr(f.name) + '"></a>' : '<div class="aj-photo-none">no link</div>') +
+        (admin ? '<button type="button" class="aj-photo-del" data-aj-ph-del="' + escAttr(f.name) + '" aria-label="Delete photo">&times;</button>' : '') +
+      '</div>').join('') + '</div>').join('');
+}
+// Compress each picked image (same canvas path as ticket photos) and file it
+// under the job's Site Photos folder, named by the day it was filed.
+function ajPhotosUpload(code, fileList) {
+  const files = Array.from(fileList || []).filter(f => f && f.type && f.type.indexOf('image/') === 0);
+  const st = document.getElementById('aj-ph-status');
+  if (!files.length) { st.textContent = 'No images picked.'; return Promise.resolve(); }
+  const day = ajToday(), stamp = Date.now();
+  let done = 0, failed = 0;
+  const one = (file, i) => Promise.resolve(trkCompressPhoto(file)).then(res => {
+    const dataUrl = typeof res === 'string' ? res : (res && (res.data || res.dataUrl)) || '';
+    if (!dataUrl) throw new Error('compress');
+    return fetch('/api/project-files', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: code, name: day + '-' + stamp + '-' + (i + 1) + '.jpg', folder: AJ_PHOTO_FOLDER, contentType: 'image/jpeg', data: dataUrl.slice(dataUrl.indexOf(',') + 1) }) })
+      .then(r => r.json().then(j => { if (!(r.ok && j && j.ok)) throw new Error((j && j.error) || 'upload'); }));
+  }).then(() => { done++; }, () => { failed++; }).then(() => { st.textContent = 'Uploading ' + Math.min(done + failed + 1, files.length) + ' of ' + files.length + '…'; });
+  st.textContent = 'Uploading 1 of ' + files.length + '…';
+  return files.reduce((chain, f, i) => chain.then(() => one(f, i)), Promise.resolve()).then(() => {
+    st.textContent = failed ? (done + ' saved, ' + failed + ' failed — try those again.') : done + ' photo' + (done === 1 ? '' : 's') + ' saved to Site Photos.';
+    return ajLoadPhotos(code, true).then(() => { if (typeof jbLoadProjects === 'function') jbLoadProjects(); });
+  });
 }
 // ---- Contacts ----
 function ajTelHref(phone) { const d = String(phone || '').replace(/[^0-9+]/g, ''); return d ? 'tel:' + d : ''; }
@@ -11076,6 +11153,19 @@ function ajSaveSchedule(next) {
         ajMformReset(); ajAdoptBoard(p.code, out.j.board); ajRenderPane();
       });
     }
+  });
+  document.getElementById('aj-ph-input').addEventListener('change', e => {
+    const code = ajCode; const files = e.target.files;
+    if (code && files && files.length) ajPhotosUpload(code, files);
+    e.target.value = '';
+  });
+  document.getElementById('aj-ph-list').addEventListener('click', e => {
+    const b = e.target.closest('[data-aj-ph-del]'); if (!b) return;
+    const code = ajCode, name = b.getAttribute('data-aj-ph-del');
+    if (!code || !confirm('Delete this photo for everyone?')) return;
+    fetch('/api/project-files?project=' + encodeURIComponent(code) + '&folder=' + encodeURIComponent(AJ_PHOTO_FOLDER) + '&name=' + encodeURIComponent(name), { method: 'DELETE' })
+      .then(r => r.json().then(j => ({ ok: r.ok && j && j.ok, j })).catch(() => ({ ok: false })))
+      .then(out => { if (!out.ok) { alert((out.j && out.j.error) || 'Could not delete.'); return; } ajLoadPhotos(code, true); });
   });
   document.getElementById('aj-saf-refresh').addEventListener('click', () => { if (ajCode) { ajLoadSafety(ajCode, true); ajRenderSafety(); } });
   // Contacts pane
