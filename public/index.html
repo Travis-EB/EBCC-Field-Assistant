@@ -8150,6 +8150,8 @@ if (!lcState.meta.date) {
   function resize() {
     const rect = canvas.getBoundingClientRect();
     if (rect.width === 0) return; // hidden tab — defer
+    // Keyboard open/close fires resize on iOS without changing the pad's size.
+    if (rect.width === cssW && rect.height === cssH && canvas.width) return;
     const dpr = window.devicePixelRatio || 1;
     cssW = rect.width;
     cssH = rect.height;
@@ -11907,13 +11909,24 @@ function tbFlushFields() {
   const nameEl = document.getElementById('tb-signin-name');
   const msg = document.getElementById('tb-signin-msg');
   let drawing = false, lastX = 0, lastY = 0, has = false;
+  let padW = 0, padH = 0;
   function resize() {
     const rect = canvas.getBoundingClientRect();
     if (!rect.width) return;
+    // iOS fires window.resize whenever the keyboard opens or closes (every
+    // time a name is typed). Setting canvas.width erases the drawing, so only
+    // rebuild the canvas when the pad's size really changed — and carry the
+    // signature in progress across.
+    const w = Math.round(rect.width), h = Math.round(rect.height);
+    if (w === padW && h === padH && canvas.width) return;
+    let snap = null;
+    if (has && canvas.width) { try { snap = canvas.toDataURL('image/png'); } catch (e) {} }
+    padW = w; padH = h;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(rect.width * dpr); canvas.height = Math.round(rect.height * dpr);
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.scale(dpr, dpr);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#1f2937'; ctx.lineWidth = 2;
+    if (snap) { const img = new Image(); img.onload = () => { ctx.drawImage(img, 0, 0, rect.width, rect.height); }; img.src = snap; }
   }
   const pt = e => { const r = canvas.getBoundingClientRect(); const s = (e.touches && e.touches[0]) ? e.touches[0] : e; return { x: s.clientX - r.left, y: s.clientY - r.top }; };
   canvas.addEventListener('mousedown', e => { drawing = true; const p = pt(e); lastX = p.x; lastY = p.y; has = true; wrap.classList.add('signed'); e.preventDefault(); });
