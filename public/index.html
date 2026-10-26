@@ -11449,8 +11449,11 @@ function irRenderSendStatus(r) {
   if (!el) return;
   if (r && r.sentTs) {
     const when = new Date(r.sentTs).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    el.textContent = (r.sent ? 'Emailed ✓ ' : 'Copy saved ') + when + (r.emailedTo && r.emailedTo.length ? ' to ' + r.emailedTo.join(', ') : '');
-    el.style.color = r.sent ? 'var(--green)' : 'var(--gray)';
+    const nobody = !(r.emailedTo && r.emailedTo.length);
+    el.textContent = r.sent ? 'Emailed ✓ ' + when + ' to ' + r.emailedTo.join(', ')
+      : nobody ? 'Saved for the office ' + when + ' — NOT emailed: nobody was picked. Pick recipients below and tap "Email PDF again".'
+      : 'Copy saved ' + when + ' — the email to ' + r.emailedTo.join(', ') + ' did not go through. Tap "Email PDF again".';
+    el.style.color = r.sent ? 'var(--green)' : '#d97706';
   } else {
     el.textContent = '';
   }
@@ -11620,7 +11623,9 @@ async function irSendPdf(rec, recipients) {
 document.getElementById('ir-resend').addEventListener('click', () => {
   const r = irCur();
   if (!r || r.status !== 'submitted') return;
-  irSendPdf(r, irGetRecipients());
+  const to = irGetRecipients();
+  if (!to.length) { const el = document.getElementById('ir-send-status'); el.textContent = 'Pick at least one recipient above, then tap Email PDF again.'; el.style.color = 'var(--red)'; return; }
+  irSendPdf(r, to);
 });
 document.getElementById('ir-preview').addEventListener('click', async () => {
   const r = irCur();
@@ -11981,8 +11986,11 @@ function tbRenderSendStatus(r) {
   if (!el) return;
   if (r && r.sentTs) {
     const when = new Date(r.sentTs).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    el.textContent = (r.sent ? 'Emailed ✓ ' : 'Copy saved ') + when + (r.emailedTo && r.emailedTo.length ? ' to ' + r.emailedTo.join(', ') : '');
-    el.style.color = r.sent ? 'var(--green)' : 'var(--gray)';
+    const nobody = !(r.emailedTo && r.emailedTo.length);
+    el.textContent = r.sent ? 'Emailed ✓ ' + when + ' to ' + r.emailedTo.join(', ')
+      : nobody ? 'Saved for the office ' + when + ' — NOT emailed: nobody was picked. Pick recipients below and tap "Email PDF again".'
+      : 'Copy saved ' + when + ' — the email to ' + r.emailedTo.join(', ') + ' did not go through. Tap "Email PDF again".';
+    el.style.color = r.sent ? 'var(--green)' : '#d97706';
   } else el.textContent = '';
 }
 function tbFormatText(r) {
@@ -12139,7 +12147,10 @@ document.getElementById('tb-submit').addEventListener('click', () => {
   const topicsN = TB_TOPICS.filter(t => (r.topics || {})[t]).length + (String(r.other || '').trim() ? 1 : 0);
   if (!topicsN) { alert('Tap at least one topic covered (or add one under Other topics).'); return; }
   if (!(r.signoffs || []).length) { alert('No attendees yet — tap "Sign in crew" and pass the device around first.'); return; }
-  if (!confirm('Submit this attendance record with ' + r.signoffs.length + ' attendee' + (r.signoffs.length === 1 ? '' : 's') + '? It will sync to your account' + (tbGetRecipients().length ? ' and email the PDF to ' + tbGetRecipients().length + ' recipient' + (tbGetRecipients().length === 1 ? '' : 's') + '.' : ' (no email — nobody is picked under Email the record).') + '')) return;
+  const toN = tbGetRecipients().length;
+  if (!confirm(toN
+    ? 'Submit this attendance record with ' + r.signoffs.length + ' attendee' + (r.signoffs.length === 1 ? '' : 's') + '? It will sync to your account and email the PDF to ' + toN + ' recipient' + (toN === 1 ? '' : 's') + '.'
+    : 'NOBODY IS PICKED TO EMAIL.\n\nSubmit anyway? The record saves to your account for the office but no email goes out. Tap Cancel to pick recipients under "Email the record" first.')) return;
   const recipients = tbGetRecipients();
   const rec = Object.assign({}, r);
   delete rec.status;
@@ -12149,7 +12160,12 @@ document.getElementById('tb-submit').addEventListener('click', () => {
   tbOpenEditor(rec.id);
   tbSendPdf(rec, recipients);
 });
-document.getElementById('tb-resend').addEventListener('click', () => { const r = tbCur(); if (r && r.status === 'submitted') tbSendPdf(r, tbGetRecipients()); });
+document.getElementById('tb-resend').addEventListener('click', () => {
+  const r = tbCur(); if (!r || r.status !== 'submitted') return;
+  const to = tbGetRecipients();
+  if (!to.length) { const el = document.getElementById('tb-send-status'); el.textContent = 'Pick at least one recipient above, then tap Email PDF again.'; el.style.color = 'var(--red)'; return; }
+  tbSendPdf(r, to);
+});
 document.getElementById('tb-preview').addEventListener('click', () => {
   const r = tbCur();
   if (!r) return;
@@ -12184,7 +12200,8 @@ document.getElementById('ir-submit').addEventListener('click', () => {
   if (!r || r.status !== 'draft') return;
   if (!r.type) { alert('Pick an incident type before submitting.'); return; }
   if (!String(r.desc || '').trim()) { alert('Describe what happened before submitting.'); document.getElementById('ir-desc').focus(); return; }
-  if (!confirm('Submit this incident report? It will sync to your account and be visible to the office.')) return;
+  const irToN = irGetRecipients().length;
+  if (!confirm(irToN ? 'Submit this incident report? It will sync to your account and email the PDF to ' + irToN + ' recipient' + (irToN === 1 ? '' : 's') + '.' : 'NOBODY IS PICKED TO EMAIL.\n\nSubmit anyway? The report saves to your account for the office but no email goes out. Tap Cancel to pick recipients under "Email the report" first.')) return;
   const recipients = irGetRecipients();   // read before the editor re-renders locked
   (async () => {
     const rec = Object.assign({}, r);
