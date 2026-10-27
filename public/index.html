@@ -455,6 +455,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
 .adm-post > summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--dark); padding: 4px 0; }
 
 /* JHA (Job Hazard Analysis) */
+.jha-signed-archived { color: var(--green); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 .jha-hazard-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 7px 0; border-bottom: 1px solid var(--light-gray); font-size: 13.5px;
@@ -9696,7 +9697,9 @@ function jhaRenderSignoffs(j) {
       '</span>' +
       (s.sig
         ? '<img src="' + escAttr(s.sig) + '" alt="signature"><button type="button" class="jha-x" data-so-unsign="' + i + '" title="Clear signature">&#10005;</button>'
-        : '<button type="button" class="btn" data-so-sign="' + i + '">Sign</button>') +
+        : s.sigTrimmed
+          ? '<span class="jha-signed-archived" title="Signed — the signature is in the archived PDF">&#10003; Signed</span>'
+          : '<button type="button" class="btn" data-so-sign="' + i + '">Sign</button>') +
       '<button type="button" class="jha-x" data-so-del="' + i + '" title="Remove from roster">Remove</button>' +
     '</div>'
   ).join('') : '<div class="empty">No crew on the roster yet — add names below.</div>';
@@ -9869,8 +9872,8 @@ let jhaSigIndex = -1, jhaSigHas = false;
     const out = document.createElement('canvas');
     const w = 360, h = Math.max(1, Math.round(rect.height * (360 / Math.max(1, rect.width))));
     out.width = w; out.height = h;
-    out.getContext('2d').drawImage(canvas, 0, 0, w, h);
-    const url = out.toDataURL('image/png');
+    const oc = out.getContext('2d'); oc.fillStyle = '#fff'; oc.fillRect(0, 0, w, h); oc.drawImage(canvas, 0, 0, w, h);
+    const url = out.toDataURL('image/jpeg', 0.7);   // ~5 KB vs ~34 KB as PNG — keeps a crew's day under the sync cap
     const i = jhaSigIndex;
     const j = jhaMutate(x => {
       x.signoffs[i].sig = url;
@@ -10052,7 +10055,7 @@ function jhaBuildPDF(j) {
     else { doc.setFont('helvetica', 'normal'); doc.setTextColor(...GRAY); doc.text('Injured: —', M + 170, y + 14); }
     doc.setTextColor(...INK);
     if (s.sig && s.sig.indexOf('data:image') === 0) {
-      try { doc.addImage(s.sig, 'PNG', M + 270, y - 2, 105, 32); } catch (e) {}
+      try { doc.addImage(s.sig, /^data:image\/jpe?g/i.test(s.sig) ? 'JPEG' : 'PNG', M + 270, y - 2, 105, 32); } catch (e) {}
       doc.setDrawColor(...GRAY);
       doc.line(M + 270, y + 30, M + 375, y + 30);
       if (s.ts) {
@@ -11886,7 +11889,7 @@ function tbRenderAttendees(r) {
   document.getElementById('tb-att-count').textContent = rows.length ? '(' + rows.length + ')' : '';
   document.getElementById('tb-attendees').innerHTML = rows.length ? rows.map((s, i) =>
     '<div class="tb-att-row"><span class="nm">' + (i + 1) + '. ' + escHTML(s.name) + '</span>' +
-      (s.sig ? '<img src="' + escAttr(s.sig) + '" alt="signature">' : '<span style="color:var(--gray);font-size:12px">no signature</span>') +
+      (s.sig ? '<img src="' + escAttr(s.sig) + '" alt="signature">' : s.sigTrimmed ? '<span style="color:var(--green);font-size:12px;font-weight:600">&#10003; signed (archived)</span>' : '<span style="color:var(--gray);font-size:12px">no signature</span>') +
       (locked ? '' : '<button type="button" class="jha-x" data-tb-att-del="' + i + '" title="Remove">Remove</button>') +
     '</div>'
   ).join('') : '<div class="empty">No one signed in yet — tap "Sign in crew" and pass the device around.</div>';
@@ -11982,8 +11985,8 @@ function tbFlushFields() {
     const out = document.createElement('canvas');
     const w = 360, h = Math.max(1, Math.round(rect.height * (360 / Math.max(1, rect.width))));
     out.width = w; out.height = h;
-    out.getContext('2d').drawImage(canvas, 0, 0, w, h);
-    const sig = out.toDataURL('image/png');
+    const oc = out.getContext('2d'); oc.fillStyle = '#fff'; oc.fillRect(0, 0, w, h); oc.drawImage(canvas, 0, 0, w, h);
+    const sig = out.toDataURL('image/jpeg', 0.7);   // ~5 KB vs ~34 KB as PNG
     const r = tbMutate(x => { x.signoffs = x.signoffs || []; x.signoffs.push({ name: name, sig: sig, ts: new Date().toISOString() }); });
     if (!r) return;
     tbRenderAttendees(Object.assign({}, r, { status: 'draft' }));
@@ -12089,7 +12092,7 @@ function tbBuildPDF(r) {
     const x = M + col * colW;
     doc.setFont('helvetica', 'bold'); doc.setTextColor(...INK);
     doc.text(String(i + 1) + '. ' + String(s.name || '—').slice(0, 30), x, y + 12);
-    if (s.sig && s.sig.indexOf('data:image') === 0) { try { doc.addImage(s.sig, 'PNG', x + 120, y - 6, 110, 30); } catch (e) {} }
+    if (s.sig && s.sig.indexOf('data:image') === 0) { try { doc.addImage(s.sig, /^data:image\/jpe?g/i.test(s.sig) ? 'JPEG' : 'PNG', x + 120, y - 6, 110, 30); } catch (e) {} }
     doc.setDrawColor(...GRAY); doc.setLineWidth(0.5); doc.line(x + 120, y + 26, x + colW - 14, y + 26);
     if (col === 1 || i === sos.length - 1) y += rowH;
   });

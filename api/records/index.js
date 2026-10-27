@@ -85,6 +85,13 @@ function mergeEwtDrafts(prev, next) {
 // back to the client. Size guard for the 2MB doc cap: signature images are
 // stripped from the oldest JHAs first; whole oldest records only as a last
 // resort.
+// Recent records (last RECENT_DAYS) are sacred: a crew is signing them right
+// now, and stripping their signatures looked to foremen like "it won't save".
+// Older records have archived PDFs, so they give way first — signatures, then
+// the records themselves.
+const RECENT_DAYS = 7;
+const KEEP_RECORDS = 60;
+const SOFT_CAP = 1400 * 1024, HARD_CAP = 1600 * 1024;
 function mergeJhaRecords(prev, next) {
   const byId = new Map();
   const consider = (j) => {
@@ -94,16 +101,20 @@ function mergeJhaRecords(prev, next) {
   };
   prev.forEach(consider);
   next.forEach(consider);
-  const out = [...byId.values()];
+  let out = [...byId.values()];
   out.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
-  if (out.length > 150) out.splice(0, out.length - 150);
+  if (out.length > KEEP_RECORDS) out.splice(0, out.length - KEEP_RECORDS);
+  const cutoff = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString().slice(0, 10);
+  const isRecent = (j) => String(j.date || '') >= cutoff;
+  const stripSigs = (j) => { (j.signoffs || []).forEach((s) => { if (s && s.sig) { size -= s.sig.length; s.sig = ''; s.sigTrimmed = true; } }); };
   let size = JSON.stringify(out).length;
-  for (let i = 0; i < out.length && size > 1400 * 1024; i++) {
-    (out[i].signoffs || []).forEach((s) => {
-      if (s && s.sig) { size -= s.sig.length; s.sig = ''; s.sigTrimmed = true; }
-    });
-  }
-  while (out.length > 1 && JSON.stringify(out).length > 1600 * 1024) out.shift();
+  // 1. signatures off old records, oldest first
+  for (let i = 0; i < out.length && size > SOFT_CAP; i++) if (!isRecent(out[i])) stripSigs(out[i]);
+  // 2. drop old records entirely (their PDFs are archived)
+  while (size > SOFT_CAP && out.length > 1 && !isRecent(out[0])) { size -= JSON.stringify(out[0]).length; out.shift(); }
+  // 3. only if the recent week alone is over the hard cap: oldest recent records lose signatures
+  for (let i = 0; i < out.length && size > HARD_CAP; i++) stripSigs(out[i]);
+  while (out.length > 1 && JSON.stringify(out).length > HARD_CAP) out.shift();
   return out;
 }
 
@@ -208,3 +219,5 @@ module.exports = async function (context, req) {
     return json(context, 500, { error: 'Server error.' });
   }
 };
+
+module.exports.mergeJhaRecords = mergeJhaRecords;
