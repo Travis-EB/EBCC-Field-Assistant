@@ -9891,9 +9891,11 @@ function jhaRenderSendStatus(j) {
   if (!el) return;
   if (j && j.sentTs) {
     const when = new Date(j.sentTs).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    el.textContent = (j.sent ? 'Emailed ✓ ' : 'Copy saved ') + when +
-      (j.emailedTo && j.emailedTo.length ? ' to ' + j.emailedTo.join(', ') : '');
-    el.style.color = j.sent ? 'var(--green)' : 'var(--gray)';
+    const nobody = !(j.emailedTo && j.emailedTo.length);
+    el.textContent = j.sent ? 'Emailed ✓ ' + when + ' to ' + j.emailedTo.join(', ')
+      : nobody ? 'Saved for the office ' + when + ' — NOT emailed: nobody was picked. Pick recipients above and tap Email JHA.'
+      : 'Copy saved ' + when + ' — the email to ' + j.emailedTo.join(', ') + ' did not go through. Tap Email JHA again.';
+    el.style.color = j.sent ? 'var(--green)' : '#d97706';
   } else {
     el.textContent = '';
   }
@@ -10103,6 +10105,7 @@ document.getElementById('jha-send-btn').addEventListener('click', async () => {
   // 1) Best path: the server emails it from YOUR mailbox and archives the PDF.
   //    With no recipients it still archives, then hands off to the share sheet.
   setStatus(recipients.length ? 'Sending…' : 'Saving a copy…', 'var(--gray)');
+  const WARN = '#d97706';
   try {
     const r = await fetch('/api/send-jha', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -10116,10 +10119,10 @@ document.getElementById('jha-send-btn').addEventListener('click', async () => {
         },
       }),
     });
-    const res = r.ok ? await r.json() : null;
+    const res = await r.json().catch(() => null);
     if (res && res.ok) {
       // Stamp the local record too — the server stamped its copy; merge keeps both in step.
-      const upd = jhaMutate(x => {
+      jhaMutate(x => {
         x.emailedTo = recipients;
         x.sent = !!res.sent;
         x.sentTs = new Date().toISOString();
@@ -10130,17 +10133,17 @@ document.getElementById('jha-send-btn').addEventListener('click', async () => {
         return;
       }
       if (!recipients.length) {
-        setStatus(res.archived ? 'Copy saved for the office. Check recipients to email it directly next time.' : '', 'var(--gray)');
+        setStatus((res.archived ? 'Saved for the office' : 'Saved') + ' — NOT emailed: nobody was picked. Pick recipients above and tap Email JHA again.', WARN);
         return;
       }
-      console.warn('JHA email not sent (' + res.reason + ') — falling back to share sheet');
-      setStatus('Email service unavailable right now — opening the share sheet instead.', 'var(--gray)');
-    } else if (recipients.length) {
-      setStatus('Email service unavailable right now — opening the share sheet instead.', 'var(--gray)');
+      setStatus('Could not email it (' + (res.reason || 'mail error') + ') — the JHA is saved for the office. Opening the share sheet so you can send it from your mail app.', WARN);
+    } else {
+      const why = (res && res.error) || ('server error ' + r.status);
+      if (!recipients.length) { setStatus('Could not save the JHA (' + why + '). Check your connection and try again.', 'var(--red)'); return; }
+      setStatus('Could not email it (' + why + ') — opening the share sheet so you can send it from your mail app.', WARN);
     }
   } catch (e) {
-    console.warn('send-jha failed, falling back to share sheet', e);
-    setStatus(navigator.onLine ? 'Email service unavailable right now — opening the share sheet instead.' : 'Offline — opening the share sheet instead.', 'var(--gray)');
+    setStatus((navigator.onLine ? 'Email service unreachable' : 'Offline') + ' — opening the share sheet so you can send it from your mail app.', WARN);
   }
 
   // 2) Fallback: the device share sheet with the PDF attached
@@ -10159,6 +10162,7 @@ document.getElementById('jha-send-btn').addEventListener('click', async () => {
   const a = document.createElement('a');
   a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+  setStatus(statusEl.textContent.replace(/Opening the share sheet.*$/, '') + ' Downloaded the PDF — attach it to an email yourself.', WARN);
   if (recipients.length) {
     window.location.href = 'mailto:' + encodeURIComponent(recipients.join(','))
       + '?subject=' + encodeURIComponent(subject)
