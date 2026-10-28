@@ -2594,8 +2594,11 @@ body.tv-mode .aj-legend { font-size: 14px; }
   </div>
 
   <div class="ewt-section">
-    <h3>Incident Type</h3>
+    <h3>Incident Type <span style="font-weight:500;color:var(--gray);font-size:13px">pick all that apply</span></h3>
     <div class="jha-yn" id="ir-types" style="flex-wrap:wrap"></div>
+    <div class="ewt-grid" id="ir-type-other-wrap" style="display:none;margin-top:10px">
+      <label class="ewt-grid-wide">Describe the other type <input type="text" id="ir-type-other" placeholder="e.g. theft, trespassing, utility strike" maxlength="60"></label>
+    </div>
   </div>
 
   <div class="ewt-section">
@@ -11302,6 +11305,10 @@ function ajSaveSchedule(next) {
 const IR_KEY = 'ebcc_incident_reports_v1';       // submitted reports — synced to the account
 const IR_DRAFT_KEY = 'ebcc_incident_drafts_v1';  // drafts — this device only, until Submit
 const IR_TYPES = ['Injury', 'Near Miss', 'Property Damage', 'Vehicle / Equipment', 'Environmental / Spill', 'Other'];
+function irTypes(r) { return Array.isArray(r.types) ? r.types : (r.type ? [r.type] : []); }
+function irTypeLabel(r) {
+  return irTypes(r).map(t => t === 'Other' && String(r.typeOther || '').trim() ? 'Other: ' + String(r.typeOther).trim() : t).join(', ');
+}
 let irCurrentId = null;
 let irSaveTimer = null;
 
@@ -11387,7 +11394,7 @@ function irNew() {
     date: jhaToday(),
     time: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
     reporter: (window.EBCC_ME && (window.EBCC_ME.name || window.EBCC_ME.email)) || '',
-    type: '', involved: '', location: '', desc: '', injury: '', action: '', witnesses: '',
+    type: '', types: [], typeOther: '', involved: '', location: '', desc: '', injury: '', action: '', witnesses: '',
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   };
@@ -11418,7 +11425,7 @@ function irOpenEditor(id) {
   irRenderTypes(r);
   // Submitted reports are read-only; drafts are editable and can be submitted.
   const locked = r.status === 'submitted';
-  ['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses']
+  ['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses', 'ir-type-other']
     .forEach(id => { document.getElementById(id).disabled = locked; });
   document.getElementById('ir-types').style.pointerEvents = locked ? 'none' : '';
   document.getElementById('ir-submit').style.display = locked ? 'none' : '';
@@ -11447,9 +11454,14 @@ function irCloseEditor() {
 }
 
 function irRenderTypes(r) {
+  const on = irTypes(r);
   document.getElementById('ir-types').innerHTML = IR_TYPES.map(t =>
-    '<button type="button" data-ir-type="' + escAttr(t) + '" class="' + (r.type === t ? 'on-yes' : '') + '">' + escHTML(t) + '</button>'
+    '<button type="button" data-ir-type="' + escAttr(t) + '" class="' + (on.includes(t) ? 'on-yes' : '') + '">' + escHTML(t) + '</button>'
   ).join('');
+  const wrap = document.getElementById('ir-type-other-wrap');
+  wrap.style.display = on.includes('Other') ? '' : 'none';
+  const inp = document.getElementById('ir-type-other');
+  if (inp.value !== (r.typeOther || '')) inp.value = r.typeOther || '';
 }
 
 function irFieldsSoon() {
@@ -11469,6 +11481,8 @@ function irFlushFields() {
     r.injury = document.getElementById('ir-injury').value;
     r.action = document.getElementById('ir-action').value;
     r.witnesses = document.getElementById('ir-witnesses').value;
+    r.typeOther = document.getElementById('ir-type-other').value;
+    r.type = irTypeLabel(r);
   });
 }
 
@@ -12244,7 +12258,7 @@ document.getElementById('ir-submit').addEventListener('click', () => {
   irFlushFields();
   const r = irCur();
   if (!r || r.status !== 'draft') return;
-  if (!r.type) { alert('Pick an incident type before submitting.'); return; }
+  if (!irTypes(r).length) { alert('Pick at least one incident type before submitting.'); return; }
   if (!String(r.desc || '').trim()) { alert('Describe what happened before submitting.'); document.getElementById('ir-desc').focus(); return; }
   const irToN = irGetRecipients().length;
   if (!confirm(irToN ? 'Submit this incident report? It will sync to your account and email the PDF to ' + irToN + ' recipient' + (irToN === 1 ? '' : 's') + '.' : 'NOBODY IS PICKED TO EMAIL.\n\nSubmit anyway? The report saves to your account for the office but no email goes out. Tap Cancel to pick recipients under "Email the report" first.')) return;
@@ -12268,15 +12282,19 @@ document.getElementById('ir-submit').addEventListener('click', () => {
     irSendPdf(rec, recipients);    // emails whoever was picked; always archives the PDF
   })();
 });
-['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses'].forEach(id => {
+['ir-date', 'ir-time', 'ir-reporter', 'ir-involved', 'ir-location', 'ir-desc', 'ir-injury', 'ir-action', 'ir-witnesses', 'ir-type-other'].forEach(id => {
   document.getElementById(id).addEventListener('input', irFieldsSoon);
 });
 document.getElementById('ir-types').addEventListener('click', (e) => {
   const b = e.target.closest('[data-ir-type]');
   if (!b) return;
   const t = b.getAttribute('data-ir-type');
-  const r = irMutate(x => { x.type = x.type === t ? '' : t; });
-  if (r) irRenderTypes(r);
+  const r = irMutate(x => {
+    const cur = irTypes(x);
+    x.types = cur.includes(t) ? cur.filter(v => v !== t) : IR_TYPES.filter(v => cur.includes(v) || v === t);
+    x.type = irTypeLabel(x);
+  });
+  if (r) { irRenderTypes(r); if (t === 'Other' && irTypes(r).includes('Other')) document.getElementById('ir-type-other').focus(); }
 });
 document.querySelector('.tab[data-tab="incident"]').addEventListener('click', () => {
   if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
