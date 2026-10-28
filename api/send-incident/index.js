@@ -1,7 +1,7 @@
 // POST /api/send-incident — email a submitted Incident Report PDF from the
-// signed-in user's own mailbox and archive a copy for the office. Only the
-// recipients the user picked get the email (none picked = archive only, no
-// email), and the matching report in incident_reports is stamped.
+// signed-in user's own mailbox and archive a copy for the office. Every
+// incident report goes to the office safety contacts (ALWAYS_TO) plus whoever
+// the user picked, and the matching report in incident_reports is stamped.
 //
 // Body: { subject, text, recipients[], fileName, pdf (data URI or base64),
 //         summary: { reportId, date, projectCode, projectName, type } }
@@ -11,6 +11,8 @@ const { getEwtContainer, safeName } = require('../shared/blob');
 const { sendGraphMail } = require('../shared/mail');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Incident reports always reach the office — Travis's call (2026-10-28).
+const ALWAYS_TO = ['chris@earthbasics.net', 'amber@earthbasics.net'];
 
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
@@ -29,9 +31,9 @@ module.exports = async function (context, req) {
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) { body = null; } }
   if (!body || typeof body !== 'object') return json(context, 400, { ok: false, error: 'Bad request.' });
 
-  const recipients = Array.from(new Set((
+  const recipients = Array.from(new Set(ALWAYS_TO.concat(
     (Array.isArray(body.recipients) ? body.recipients : []).map((r) => String(r).trim().toLowerCase())
-  ))).filter((r) => EMAIL_RE.test(r)).slice(0, 20);
+  ))).filter((r) => EMAIL_RE.test(r)).slice(0, 22);
   const subject = String(body.subject || 'EBCC Incident Report').slice(0, 150);
   const text = String(body.text || '').slice(0, 20000);
   const fileName = String(body.fileName || 'Incident_Report.pdf').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 80) || 'Incident_Report.pdf';

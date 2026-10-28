@@ -2623,7 +2623,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
 
   <div class="ewt-section">
     <h3>Email the report</h3>
-    <div class="ewt-hint">Pick who gets the PDF when you submit — the PM, safety manager, or anyone else. With nobody picked, the report is still saved to your account and visible to the office.</div>
+    <div class="ewt-hint">Every incident report is emailed to the office — <strong>Chris</strong> and <strong>Amber</strong> — the moment you submit. Add anyone else who should get the PDF below, like the PM or the superintendent.</div>
     <div class="ewt-recipients" id="ir-recipients"></div>
     <div class="ewt-actions" id="ir-resend-wrap" style="display:none;margin-top:8px">
       <button class="btn btn-primary" id="ir-resend">Email PDF again</button>
@@ -2636,6 +2636,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
     <div class="ewt-actions">
       <button class="btn btn-primary" id="ir-submit">Submit report</button>
       <button class="btn" id="ir-back">&larr; Back to reports</button>
+      <button class="btn" id="ir-delete" style="color:var(--red);margin-left:auto">Delete draft</button>
     </div>
     <div id="ir-submit-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
     <div class="ewt-hint" id="ir-submit-hint" style="margin-top:6px">This draft stays on this device until you submit. Submitting sends the report to your account so the office can see it in Manage Users.</div>
@@ -11429,6 +11430,7 @@ function irOpenEditor(id) {
     .forEach(id => { document.getElementById(id).disabled = locked; });
   document.getElementById('ir-types').style.pointerEvents = locked ? 'none' : '';
   document.getElementById('ir-submit').style.display = locked ? 'none' : '';
+  document.getElementById('ir-delete').style.display = locked ? 'none' : '';
   document.getElementById('ir-submit-hint').style.display = locked ? 'none' : '';
   const st = document.getElementById('ir-submit-status');
   st.textContent = locked
@@ -11633,7 +11635,7 @@ async function irSendPdf(rec, recipients) {
   catch (e) { setStatus('Could not build the PDF: ' + (e && e.message ? e.message : e), 'var(--red)'); return; }
   const fileName = 'Incident_' + (irIsOffsite(rec) ? 'Offsite' : String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_')) + '_' + (rec.date || '') + '.pdf';
   const subject = 'Incident Report - ' + (irIsOffsite(rec) ? 'Off-site' : (rec.projectName || rec.projectCode || '')) + ' - ' + jhaFmtDate(rec.date) + (rec.type ? ' - ' + rec.type : '');
-  setStatus(recipients && recipients.length ? 'Emailing…' : 'Saving a copy…', 'var(--gray)');
+  setStatus('Emailing…', 'var(--gray)');
   try {
     const r = await fetch('/api/send-incident', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -11668,9 +11670,7 @@ async function irSendPdf(rec, recipients) {
 document.getElementById('ir-resend').addEventListener('click', () => {
   const r = irCur();
   if (!r || r.status !== 'submitted') return;
-  const to = irGetRecipients();
-  if (!to.length) { const el = document.getElementById('ir-send-status'); el.textContent = 'Pick at least one recipient above, then tap Email PDF again.'; el.style.color = 'var(--red)'; return; }
-  irSendPdf(r, to);
+  irSendPdf(r, irGetRecipients());   // the office always gets it; extra recipients are optional
 });
 document.getElementById('ir-preview').addEventListener('click', async () => {
   const r = irCur();
@@ -12252,6 +12252,19 @@ document.getElementById('ir-list').addEventListener('click', (e) => {
   if (open) irOpenEditor(open.getAttribute('data-ir-open'));
 });
 document.getElementById('ir-back').addEventListener('click', irCloseEditor);
+// Drafts live only on this device, so deleting one is final — ask first.
+document.getElementById('ir-delete').addEventListener('click', () => {
+  const r = irCur();
+  if (!r || r.status !== 'draft') return;
+  if (!confirm('Delete this draft incident report? It has not been submitted and cannot be recovered.')) return;
+  clearTimeout(irSaveTimer);
+  irWriteDrafts(irReadDrafts().filter(x => x.id !== r.id));
+  irPendingSet(r.id, null);
+  irCurrentId = null;
+  document.getElementById('ir-editor').style.display = 'none';
+  document.getElementById('ir-picker').style.display = '';
+  irRenderList();
+});
 // Submit: the draft moves from this device's draft list onto the synced
 // key, which is what pushes it to the account (and the admin view).
 document.getElementById('ir-submit').addEventListener('click', () => {
@@ -12261,7 +12274,7 @@ document.getElementById('ir-submit').addEventListener('click', () => {
   if (!irTypes(r).length) { alert('Pick at least one incident type before submitting.'); return; }
   if (!String(r.desc || '').trim()) { alert('Describe what happened before submitting.'); document.getElementById('ir-desc').focus(); return; }
   const irToN = irGetRecipients().length;
-  if (!confirm(irToN ? 'Submit this incident report? It will sync to your account and email the PDF to ' + irToN + ' recipient' + (irToN === 1 ? '' : 's') + '.' : 'NOBODY IS PICKED TO EMAIL.\n\nSubmit anyway? The report saves to your account for the office but no email goes out. Tap Cancel to pick recipients under "Email the report" first.')) return;
+  if (!confirm('Submit this incident report? It will sync to your account and email the PDF to Chris and Amber' + (irToN ? ' plus ' + irToN + ' more recipient' + (irToN === 1 ? '' : 's') : '') + '.')) return;
   const recipients = irGetRecipients();   // read before the editor re-renders locked
   (async () => {
     const rec = Object.assign({}, r);
