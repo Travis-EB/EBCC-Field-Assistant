@@ -2571,9 +2571,10 @@ body.tv-mode .aj-legend { font-size: 14px; }
 </div>
 
 <div class="ewt-section" id="ir-picker">
-  <h3>Project</h3>
-  <div class="ewt-hint">Incident reports are organized by project — the same project list as Job Books. Start typing a name or job # and pick from the list.</div>
-  <div class="search-bar" style="margin:8px 0 0">
+  <h3>Where did it happen?</h3>
+  <div class="ewt-hint">Pick the project it happened on, or choose Off-site for anything that wasn't on a job — the shop or yard, driving between jobs, a pit or vendor's site.</div>
+  <div class="seg" id="ir-where" style="margin:8px 0 0;max-width:360px"><button type="button" data-ir-where="project" class="on">On a project</button><button type="button" data-ir-where="offsite">Off-site</button></div>
+  <div class="search-bar" id="ir-proj-wrap" style="margin:8px 0 0">
     <input type="text" id="ir-proj-combo" placeholder="Search projects — name or job #…" autocomplete="off">
     <div class="search-results" id="ir-proj-results"></div>
   </div>
@@ -2588,7 +2589,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
       <label>Time <input type="time" id="ir-time"></label>
       <label>Reported by <input type="text" id="ir-reporter"></label>
       <label>Person(s) involved <input type="text" id="ir-involved" placeholder="Names"></label>
-      <label class="ewt-grid-wide">Location on site <input type="text" id="ir-location" placeholder="e.g. north pad, haul road near the scale"></label>
+      <label class="ewt-grid-wide"><span id="ir-location-label">Location on site</span> <input type="text" id="ir-location" placeholder="e.g. north pad, haul road near the scale"></label>
     </div>
   </div>
 
@@ -11331,15 +11332,30 @@ function irCur() { return irRead().find(x => x.id === irCurrentId) || null; }
 
 const irProjCombo = projCombo('ir-proj-combo', 'ir-proj-results', () => irRenderList());
 
+// Off-site incidents (shop, yard, driving between jobs, a vendor's site) are
+// filed under a fixed pseudo-project so they sync, archive and email exactly
+// like job incidents — they just never show up on a project's hub.
+const IR_OFFSITE = { code: 'OFFSITE', name: 'Off-site (not on a project)' };
+let irWhere = 'project';
+function irIsOffsite(r) { return !!(r && (r.offsite || r.projectCode === IR_OFFSITE.code)); }
+function irProjLabel(r) { return irIsOffsite(r) ? IR_OFFSITE.name : (r.projectName || '') + ' (' + (r.projectCode || '') + ')'; }
+function irScope() { return irWhere === 'offsite' ? IR_OFFSITE.code : irProjCombo.getCode(); }
+function irSetWhere(w) {
+  irWhere = w === 'offsite' ? 'offsite' : 'project';
+  document.querySelectorAll('#ir-where button').forEach(b => b.classList.toggle('on', b.getAttribute('data-ir-where') === irWhere));
+  document.getElementById('ir-proj-wrap').style.display = irWhere === 'offsite' ? 'none' : '';
+  irRenderList();
+}
+
 function irRenderList() {
   const list = document.getElementById('ir-list');
-  const code = irProjCombo.getCode();
+  const code = irScope();
   if (!code) { list.innerHTML = ''; return; }
   const mine = irRead().filter(r => r.projectCode === code)
     .sort((a, b) => String(b.date + (b.time || '')).localeCompare(String(a.date + (a.time || ''))));
   let html = '<div class="controls" style="margin-bottom:10px"><button class="btn btn-primary" id="ir-new-btn">New incident report</button></div>';
   if (!mine.length) {
-    html += '<div class="empty">No incident reports for this project.</div>';
+    html += '<div class="empty">' + (code === IR_OFFSITE.code ? 'No off-site incident reports yet.' : 'No incident reports for this project.') + '</div>';
   } else {
     html += mine.map(r => {
       const snippet = String(r.desc || '').slice(0, 70);
@@ -11358,14 +11374,16 @@ function irRenderList() {
 }
 
 function irNew() {
-  const code = irProjCombo.getCode();
+  const code = irScope();
   if (!code) return;
-  const proj = (window.EBCC_PROJECTS || []).find(p => p.code === code) || {};
+  const offsite = code === IR_OFFSITE.code;
+  const proj = offsite ? IR_OFFSITE : ((window.EBCC_PROJECTS || []).find(p => p.code === code) || {});
   const now = new Date();
   const rec = {
     id: 'ir_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
     projectCode: code,
     projectName: proj.name || code,
+    offsite: offsite,
     date: jhaToday(),
     time: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
     reporter: (window.EBCC_ME && (window.EBCC_ME.name || window.EBCC_ME.email)) || '',
@@ -11385,7 +11403,9 @@ function irOpenEditor(id) {
   irCurrentId = id;
   document.getElementById('ir-picker').style.display = 'none';
   document.getElementById('ir-editor').style.display = '';
-  document.getElementById('ir-ed-title').textContent = 'Incident Report — ' + (r.projectName || r.projectCode);
+  document.getElementById('ir-ed-title').textContent = 'Incident Report — ' + (irIsOffsite(r) ? 'Off-site' : (r.projectName || r.projectCode));
+  document.getElementById('ir-location-label').textContent = irIsOffsite(r) ? 'Where it happened' : 'Location on site';
+  document.getElementById('ir-location').placeholder = irIsOffsite(r) ? 'e.g. the shop, Hwy 380 near Prosper, Riverside pit' : 'e.g. north pad, haul road near the scale';
   document.getElementById('ir-date').value = r.date || '';
   document.getElementById('ir-time').value = r.time || '';
   document.getElementById('ir-reporter').value = r.reporter || '';
@@ -11418,6 +11438,8 @@ function irOpenEditor(id) {
 
 function irCloseEditor() {
   irFlushFields();
+  const cur = irCur();
+  if (cur && irIsOffsite(cur) !== (irWhere === 'offsite')) irSetWhere(irIsOffsite(cur) ? 'offsite' : 'project');
   irCurrentId = null;
   document.getElementById('ir-editor').style.display = 'none';
   document.getElementById('ir-picker').style.display = '';
@@ -11478,7 +11500,7 @@ function irStampSubmitted(id, fn) {
 }
 function irFormatText(r) {
   const lines = ['EBCC INCIDENT REPORT'];
-  lines.push('Project: ' + (r.projectName || '') + ' (' + (r.projectCode || '') + ')');
+  lines.push('Project: ' + irProjLabel(r));
   lines.push('Date: ' + jhaFmtDate(r.date) + (r.time ? ' ' + r.time : '') + ' · Reported by: ' + (r.reporter || '—'));
   lines.push('Type: ' + (r.type || '—'));
   if (r.involved) lines.push('Person(s) involved: ' + r.involved);
@@ -11529,7 +11551,7 @@ async function irBuildPDF(r, photoData) {
 
   doc.setFontSize(9.5); doc.setTextColor(...INK);
   [
-    ['Project', (r.projectName || '') + '  (' + (r.projectCode || '') + ')'],
+    ['Project', irProjLabel(r)],
     ['Date / Time', jhaFmtDate(r.date) + (r.time ? '  ' + r.time : '')],
     ['Reported By', r.reporter || '—'],
     ['Incident Type', r.type || '—'],
@@ -11595,8 +11617,8 @@ async function irSendPdf(rec, recipients) {
   let doc;
   try { doc = await irBuildPDF(rec, pdfPhotos); }
   catch (e) { setStatus('Could not build the PDF: ' + (e && e.message ? e.message : e), 'var(--red)'); return; }
-  const fileName = 'Incident_' + String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (rec.date || '') + '.pdf';
-  const subject = 'Incident Report - ' + (rec.projectName || rec.projectCode || '') + ' - ' + jhaFmtDate(rec.date) + (rec.type ? ' - ' + rec.type : '');
+  const fileName = 'Incident_' + (irIsOffsite(rec) ? 'Offsite' : String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_')) + '_' + (rec.date || '') + '.pdf';
+  const subject = 'Incident Report - ' + (irIsOffsite(rec) ? 'Off-site' : (rec.projectName || rec.projectCode || '')) + ' - ' + jhaFmtDate(rec.date) + (rec.type ? ' - ' + rec.type : '');
   setStatus(recipients && recipients.length ? 'Emailing…' : 'Saving a copy…', 'var(--gray)');
   try {
     const r = await fetch('/api/send-incident', {
@@ -11642,7 +11664,7 @@ document.getElementById('ir-preview').addEventListener('click', async () => {
   try {
     const doc = await irBuildPDF(r, irPhotosForPdf(r));
     previewShow(URL.createObjectURL(doc.output('blob')), false,
-      'Incident_' + String(r.projectCode || 'project').replace(/[^a-z0-9]/gi, '_') + '_' + (r.date || '') + '.pdf');
+      'Incident_' + (irIsOffsite(r) ? 'Offsite' : String(r.projectCode || 'project').replace(/[^a-z0-9]/gi, '_')) + '_' + (r.date || '') + '.pdf');
   } catch (e) { alert(e && e.message ? e.message : 'Could not build the PDF.'); }
 });
 irRenderRecipients();
@@ -12206,6 +12228,10 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 tbRenderRecipients();
 
 // ---- events ----
+document.getElementById('ir-where').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ir-where]');
+  if (b) irSetWhere(b.getAttribute('data-ir-where'));
+});
 document.getElementById('ir-list').addEventListener('click', (e) => {
   if (e.target.closest('#ir-new-btn')) { irNew(); return; }
   const open = e.target.closest('[data-ir-open]');
