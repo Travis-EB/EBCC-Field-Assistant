@@ -2712,6 +2712,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
     <div class="ewt-actions">
       <button class="btn btn-primary" id="tb-submit">Submit record</button>
       <button class="btn" id="tb-back">&larr; Back to talks</button>
+      <button class="btn" id="tb-delete" style="color:var(--red);margin-left:auto">Delete draft</button>
     </div>
     <div id="tb-submit-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
     <div class="ewt-hint" id="tb-submit-hint" style="margin-top:6px">This draft stays on this device until you submit. Submitting sends the record to your account so the office can see it in Manage Users.</div>
@@ -11367,7 +11368,7 @@ function irRenderList() {
   } else {
     html += mine.map(r => {
       const snippet = String(r.desc || '').slice(0, 70);
-      return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-ir-open="' + escAttr(r.id) + '">' +
+      return '<div class="equipment-card" style="grid-template-columns:1fr auto' + (r.status === 'draft' ? ' auto' : '') + ';cursor:pointer" data-ir-open="' + escAttr(r.id) + '">' +
         '<div><div class="name">' + escHTML(jhaFmtDate(r.date)) + (r.time ? ' · ' + escHTML(r.time) : '') + (r.type ? ' · ' + escHTML(r.type) : '') + '</div>' +
         '<div class="rate">' +
           (r.status === 'draft'
@@ -11375,6 +11376,7 @@ function irRenderList() {
             : '<span style="color:var(--green);font-weight:700">Submitted</span> · ') +
           escHTML(r.reporter || '') + (snippet ? ' · ' + escHTML(snippet) : '') + '</div></div>' +
         '<button class="btn" data-ir-open="' + escAttr(r.id) + '">' + (r.status === 'draft' ? 'Continue' : 'View') + '</button>' +
+        (r.status === 'draft' ? '<button class="remove-btn" title="Delete draft" aria-label="Delete draft" data-ir-del="' + escAttr(r.id) + '">&times;</button>' : '') +
       '</div>';
     }).join('');
   }
@@ -11841,13 +11843,14 @@ function tbRenderList() {
   else html += mine.map(r => {
     const n = (r.signoffs || []).length;
     const topics = Object.keys(r.topics || {}).filter(k => r.topics[k]).length;
-    return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-tb-open="' + escAttr(r.id) + '">' +
+    return '<div class="equipment-card" style="grid-template-columns:1fr auto' + (r.status === 'draft' ? ' auto' : '') + ';cursor:pointer" data-tb-open="' + escAttr(r.id) + '">' +
       '<div><div class="name">' + escHTML(jhaFmtDate(r.date)) + ' · ' + n + ' signed' + '</div>' +
       '<div class="rate">' + (r.status === 'draft'
         ? '<span style="color:#d97706;font-weight:700">Draft — not submitted</span>'
         : '<span style="color:var(--green);font-weight:700">Submitted</span>') +
         ' · ' + topics + ' topic' + (topics === 1 ? '' : 's') + (r.leader ? ' · ' + escHTML(r.leader) : '') + '</div></div>' +
       '<button class="btn" data-tb-open="' + escAttr(r.id) + '">' + (r.status === 'draft' ? 'Continue' : 'View') + '</button>' +
+      (r.status === 'draft' ? '<button class="remove-btn" title="Delete draft" aria-label="Delete draft" data-tb-del="' + escAttr(r.id) + '">&times;</button>' : '') +
     '</div>';
   }).join('');
   list.innerHTML = html;
@@ -11894,6 +11897,7 @@ function tbOpenEditor(id) {
   document.getElementById('tb-topics').style.pointerEvents = locked ? 'none' : '';
   document.getElementById('tb-signin-open').style.display = locked ? 'none' : '';
   document.getElementById('tb-submit').style.display = locked ? 'none' : '';
+  document.getElementById('tb-delete').style.display = locked ? 'none' : '';
   document.getElementById('tb-submit-hint').style.display = locked ? 'none' : '';
   document.getElementById('tb-resend-wrap').style.display = locked ? '' : 'none';
   const st = document.getElementById('tb-submit-status');
@@ -12172,10 +12176,26 @@ async function tbSendPdf(rec, recipients) {
 // ---- events ----
 document.getElementById('tb-list').addEventListener('click', (e) => {
   if (e.target.closest('#tb-new-btn')) { tbNew(); return; }
+  const del = e.target.closest('[data-tb-del]');
+  if (del) { tbDeleteDraft(del.getAttribute('data-tb-del')); return; }
   const open = e.target.closest('[data-tb-open]');
   if (open) tbOpenEditor(open.getAttribute('data-tb-open'));
 });
 document.getElementById('tb-back').addEventListener('click', tbCloseEditor);
+// Drafts live only on this device, so deleting one is final — ask first.
+function tbDeleteDraft(id) {
+  if (!tbReadDrafts().some(x => x.id === id)) return;
+  if (!confirm('Delete this draft tailgate talk? It has not been submitted and cannot be recovered — any signatures on it go with it.')) return;
+  clearTimeout(tbSaveTimer);
+  tbWriteDrafts(tbReadDrafts().filter(x => x.id !== id));
+  if (tbCurrentId === id) {
+    tbCurrentId = null;
+    document.getElementById('tb-editor').style.display = 'none';
+    document.getElementById('tb-picker').style.display = '';
+  }
+  tbRenderList();
+}
+document.getElementById('tb-delete').addEventListener('click', () => { const r = tbCur(); if (r && r.status === 'draft') tbDeleteDraft(r.id); });
 ['tb-date', 'tb-leader', 'tb-medical', 'tb-other', 'tb-comments'].forEach(id => document.getElementById(id).addEventListener('input', tbFieldsSoon));
 document.getElementById('tb-topics').addEventListener('click', (e) => {
   const row = e.target.closest('[data-tb-topic]');
@@ -12248,23 +12268,28 @@ document.getElementById('ir-where').addEventListener('click', (e) => {
 });
 document.getElementById('ir-list').addEventListener('click', (e) => {
   if (e.target.closest('#ir-new-btn')) { irNew(); return; }
+  const del = e.target.closest('[data-ir-del]');
+  if (del) { irDeleteDraft(del.getAttribute('data-ir-del')); return; }
   const open = e.target.closest('[data-ir-open]');
   if (open) irOpenEditor(open.getAttribute('data-ir-open'));
 });
 document.getElementById('ir-back').addEventListener('click', irCloseEditor);
 // Drafts live only on this device, so deleting one is final — ask first.
-document.getElementById('ir-delete').addEventListener('click', () => {
-  const r = irCur();
-  if (!r || r.status !== 'draft') return;
+// Works from the editor's Delete draft button and the × on a draft card.
+function irDeleteDraft(id) {
+  if (!irReadDrafts().some(x => x.id === id)) return;
   if (!confirm('Delete this draft incident report? It has not been submitted and cannot be recovered.')) return;
   clearTimeout(irSaveTimer);
-  irWriteDrafts(irReadDrafts().filter(x => x.id !== r.id));
-  irPendingSet(r.id, null);
-  irCurrentId = null;
-  document.getElementById('ir-editor').style.display = 'none';
-  document.getElementById('ir-picker').style.display = '';
+  irWriteDrafts(irReadDrafts().filter(x => x.id !== id));
+  irPendingSet(id, null);
+  if (irCurrentId === id) {
+    irCurrentId = null;
+    document.getElementById('ir-editor').style.display = 'none';
+    document.getElementById('ir-picker').style.display = '';
+  }
   irRenderList();
-});
+}
+document.getElementById('ir-delete').addEventListener('click', () => { const r = irCur(); if (r && r.status === 'draft') irDeleteDraft(r.id); });
 // Submit: the draft moves from this device's draft list onto the synced
 // key, which is what pushes it to the account (and the admin view).
 document.getElementById('ir-submit').addEventListener('click', () => {
