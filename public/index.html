@@ -382,6 +382,29 @@ body.tv-mode .aj-legend { font-size: 14px; }
 .aj-card { grid-template-columns: 1fr auto; cursor: pointer; }
 .aj-card:hover, .aj-card:focus-visible { border-color: var(--orange); outline: none; }
 .aj-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+/* Schedule assistant (talk / type → proposed entries → review → add) */
+#aj-ai { border-color: var(--orange); }
+.aj-ai-row { display: flex; gap: 8px; align-items: stretch; margin: 8px 0; }
+.aj-ai-row textarea { flex: 1; min-width: 0; resize: vertical; font: inherit; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card, #fff); color: inherit; }
+.aj-ai-mic { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 72px; font-size: 12px; font-weight: 600; }
+.aj-ai-mic svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.aj-ai-mic.is-live { background: var(--red); border-color: var(--red); color: #fff; animation: aj-ai-pulse 1.2s ease-in-out infinite; }
+@keyframes aj-ai-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .45); } 50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); } }
+.aj-ai-sum { font-weight: 600; margin: 10px 0 6px; }
+.aj-ai-q { background: rgba(217, 119, 6, .12); border: 1px solid rgba(217, 119, 6, .45); border-radius: 10px; padding: 8px 12px; margin: 8px 0; font-size: 13px; }
+.aj-ai-q div + div { margin-top: 4px; }
+.aj-ai-proj { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.aj-ai-proj select { flex: 1; min-width: 200px; }
+.aj-ai-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.aj-ai-ent { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.aj-ai-ent .aj-dot { width: 10px; height: 10px; border-radius: 50%; }
+.aj-ai-ent .aj-dot.person { background: #3b82f6; }
+.aj-ai-ent .nm { font-weight: 600; overflow-wrap: anywhere; }
+.aj-ai-ent .sub { font-size: 12px; color: var(--gray); }
+.aj-ai-ent .when { font-size: 12.5px; white-space: nowrap; color: var(--gray); }
+.aj-ai-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.aj-ai-status { font-size: 13px; font-weight: 600; min-height: 18px; }
+[data-theme="dark"] .aj-ai-row textarea { background: var(--card, #1f2937); }
 .aj-monthnav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 #aj-month { font-weight: 700; font-size: 15px; }
 .aj-mini { padding: 6px 12px; font-size: 13px; }
@@ -2357,6 +2380,23 @@ body.tv-mode .aj-legend { font-size: 14px; }
 </section>
 
 <section class="tab-content" id="tab-activejobs">
+  <div class="ewt-section" id="aj-ai" style="display:none">
+    <div style="display:flex;align-items:center;gap:8px">
+      <h3 style="margin:0;flex:1">Schedule assistant</h3>
+      <button type="button" class="btn aj-mini" id="aj-ai-close">Close</button>
+    </div>
+    <div class="ewt-hint">Say or type who and what is going to a job — for example “Put two 657 scrapers, a D6 and a water truck on Prosper Retail starting Monday for three weeks. Gabriel Arriaga runs the D6.” Check what it understood, then add it to the schedule.</div>
+    <div class="aj-ai-row">
+      <textarea id="aj-ai-text" rows="3" placeholder="Who and what is going where, and when…" autocomplete="off"></textarea>
+      <button type="button" class="btn aj-ai-mic" id="aj-ai-mic" title="Talk instead of typing"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/><path d="M9 21h6"/></svg><span>Talk</span></button>
+    </div>
+    <div class="aj-ai-actions">
+      <button type="button" class="btn btn-primary" id="aj-ai-go">Work it out</button>
+      <button type="button" class="btn" id="aj-ai-clear">Clear</button>
+      <span class="aj-ai-status" id="aj-ai-status"></span>
+    </div>
+    <div id="aj-ai-result"></div>
+  </div>
   <div id="aj-home">
     <div class="ewt-section">
       <h3>Active Jobs</h3>
@@ -2379,6 +2419,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
           <button type="button" class="btn aj-mini" id="aj-expand-all">Expand all</button>
           <button type="button" class="btn aj-mini" id="aj-collapse-all">Collapse all</button>
           <button type="button" class="btn aj-mini" id="aj-tv" title="Full-screen board for the office TV">Wall display</button>
+          <button type="button" class="btn aj-mini btn-primary" id="aj-ai-open" style="display:none" title="Say who and what is going to a job">Assistant</button>
         </div>
       </div>
       <div id="aj-list"><div class="empty">Loading…</div></div>
@@ -2390,6 +2431,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
     <div class="aj-top">
       <button class="btn" id="aj-back">&larr; Active jobs</button>
       <div id="aj-title" style="flex:1;min-width:0"></div>
+      <button type="button" class="btn" id="aj-ai-open2" style="display:none" title="Say who and what is going to this job">Assistant</button>
       <button class="btn btn-primary" id="aj-edit-toggle">Edit</button>
     </div>
     <div class="adm-cats" id="aj-tabs" role="tablist">
@@ -10429,6 +10471,7 @@ function ajMountBoard(container, html) {
 }
 
 function ajRenderHome() {
+  const aiBtn = document.getElementById('aj-ai-open'); if (aiBtn) aiBtn.style.display = window.EBCC_IS_ADMIN ? '' : 'none';
   const list = document.getElementById('aj-list');
   if (!list) return;
   const all = ajActiveJobs();
@@ -10887,6 +10930,7 @@ function ajTaskToggle(id, done) {
 function ajRenderDetail() {
   const p = ajProj();
   if (!p) { ajBack(); return; }
+  const aiBtn2 = document.getElementById('aj-ai-open2'); if (aiBtn2) aiBtn2.style.display = window.EBCC_IS_ADMIN && ajTab === 'schedule' ? '' : 'none';
   const sched = ajSchedule(p);
   document.getElementById('aj-title').innerHTML =
     '<div style="font-weight:650;font-size:16px;letter-spacing:-0.01em;overflow-wrap:anywhere">' + escHTML(p.name) + '</div>' +
@@ -11000,6 +11044,146 @@ function ajStartEdit(e) {
   if (!ajEditing) { ajEditing = true; ajSetKind('machine'); ajFormReset(); ajRenderDetail(); }
   ajFormLoad(e);
 }
+// ---- Schedule assistant: talk/type → /api/schedule-assist → review → setSchedule ----
+let ajAiProposal = null;      // last reply from the server, as shown
+let ajAiRec = null;           // live SpeechRecognition while listening
+function ajAiStatus(msg, color) { const el = document.getElementById('aj-ai-status'); el.textContent = msg || ''; el.style.color = color || 'var(--gray)'; }
+function ajAiMachineNames() {
+  const names = new Set();
+  [EQUIPMENT_LIBRARY_TX, EQUIPMENT_LIBRARY_CA].forEach(lib => (lib || []).forEach(e => { if (!/^Labor:/i.test(e.name)) names.add(e.name); }));
+  (window.EBCC_PROJECTS || []).forEach(x => ajSchedule(x).forEach(e => { if (!ajIsPerson(e)) names.add(e.name); }));
+  return Array.from(names);
+}
+function ajAiOpen() {
+  document.getElementById('aj-ai').style.display = '';
+  const p = ajProj();
+  ajAiStatus(p ? 'Talking about ' + p.name + ' — name another job to switch.' : '');
+  if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
+  document.getElementById('aj-ai').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => { try { document.getElementById('aj-ai-text').focus(); } catch (e) {} }, 300);
+}
+function ajAiClose() { ajAiStopListening(); document.getElementById('aj-ai').style.display = 'none'; }
+function ajAiClear() { ajAiStopListening(); document.getElementById('aj-ai-text').value = ''; ajAiProposal = null; document.getElementById('aj-ai-result').innerHTML = ''; ajAiStatus(''); }
+// Speech → text: the browser's own recognizer (Chrome, Safari on iPhone).
+// Where it's missing, the keyboard's microphone still dictates into the box.
+function ajAiSpeechSupported() { return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
+function ajAiStopListening() {
+  if (ajAiRec) { try { ajAiRec.stop(); } catch (e) {} }
+  ajAiRec = null;
+  const b = document.getElementById('aj-ai-mic'); b.classList.remove('is-live'); b.querySelector('span').textContent = 'Talk';
+}
+function ajAiStartListening() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { ajAiStatus('This browser can\'t listen — tap the box and use the keyboard\'s microphone instead.', '#d97706'); return; }
+  const ta = document.getElementById('aj-ai-text');
+  const base = ta.value.trim();
+  let finalText = '';
+  const rec = new SR();
+  rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+  rec.onresult = (ev) => {
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) finalText += (finalText ? ' ' : '') + r[0].transcript.trim(); else interim += r[0].transcript;
+    }
+    ta.value = [base, finalText, interim.trim()].filter(Boolean).join(' ');
+  };
+  rec.onerror = (ev) => {
+    const why = ev.error === 'not-allowed' ? 'Microphone access was blocked — allow it in the browser settings.' : ev.error === 'no-speech' ? 'Didn\'t hear anything.' : 'Listening stopped (' + ev.error + ').';
+    ajAiStatus(why, '#d97706'); ajAiStopListening();
+  };
+  rec.onend = () => { if (ajAiRec === rec) { ajAiStopListening(); ajAiStatus(ta.value.trim() ? 'Got it — tap Work it out, or keep talking.' : ''); } };
+  ajAiRec = rec;
+  const b = document.getElementById('aj-ai-mic'); b.classList.add('is-live'); b.querySelector('span').textContent = 'Stop';
+  ajAiStatus('Listening…', 'var(--red)');
+  try { rec.start(); } catch (e) { ajAiStatus('Could not start the microphone.', 'var(--red)'); ajAiStopListening(); }
+}
+function ajAiGo() {
+  ajAiStopListening();
+  const text = document.getElementById('aj-ai-text').value.replace(/\s+/g, ' ').trim();
+  if (text.length < 3) { ajAiStatus('Say or type what is going to the job first.', 'var(--red)'); return; }
+  const go = document.getElementById('aj-ai-go'); go.disabled = true;
+  ajAiStatus('Working it out…');
+  document.getElementById('aj-ai-result').innerHTML = '';
+  const run = () => fetch('/api/schedule-assist', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, today: ajToday(), code: ajCode || '', machineNames: ajAiMachineNames() }),
+  }).then(r => r.json().catch(() => null).then(j => ({ status: r.status, j })));
+  ((window.EBCC_PROJECTS || []).length ? Promise.resolve() : jbLoadProjects()).then(run).then(out => {
+    go.disabled = false;
+    if (!out.j || !out.j.ok) { ajAiStatus((out.j && out.j.error) || ('Server error ' + out.status), 'var(--red)'); return; }
+    ajAiProposal = out.j;
+    ajAiProposal.entries = (out.j.entries || []).map(e => Object.assign({ _id: Math.random().toString(36).slice(2, 10) }, e));
+    ajAiStatus('');
+    ajAiRender();
+  }).catch(() => { go.disabled = false; ajAiStatus(navigator.onLine ? 'Could not reach the assistant.' : 'You\'re offline.', 'var(--red)'); });
+}
+function ajAiRender() {
+  const box = document.getElementById('aj-ai-result');
+  const pr = ajAiProposal;
+  if (!pr) { box.innerHTML = ''; return; }
+  const projects = (window.EBCC_PROJECTS || []).slice().sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0) || String(a.name).localeCompare(String(b.name)));
+  const code = pr.project ? pr.project.code : '';
+  let html = pr.summary ? '<div class="aj-ai-sum">' + escHTML(pr.summary) + '</div>' : '';
+  if (pr.questions && pr.questions.length) html += '<div class="aj-ai-q">' + pr.questions.map(q => '<div>' + escHTML(q) + '</div>').join('') + '</div>';
+  html += '<div class="aj-ai-proj"><span class="aj-glabel" style="margin:0">Job</span><select id="aj-ai-proj"><option value="">— pick the job —</option>' +
+    projects.map(p => '<option value="' + escAttr(p.code) + '"' + (p.code === code ? ' selected' : '') + '>' + escHTML(p.name + ' (' + p.code + ')' + (p.active ? '' : ' — not active')) + '</option>').join('') + '</select></div>';
+  html += '<div class="aj-ai-list">' + (pr.entries.length ? pr.entries.map(e =>
+    '<div class="aj-ai-ent"><span class="aj-dot ' + (e.kind === 'person' ? 'person' : 'machine') + '"></span>' +
+    '<div><div class="nm">' + escHTML(e.name + (e.kind !== 'person' && e.qty > 1 ? ' ×' + e.qty : '')) + '</div>' +
+    '<div class="sub">' + escHTML((e.kind === 'person' ? 'Person' : 'Machine') + (e.linkName ? ' · on ' + e.linkName : '') + (e.note ? ' · ' + e.note : '')) + '</div></div>' +
+    '<div class="when">' + escHTML(ajFmt(e.start) + (e.end ? ' – ' + ajFmt(e.end) : ' → ongoing')) + '</div>' +
+    '<button type="button" class="remove-btn" title="Leave this one out" data-ai-rm="' + escAttr(e._id) + '">&times;</button></div>').join('')
+    : '<div class="empty">Nothing to add yet.</div>') + '</div>';
+  html += '<div class="aj-ai-actions"><button type="button" class="btn btn-primary" id="aj-ai-apply"' + (pr.entries.length ? '' : ' disabled') + '>Add ' + pr.entries.length + ' to the schedule</button>' +
+    '<span style="font-size:12.5px;color:var(--gray)">Added on top of what is already scheduled. Fix anything afterwards with Edit.</span></div>';
+  box.innerHTML = html;
+}
+function ajAiApply() {
+  const pr = ajAiProposal; if (!pr || !pr.entries.length) return;
+  const code = document.getElementById('aj-ai-proj').value;
+  const p = (window.EBCC_PROJECTS || []).find(x => x.code === code);
+  if (!p) { ajAiStatus('Pick the job first.', 'var(--red)'); return; }
+  const prev = ajSchedule(p);
+  const added = [];
+  // machines first so people can link to them by name (new entries, then ones already on the job)
+  pr.entries.filter(e => e.kind !== 'person').forEach(e => added.push({ id: Math.random().toString(36).slice(2, 10), kind: 'machine', name: e.name, qty: e.qty, linkId: '', start: e.start, end: e.end || '', note: e.note || '' }));
+  const findMachine = (name) => {
+    const n = String(name || '').toLowerCase().trim(); if (!n) return null;
+    return added.find(m => m.name.toLowerCase() === n) || prev.find(m => !ajIsPerson(m) && m.name.toLowerCase() === n) ||
+      added.find(m => m.name.toLowerCase().includes(n) || n.includes(m.name.toLowerCase())) || null;
+  };
+  pr.entries.filter(e => e.kind === 'person').forEach(e => { const m = findMachine(e.linkName); added.push({ id: Math.random().toString(36).slice(2, 10), kind: 'person', name: e.name, qty: 1, linkId: m ? m.id : '', start: e.start, end: e.end || '', note: e.note || '' }); });
+  const next = prev.concat(added);
+  const btn = document.getElementById('aj-ai-apply'); btn.disabled = true; btn.textContent = 'Adding…';
+  p.schedule = next;
+  if (ajCode === p.code) ajRenderDetail(); else ajRenderHome();
+  ajPost({ mode: 'setSchedule', code: p.code, schedule: next }).then(out => {
+    if (!out.ok) {
+      p.schedule = prev; if (ajCode === p.code) ajRenderDetail(); else ajRenderHome();
+      btn.disabled = false; btn.textContent = 'Add ' + pr.entries.length + ' to the schedule';
+      ajAiStatus((out.j && out.j.error) || 'Could not save the schedule — try again.', 'var(--red)'); return;
+    }
+    if (Array.isArray(out.j.schedule)) p.schedule = out.j.schedule;
+    ajAiProposal = null; document.getElementById('aj-ai-result').innerHTML = ''; document.getElementById('aj-ai-text').value = '';
+    ajAiStatus('Added ' + added.length + ' to ' + p.name + '.', 'var(--green)');
+    if (ajCode === p.code) ajRenderDetail(); else if (ajCode) { /* another job is open — leave it */ } else ajRenderHome();
+  });
+}
+(function () {
+  document.getElementById('aj-ai-open').addEventListener('click', ajAiOpen);
+  document.getElementById('aj-ai-open2').addEventListener('click', ajAiOpen);
+  document.getElementById('aj-ai-close').addEventListener('click', ajAiClose);
+  document.getElementById('aj-ai-clear').addEventListener('click', ajAiClear);
+  document.getElementById('aj-ai-go').addEventListener('click', ajAiGo);
+  document.getElementById('aj-ai-mic').addEventListener('click', () => { if (ajAiRec) ajAiStopListening(); else ajAiStartListening(); });
+  if (!ajAiSpeechSupported()) document.getElementById('aj-ai-mic').title = 'Use the keyboard microphone to dictate';
+  document.getElementById('aj-ai-result').addEventListener('click', e => {
+    const rm = e.target.closest('[data-ai-rm]');
+    if (rm && ajAiProposal) { const id = rm.getAttribute('data-ai-rm'); ajAiProposal.entries = ajAiProposal.entries.filter(x => x._id !== id); ajAiRender(); return; }
+    if (e.target.closest('#aj-ai-apply')) ajAiApply();
+  });
+})();
 // Save the whole schedule: show it immediately, then persist; roll back on failure.
 function ajSaveSchedule(next) {
   const p = ajProj(); if (!p) return;
