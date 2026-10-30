@@ -29,7 +29,7 @@ const SCHEMA = {
         properties: {
           kind: { type: 'string', enum: ['machine', 'person'] },
           name: { type: 'string', description: 'Machine name (catalog spelling when it matches) or the person\'s name.' },
-          qty: { type: 'integer', minimum: 1, maximum: 99, description: 'Unit count for machines; always 1 for a person.' },
+          qty: { type: 'integer', description: 'Unit count for machines (1-99); always 1 for a person.' },
           start: { type: 'string', description: 'YYYY-MM-DD' },
           end: { type: 'string', description: 'YYYY-MM-DD, or "" when ongoing / not stated.' },
           note: { type: 'string', description: 'Shift, unit number or other detail the PM gave; else "".' },
@@ -104,37 +104,53 @@ module.exports = async function (context, req) {
     '\n\nPEOPLE:\n' + (people.join('\n') || '(none)') +
     '\n\nMACHINE CATALOG:\n' + (machineNames.join('\n') || '(none)');
 
-  // ---- Model call (structured output) ----
-  let apiRes;
-  try {
-    apiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2026-10-21', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 4000,
-        system,
-        messages: [{ role: 'user', content: text }],
-        output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } },
-      }),
-    });
-  } catch (e) {
-    return json(context, 502, { ok: false, error: 'Could not reach the assistant: ' + (e.message || e) });
+  // ---- Model call ----
+  // Three shapes, most capable first. A 400 on one (unsupported field, API
+  // version, schema keyword) moves on to the next; anything else stops.
+  const JSON_ONLY = '\n\nReply with ONLY a JSON object (no prose, no code fence) with exactly these keys: ' +
+    '"projectCode" (string, "" if unknown), "entries" (array of {kind:"machine"|"person", name, qty (integer), start "YYYY-MM-DD", end "YYYY-MM-DD" or "", note, linkName}), "questions" (array of strings), "summary" (string).';
+  const attempts = [
+    { version: '2026-10-21', body: { model: MODEL, max_tokens: 4000, system, messages: [{ role: 'user', content: text }], output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } } } },
+    { version: '2023-06-01', body: { model: MODEL, max_tokens: 4000, system, messages: [{ role: 'user', content: text }], output_config: { format: { type: 'json_schema', schema: SCHEMA } } } },
+    { version: '2023-06-01', body: { model: MODEL, max_tokens: 4000, system: system + JSON_ONLY, messages: [{ role: 'user', content: text }] } },
+  ];
+  let data = null, lastStatus = 0, lastDetail = '';
+  for (let i = 0; i < attempts.length; i++) {
+    const a = attempts[i];
+    let apiRes;
+    try {
+      apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': a.version, 'content-type': 'application/json' },
+        body: JSON.stringify(a.body),
+      });
+    } catch (e) {
+      return json(context, 502, { ok: false, error: 'Could not reach the assistant: ' + (e.message || e) });
+    }
+    if (apiRes.ok) {
+      try { data = await apiRes.json(); } catch (e) { return json(context, 502, { ok: false, error: 'Could not read the assistant\'s reply.' }); }
+      if (i > 0) context.log.warn('schedule-assist: shape ' + (i + 1) + ' succeeded after ' + lastStatus + ': ' + lastDetail.slice(0, 300));
+      break;
+    }
+    lastStatus = apiRes.status;
+    try { lastDetail = await apiRes.text(); } catch (_) { lastDetail = ''; }
+    context.log.warn('schedule-assist shape ' + (i + 1) + ' -> ' + lastStatus + ': ' + lastDetail.slice(0, 500));
+    if (lastStatus !== 400) break;
   }
-  if (!apiRes.ok) {
-    let detail = '';
-    try { detail = await apiRes.text(); } catch (_) {}
-    context.log.warn('schedule-assist API ' + apiRes.status + ': ' + detail.slice(0, 500));
-    const friendly = apiRes.status === 401 ? 'The assistant\'s API key was rejected.' : apiRes.status === 429 ? 'The assistant is busy — try again in a moment.' : 'The assistant returned an error (' + apiRes.status + ').';
-    return json(context, 502, { ok: false, error: friendly, detail: detail.slice(0, 300) });
+  if (!data) {
+    let reason = '';
+    try { const j = JSON.parse(lastDetail); reason = (j.error && j.error.message) || ''; } catch (_) { reason = lastDetail; }
+    const friendly = lastStatus === 401 ? 'The assistant\'s API key was rejected.' : lastStatus === 429 ? 'The assistant is busy — try again in a moment.' : lastStatus === 404 ? 'The assistant\'s model is not available on this key.' : 'The assistant returned an error (' + lastStatus + ').';
+    return json(context, 502, { ok: false, error: friendly, detail: String(reason || '').slice(0, 300) });
   }
-  let data;
-  try { data = await apiRes.json(); } catch (e) { return json(context, 502, { ok: false, error: 'Could not read the assistant\'s reply.' }); }
   if (data && data.stop_reason === 'refusal') return json(context, 502, { ok: false, error: 'The assistant declined that request.' });
   if (data && data.stop_reason === 'max_tokens') return json(context, 502, { ok: false, error: 'That note was too long for one go — split it up.' });
   const raw = ((data && data.content) || []).filter((b) => b && b.type === 'text').map((b) => b.text).join('');
   let parsed;
-  try { parsed = JSON.parse(raw); } catch (e) { return json(context, 502, { ok: false, error: 'The assistant\'s reply was not readable — try again.' }); }
+  try {
+    const cleaned = raw.trim().replace(/^\x60\x60\x60(?:json)?\s*/i, '').replace(/\x60\x60\x60\s*$/i, '').trim();
+    parsed = JSON.parse(cleaned.slice(cleaned.indexOf('{'), cleaned.lastIndexOf('}') + 1));
+  } catch (e) { return json(context, 502, { ok: false, error: 'The assistant\'s reply was not readable — try again.', detail: raw.slice(0, 200) }); }
 
   // ---- Sanitize exactly like setSchedule will ----
   const entries = [];

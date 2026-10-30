@@ -11047,6 +11047,7 @@ function ajStartEdit(e) {
 // ---- Schedule assistant: talk/type → /api/schedule-assist → review → setSchedule ----
 let ajAiProposal = null;      // last reply from the server, as shown
 let ajAiRec = null;           // live SpeechRecognition while listening
+let ajAiRecTimer = null;      // hard stop so a missed tap can't leave the mic open
 function ajAiStatus(msg, color) { const el = document.getElementById('aj-ai-status'); el.textContent = msg || ''; el.style.color = color || 'var(--gray)'; }
 function ajAiMachineNames() {
   const names = new Set();
@@ -11060,7 +11061,6 @@ function ajAiOpen() {
   ajAiStatus(p ? 'Talking about ' + p.name + ' — name another job to switch.' : '');
   if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
   document.getElementById('aj-ai').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  setTimeout(() => { try { document.getElementById('aj-ai-text').focus(); } catch (e) {} }, 300);
 }
 function ajAiClose() { ajAiStopListening(); document.getElementById('aj-ai').style.display = 'none'; }
 function ajAiClear() { ajAiStopListening(); document.getElementById('aj-ai-text').value = ''; ajAiProposal = null; document.getElementById('aj-ai-result').innerHTML = ''; ajAiStatus(''); }
@@ -11068,7 +11068,8 @@ function ajAiClear() { ajAiStopListening(); document.getElementById('aj-ai-text'
 // Where it's missing, the keyboard's microphone still dictates into the box.
 function ajAiSpeechSupported() { return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
 function ajAiStopListening() {
-  if (ajAiRec) { try { ajAiRec.stop(); } catch (e) {} }
+  clearTimeout(ajAiRecTimer);
+  if (ajAiRec) { const r = ajAiRec; try { r.stop(); } catch (e) {} setTimeout(() => { try { r.abort(); } catch (e) {} }, 1500); }
   ajAiRec = null;
   const b = document.getElementById('aj-ai-mic'); b.classList.remove('is-live'); b.querySelector('span').textContent = 'Talk';
 }
@@ -11076,6 +11077,7 @@ function ajAiStartListening() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { ajAiStatus('This browser can\'t listen — tap the box and use the keyboard\'s microphone instead.', '#d97706'); return; }
   const ta = document.getElementById('aj-ai-text');
+  try { ta.blur(); } catch (e) {}
   const base = ta.value.trim();
   let finalText = '';
   const rec = new SR();
@@ -11095,7 +11097,8 @@ function ajAiStartListening() {
   rec.onend = () => { if (ajAiRec === rec) { ajAiStopListening(); ajAiStatus(ta.value.trim() ? 'Got it — tap Work it out, or keep talking.' : ''); } };
   ajAiRec = rec;
   const b = document.getElementById('aj-ai-mic'); b.classList.add('is-live'); b.querySelector('span').textContent = 'Stop';
-  ajAiStatus('Listening…', 'var(--red)');
+  ajAiStatus('Listening… tap Stop when you\'re done (it also stops on its own after a pause).', 'var(--red)');
+  clearTimeout(ajAiRecTimer); ajAiRecTimer = setTimeout(() => { if (ajAiRec === rec) ajAiStopListening(); }, 60000);
   try { rec.start(); } catch (e) { ajAiStatus('Could not start the microphone.', 'var(--red)'); ajAiStopListening(); }
 }
 function ajAiGo() {
@@ -11111,7 +11114,7 @@ function ajAiGo() {
   }).then(r => r.json().catch(() => null).then(j => ({ status: r.status, j })));
   ((window.EBCC_PROJECTS || []).length ? Promise.resolve() : jbLoadProjects()).then(run).then(out => {
     go.disabled = false;
-    if (!out.j || !out.j.ok) { ajAiStatus((out.j && out.j.error) || ('Server error ' + out.status), 'var(--red)'); return; }
+    if (!out.j || !out.j.ok) { ajAiStatus(((out.j && out.j.error) || ('Server error ' + out.status)) + (out.j && out.j.detail ? ' — ' + out.j.detail : ''), 'var(--red)'); return; }
     ajAiProposal = out.j;
     ajAiProposal.entries = (out.j.entries || []).map(e => Object.assign({ _id: Math.random().toString(36).slice(2, 10) }, e));
     ajAiStatus('');
@@ -11176,7 +11179,13 @@ function ajAiApply() {
   document.getElementById('aj-ai-close').addEventListener('click', ajAiClose);
   document.getElementById('aj-ai-clear').addEventListener('click', ajAiClear);
   document.getElementById('aj-ai-go').addEventListener('click', ajAiGo);
-  document.getElementById('aj-ai-mic').addEventListener('click', () => { if (ajAiRec) ajAiStopListening(); else ajAiStartListening(); });
+  (function () {
+    let last = 0;
+    const toggle = (e) => { if (e.type === 'pointerdown' && e.pointerType === 'mouse') return; const now = Date.now(); if (now - last < 400) return; last = now; if (ajAiRec) ajAiStopListening(); else ajAiStartListening(); };
+    const mic = document.getElementById('aj-ai-mic');
+    mic.addEventListener('pointerdown', toggle);
+    mic.addEventListener('click', toggle);
+  })();
   if (!ajAiSpeechSupported()) document.getElementById('aj-ai-mic').title = 'Use the keyboard microphone to dictate';
   document.getElementById('aj-ai-result').addEventListener('click', e => {
     const rm = e.target.closest('[data-ai-rm]');
