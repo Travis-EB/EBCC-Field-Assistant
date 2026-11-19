@@ -7,8 +7,14 @@
 //
 // GET ?code= -> { jha:[…], talks:[…], incidents:[…], generatedAt }
 // Any signed-in, non-disabled user (company safety records are shared).
-const { getContainers, getPrincipal, ensureUser, json } = require('../shared/auth');
-const { getEwtContainer } = require('../shared/blob');
+//
+// POST { code, mode:'backfillSafety' } (ADMIN) -> copies the archived JHA and
+// incident-report PDFs already filed on this job into its Job Book Safety
+// folder — for reports sent before that folder existed. Skips ones already
+// there; 100 copies per call ({ more:true } when there are more to do).
+const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
+const { getEwtContainer, getJobBooksContainer } = require('../shared/blob');
+const { jhaFileName, incidentFileName, safetyPath } = require('../shared/jobBookSafety');
 const { BlobSASPermissions } = require('@azure/storage-blob');
 const { readDoc, findProject } = require('../shared/projects');
 
@@ -49,6 +55,52 @@ module.exports = async function (context, req) {
   try { me = await ensureUser(principal, principal.email); }
   catch (e) { context.log.error('project-records ensureUser', e); return json(context, 500, { error: 'Server error.' }); }
   if (me.role === 'disabled') return json(context, 403, { error: 'Account disabled.' });
+
+  if (String(req.method || '').toUpperCase() === 'POST') {
+    if (!isAdmin(me)) return json(context, 403, { error: 'Admin only.' });
+    let body = req.body;
+    if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) { body = null; } }
+    const bcode = String((body && body.code) || '').trim();
+    if (!bcode || !body || body.mode !== 'backfillSafety') return json(context, 400, { error: 'Bad request.' });
+    try {
+      const { users, records } = await getContainers();
+      const p = findProject(await readDoc(records), bcode);
+      if (!p) return json(context, 404, { error: 'Project not found.' });
+      const names = {};
+      try {
+        const { resources } = await users.items.query('SELECT c.id, c.name, c.email FROM c').fetchAll();
+        resources.forEach((u) => { names[u.id] = u.name || u.email; });
+      } catch (e) { context.log.warn('backfillSafety names: ' + (e.message || e)); }
+      const src = await getEwtContainer();
+      const dst = await getJobBooksContainer();
+      const docs = await fetchItems(records, p.code, context.log);
+      let copied = 0, skipped = 0, missing = 0, more = false;
+      outer:
+      for (const d of docs) {
+        if (d.type !== 'jha_records' && d.type !== 'incident_reports') continue;
+        for (const r of d.items) {
+          const blob = r && r.pdfBlob ? String(r.pdfBlob) : '';
+          if (!blob || !blob.startsWith(String(d.ownerId) + '/')) continue;   // only the filer's own archive
+          const name = d.type === 'jha_records'
+            ? jhaFileName(r.date, names[d.ownerId] || d.ownerEmail)
+            : incidentFileName(r.date, r.type, r.id);
+          const target = dst.getBlockBlobClient(safetyPath(p.code, name));
+          try {
+            if (await target.exists()) { skipped++; continue; }
+            const from = src.getBlockBlobClient(blob);
+            if (!(await from.exists())) { missing++; continue; }
+            if (copied >= 100) { more = true; break outer; }
+            await target.uploadData(await from.downloadToBuffer(), { blobHTTPHeaders: { blobContentType: 'application/pdf' } });
+            copied++;
+          } catch (e) { context.log.warn('backfillSafety copy ' + blob + ': ' + (e.message || e)); missing++; }
+        }
+      }
+      return json(context, 200, { ok: true, copied, skipped, missing, more });
+    } catch (e) {
+      context.log.error('project-records backfillSafety', e);
+      return json(context, 500, { error: 'Server error.' });
+    }
+  }
 
   const code = String((req.query && req.query.code) || '').trim();
   if (!code) return json(context, 400, { error: 'code required.' });

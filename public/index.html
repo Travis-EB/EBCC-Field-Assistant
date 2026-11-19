@@ -2370,7 +2370,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
 <section class="tab-content" id="tab-sssp">
   <div class="ewt-section">
     <h3>Site-Specific Safety Plans</h3>
-    <div class="ewt-hint">SSSP's are organized by project — the same project list as Job Books. Start typing a name or job # and pick from the list.</div>
+    <div class="ewt-hint">Pick the job, then upload its Site-Specific Safety Plan. It is stored in that job’s Job Book under Safety.</div>
     <div class="search-bar" style="margin:8px 0 0">
       <input type="text" id="sssp-proj-combo" placeholder="Search projects — name or job #…" autocomplete="off">
       <div class="search-results" id="sssp-proj-results"></div>
@@ -8520,6 +8520,7 @@ const JB_FOLDERS = [
   { id: 'Contract',            color: '#dc2626' },
   { id: 'Meeting Minutes',     color: '#4f46e5' },
   { id: 'Site Photos',         color: '#0d9488' },
+  { id: 'Safety',              color: '#65a30d' },   // JHA + incident PDFs land here on send; SSSPs from the SSSP tab
 ];
 // Links (Procore / Autodesk / etc.) — a color-coded category of their own,
 // stored on the shared project record rather than in blob storage.
@@ -8569,8 +8570,12 @@ function jbRenderFiles() {
   const files = jbActiveFolder === 'ALL'
     ? jbCurrentFiles
     : (jbActiveFolder === JB_LINKS_ID ? [] : jbCurrentFiles.filter(f => (f.folder || '') === jbActiveFolder));
+  const safetyHead = jbActiveFolder !== 'Safety' ? '' :
+    '<div class="ewt-hint" style="margin:0 0 10px">JHA’s and incident reports filed on this job save here automatically when they are emailed or submitted, and SSSP’s uploaded from the SSSP tab land here too. Each one still shows under its author in Manage Users.' +
+    (window.EBCC_IS_ADMIN ? '<div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="jb-safety-backfill">Pull in earlier JHA’s &amp; incident reports</button><span id="jb-safety-status" style="font-weight:600"></span></div>' : '') +
+    '</div>';
   if (!files.length && !showLinks.length) {
-    wrap.innerHTML = '<div class="empty">' + (jbActiveFolder === JB_LINKS_ID
+    wrap.innerHTML = safetyHead + '<div class="empty">' + (jbActiveFolder === JB_LINKS_ID
       ? 'No links yet — add a Procore or Autodesk link above.'
       : (jbCurrentFiles.length ? 'No files in ' + escHTML(jbFolderLabel(jbActiveFolder === 'ALL' ? '' : jbActiveFolder)) + '.' : 'No files yet. Drop files above — they land in Unsorted, then drag them onto a folder.')) + '</div>';
     return;
@@ -8589,7 +8594,7 @@ function jbRenderFiles() {
       '</div>' +
     '</div>';
   }).join('');
-  wrap.innerHTML = linkRows + files.map(f => {
+  wrap.innerHTML = safetyHead + linkRows + files.map(f => {
     const folder = f.folder || '';
     return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:start;cursor:grab">' +
       '<div style="min-width:0;grid-area:auto">' +
@@ -8604,6 +8609,28 @@ function jbRenderFiles() {
     '</div>';
   }).join('');
 }
+
+// Admin-only: copy JHA / incident PDFs sent before the Safety folder existed into it
+document.addEventListener('click', (e) => {
+  const b = e.target.closest ? e.target.closest('#jb-safety-backfill') : null;
+  if (!b || !jbCurrentCode) return;
+  const code = jbCurrentCode;
+  const say = (msg, color) => { const el = document.getElementById('jb-safety-status'); if (el) { el.textContent = msg; el.style.color = color || 'var(--gray)'; } };
+  b.disabled = true;
+  let total = 0;
+  const run = () => fetch('/api/project-records', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code, mode: 'backfillSafety' }) })
+    .then(r => r.json().catch(() => null).then(j => ({ ok: r.ok, j })))
+    .then(out => {
+      if (!out.ok || !out.j || !out.j.ok) throw new Error((out.j && out.j.error) || 'Could not pull them in.');
+      total += out.j.copied || 0;
+      if (out.j.more) { say('Copied ' + total + ' so far…'); return run(); }
+      const msg = total ? 'Added ' + total + ' report' + (total === 1 ? '' : 's') + '.' : (out.j.skipped ? 'Everything is already here.' : 'No archived JHA’s or incident reports were found for this job.');
+      if (jbCurrentCode === code) jbLoadFiles(code);
+      setTimeout(() => say(msg + (out.j.missing ? ' ' + out.j.missing + ' had no saved PDF.' : ''), 'var(--green)'), 400);
+    });
+  say('Looking for earlier reports…');
+  run().catch(err => { say(err.message || 'Could not pull them in.', 'var(--red)'); const x = document.getElementById('jb-safety-backfill'); if (x) x.disabled = false; });
+});
 
 // Admin-only: delete a file from the job book (server enforces the admin check too)
 document.addEventListener('click', (e) => {
@@ -8926,34 +8953,36 @@ function jbReadB64(part) {
   });
 }
 
-async function jbUploadFiles(code, fileList) {
-  const files = Array.from(fileList || []);
+async function jbUploadFiles(code, fileList, opts) {
+  opts = opts || {};
+  const files = Array.from(fileList || []).map(f => ({ file: f, name: opts.rename ? opts.rename(f.name) : f.name }));
   if (!files.length) return;
-  const status = document.getElementById('jb-upstatus');
+  const status = opts.status || document.getElementById('jb-upstatus');
   const CHUNK = 4 * 1024 * 1024;         // big files go up in 4MB blocks
   const SINGLE_MAX = 6 * 1024 * 1024;    // below this, one-shot upload
   const FILE_MAX = 200 * 1024 * 1024;
   // New drops land in the active folder (Unsorted when viewing All) — organize after.
-  const targetFolder = (jbActiveFolder === 'ALL') ? '' : jbActiveFolder;
-  const existing = new Set(jbCurrentFiles.map(f => String(f.name).toLowerCase()));
+  const targetFolder = opts.folder != null ? opts.folder : ((jbActiveFolder === 'ALL') ? '' : jbActiveFolder);
+  const existing = new Set((opts.existing || jbCurrentFiles).map(f => String(f.name).toLowerCase()));
   let failed = 0, skipped = 0, idx = 0;
-  for (const file of files) {
+  for (const item of files) {
+    const file = item.file, upName = item.name;
     idx++;
     const label = files.length > 1 ? '(' + idx + '/' + files.length + ') ' : '';
     try {
-      if (existing.has(String(file.name).toLowerCase())) {
+      if (existing.has(String(upName).toLowerCase())) {
         skipped++;
-        alert('Duplicate detected — "' + file.name + '" is already in this project. Not added.');
+        alert('Duplicate detected — "' + upName + '" is already in this project. Not added.');
         continue;
       }
       if (file.size > FILE_MAX) { alert(file.name + ' is over the 200MB limit.'); failed++; continue; }
       const contentType = file.type || jbMimeFor(file.name);
       if (file.size <= SINGLE_MAX) {
-        if (status) status.textContent = 'Saving ' + label + file.name + '…';
+        if (status) status.textContent = 'Saving ' + label + upName + '…';
         const b64 = await jbReadB64(file);
         const r = await fetch('/api/project-files', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project: code, name: file.name, folder: targetFolder, contentType: contentType, data: b64 }),
+          body: JSON.stringify({ project: code, name: upName, folder: targetFolder, contentType: contentType, data: b64 }),
         });
         const j = await r.json().catch(() => null);
         if (!r.ok || !j || !j.ok) throw 0;
@@ -8965,24 +8994,24 @@ async function jbUploadFiles(code, fileList) {
           const blockId = btoa('ebccblk' + String(i).padStart(8, '0'));
           const r = await fetch('/api/project-files', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project: code, name: file.name, folder: targetFolder, mode: 'stage', blockId: blockId, data: b64 }),
+            body: JSON.stringify({ project: code, name: upName, folder: targetFolder, mode: 'stage', blockId: blockId, data: b64 }),
           });
           const j = await r.json().catch(() => null);
           if (!r.ok || !j || !j.ok) throw 0;
           blockIds.push(blockId);
-          if (status) status.textContent = 'Saving ' + label + file.name + ' — ' + Math.round(((i + 1) / (total + 1)) * 100) + '%';
+          if (status) status.textContent = 'Saving ' + label + upName + ' — ' + Math.round(((i + 1) / (total + 1)) * 100) + '%';
         }
         const c = await fetch('/api/project-files', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project: code, name: file.name, folder: targetFolder, mode: 'commit', contentType: contentType, blockIds: blockIds }),
+          body: JSON.stringify({ project: code, name: upName, folder: targetFolder, mode: 'commit', contentType: contentType, blockIds: blockIds }),
         });
         const cj = await c.json().catch(() => null);
         if (!c.ok || !cj || !cj.ok) throw 0;
       }
-      existing.add(String(file.name).toLowerCase());
+      existing.add(String(upName).toLowerCase());
     } catch (e) {
       failed++;
-      alert('Upload failed for ' + file.name + (navigator.onLine ? '.' : ' — check your connection.'));
+      alert('Upload failed for ' + upName + (navigator.onLine ? '.' : ' — check your connection.'));
     }
   }
   if (status) {
@@ -8992,7 +9021,7 @@ async function jbUploadFiles(code, fileList) {
       : 'Saved ✓';
     setTimeout(() => { if (status.textContent === 'Saved ✓') status.textContent = ''; }, 2500);
   }
-  jbLoadFiles(code);
+  if (opts.done) opts.done(); else jbLoadFiles(code);
 }
 
 document.addEventListener('click', (e) => {
@@ -10242,16 +10271,66 @@ window.addEventListener('ebcc-jha-updated', () => {
 window.addEventListener('pagehide', jhaFlushFields);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') jhaFlushFields(); });
 
-// === SSSP — project picker ready; content still to come ===
+// === SSSP — upload the plan for a job; it is stored in that Job Book's Safety folder ===
+let ssspFiles = [];       // every file on the picked job (for the duplicate check)
+let ssspLoadedFor = '';
+const ssspIs = (f) => (f.folder || '') === 'Safety' && /^sssp/i.test(String(f.name));
+function ssspLoad() {
+  const p = ssspProjCombo.get();
+  if (!p) return;
+  const code = p.code;
+  fetch('/api/project-files?project=' + encodeURIComponent(code)).then(r => r.ok ? r.json() : null).then(res => {
+    if (!ssspProjCombo.get() || ssspProjCombo.get().code !== code) return;
+    ssspFiles = (res && res.files) || []; ssspLoadedFor = code;
+    ssspRender();
+  }).catch(() => { ssspLoadedFor = code; ssspRender(); });
+}
 function ssspRender() {
   const body = document.getElementById('sssp-body');
   const p = ssspProjCombo.get();
   if (!p) { body.innerHTML = ''; return; }
-  body.innerHTML = '<div class="empty">SSSP’s for ' + escHTML(p.name || p.code) + ' will live here — this section is still being built out.</div>';
+  if (ssspLoadedFor !== p.code) { body.innerHTML = '<div class="empty">Loading…</div>'; ssspLoad(); return; }
+  const mine = ssspFiles.filter(ssspIs).sort((a, b) => String(b.lastModified || '').localeCompare(String(a.lastModified || '')));
+  const isAdmin = !!window.EBCC_IS_ADMIN;
+  body.innerHTML =
+    '<div class="controls" style="margin-bottom:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<label class="btn btn-primary" style="cursor:pointer;display:inline-block">Upload SSSP<input type="file" id="sssp-input" accept=".pdf,.doc,.docx,image/*" multiple style="display:none"></label>' +
+      '<span id="sssp-status" style="font-weight:600;font-size:13px"></span></div>' +
+    '<div class="ewt-hint" style="margin-bottom:10px">Saved to this job’s Job Book under Safety, so the whole crew can open it.</div>' +
+    (mine.length ? mine.map(f =>
+      '<div class="equipment-card" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:start">' +
+        '<div style="min-width:0;grid-area:auto"><div class="name" style="word-break:break-word;line-height:1.35">' + escHTML(f.name) + '</div>' +
+        '<div class="rate" style="margin-top:2px">' + jbFmtSize(f.size) + (f.lastModified ? ' · ' + new Date(f.lastModified).toLocaleDateString() : '') + '</div></div>' +
+        '<div style="display:flex;gap:6px;align-items:center">' +
+          '<button class="btn" data-jb-file="' + escAttr(f.name) + '" data-jb-proj="' + escAttr(p.code) + '" data-jb-folder="Safety">Open</button>' +
+          (isAdmin ? '<button class="remove-btn" title="Delete (admin)" data-sssp-del="' + escAttr(f.name) + '">&times;</button>' : '') +
+        '</div></div>').join('')
+      : '<div class="empty">No SSSP uploaded for ' + escHTML(p.name || p.code) + ' yet.</div>');
 }
+document.getElementById('sssp-body').addEventListener('change', (e) => {
+  if (!e.target || e.target.id !== 'sssp-input') return;
+  const p = ssspProjCombo.get(); const picked = e.target.files;
+  if (!p || !picked || !picked.length) return;
+  jbUploadFiles(p.code, picked, {
+    folder: 'Safety', existing: ssspFiles, status: document.getElementById('sssp-status'),
+    rename: (n) => /^sssp/i.test(n) ? n : 'SSSP - ' + n,
+    done: () => { ssspLoadedFor = ''; setTimeout(ssspRender, 900); },
+  });
+});
+document.getElementById('sssp-body').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-sssp-del]');
+  const p = ssspProjCombo.get();
+  if (!del || !p) return;
+  const name = del.getAttribute('data-sssp-del');
+  if (!confirm('Delete "' + name + '" from this job? This cannot be undone.')) return;
+  fetch('/api/project-files?project=' + encodeURIComponent(p.code) + '&name=' + encodeURIComponent(name) + '&folder=Safety', { method: 'DELETE' })
+    .then(r => { if (!r.ok) throw 0; ssspLoadedFor = ''; ssspRender(); })
+    .catch(() => alert('Could not delete the file.'));
+});
 const ssspProjCombo = projCombo('sssp-proj-combo', 'sssp-proj-results', () => ssspRender());
 document.querySelector('.tab[data-tab="sssp"]').addEventListener('click', () => {
   if (!(window.EBCC_PROJECTS || []).length) jbLoadProjects();
+  ssspLoadedFor = ''; ssspRender();
 });
 
 // ============================================================

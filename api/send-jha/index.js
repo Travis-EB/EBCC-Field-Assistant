@@ -16,6 +16,7 @@
 const { getContainers, getPrincipal, ensureUser, json } = require('../shared/auth');
 const { getEwtContainer, safeName } = require('../shared/blob');
 const { sendGraphMail } = require('../shared/mail');
+const { putSafetyCopy, jhaFileName } = require('../shared/jobBookSafety');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -64,6 +65,13 @@ module.exports = async function (context, req) {
     pdfBlobPath = '';
   }
 
+  // ---- Second copy under the job: Job Books > Safety (never blocks the send) ----
+  let jobBookFile = '';
+  try {
+    const { records } = await getContainers();
+    jobBookFile = await putSafetyCopy(context.log, records, str(s.projectCode, 40), jhaFileName(s.date, me.name || me.email), Buffer.from(pdfB64, 'base64'));
+  } catch (e) { context.log.warn('send-jha job book copy: ' + (e.message || e)); }
+
   // ---- Email it (only when recipients were picked) ----
   let mail = { ok: false, reason: 'no-recipients' };
   if (recipients.length) {
@@ -96,6 +104,6 @@ module.exports = async function (context, req) {
     context.log.error('send-jha record stamp', e);
   }
 
-  if (mail.sent) return json(context, 200, { ok: true, sent: true, recipients: recipients, archived: !!pdfBlobPath, pdfBlob: pdfBlobPath });
-  return json(context, 200, { ok: true, sent: false, reason: mail.reason, detail: mail.detail, archived: !!pdfBlobPath, pdfBlob: pdfBlobPath });
+  if (mail.sent) return json(context, 200, { ok: true, sent: true, recipients: recipients, archived: !!pdfBlobPath, pdfBlob: pdfBlobPath, jobBook: !!jobBookFile });
+  return json(context, 200, { ok: true, sent: false, reason: mail.reason, detail: mail.detail, archived: !!pdfBlobPath, pdfBlob: pdfBlobPath, jobBook: !!jobBookFile });
 };

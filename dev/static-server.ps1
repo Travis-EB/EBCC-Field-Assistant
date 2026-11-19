@@ -91,6 +91,8 @@ while ($listener.IsListening) {
         $json = '{"ok":true,"sent":true,"recipients":["office@earthbasics.net"],"archived":true}'
       } elseif ($path -eq '/api/ewt-pdf' -and $req.HttpMethod -eq 'POST') {
         $json = '{"ok":true,"path":"dev-admin/mock-' + [DateTime]::Now.Ticks + '.pdf"}'
+      } elseif ($path -eq '/api/project-records' -and $req.HttpMethod -eq 'POST') {
+        $json = '{"ok":true,"copied":3,"skipped":1,"missing":0,"more":false}'
       } elseif ($path -eq '/api/project-records') {
         if ($req.Url.Query -like '*code=26-292-03*') {
           $json = '{"jha":[' +
@@ -162,7 +164,7 @@ while ($listener.IsListening) {
       } elseif ($path -eq '/api/project-files' -and $req.Url.Query -like '*sas=1*') {
         $json = '{"ok":true,"url":"/icons/logo.png"}'
       } elseif ($path -eq '/api/project-files') {
-        $json = '{"files":[{"name":"Harmonson_Logistics_Center_Building_5_Fine_Grade_Takeoff_Rev4_FINAL_2026-08-04.pdf","folder":"Plans","size":2400000,"lastModified":"2026-08-01T10:00:00Z","contentType":"application/pdf"},{"name":"Soils Report.pdf","folder":"Geotech","size":900000,"lastModified":"2026-07-20T10:00:00Z","contentType":"application/pdf"},{"name":"Dropped New.pdf","folder":"","size":120000,"lastModified":"2026-08-04T10:00:00Z","contentType":"application/pdf"},{"name":"GC meeting 10-19.pdf","folder":"Meeting Minutes","size":80000,"lastModified":"2026-10-19T10:00:00Z","contentType":"application/pdf"},{"name":"2026-10-20-1-1.jpg","folder":"Site Photos","size":180000,"lastModified":"2026-10-20T10:00:00Z","contentType":"image/jpeg"}]}'
+        $json = '{"files":[{"name":"Harmonson_Logistics_Center_Building_5_Fine_Grade_Takeoff_Rev4_FINAL_2026-08-04.pdf","folder":"Plans","size":2400000,"lastModified":"2026-08-01T10:00:00Z","contentType":"application/pdf"},{"name":"Soils Report.pdf","folder":"Geotech","size":900000,"lastModified":"2026-07-20T10:00:00Z","contentType":"application/pdf"},{"name":"Dropped New.pdf","folder":"","size":120000,"lastModified":"2026-08-04T10:00:00Z","contentType":"application/pdf"},{"name":"GC meeting 10-19.pdf","folder":"Meeting Minutes","size":80000,"lastModified":"2026-10-19T10:00:00Z","contentType":"application/pdf"},{"name":"JHA 2026-11-18 - Tony Blood.pdf","folder":"Safety","size":64000,"lastModified":"2026-11-18T13:00:00Z","contentType":"application/pdf"},{"name":"Incident 2026-11-18 - Injury - a1b2.pdf","folder":"Safety","size":91000,"lastModified":"2026-11-18T22:40:00Z","contentType":"application/pdf"},{"name":"SSSP - Prosper Retail rev2.pdf","folder":"Safety","size":410000,"lastModified":"2026-10-02T15:00:00Z","contentType":"application/pdf"},{"name":"2026-10-20-1-1.jpg","folder":"Site Photos","size":180000,"lastModified":"2026-10-20T10:00:00Z","contentType":"image/jpeg"}]}'
       } elseif ($path -eq '/api/me') {
         $json = '{"authenticated":true,"userId":"dev-admin","email":"travis@earthbasics.net","name":"Travis Pecoy","role":"admin","isAdmin":true}'
       } elseif ($path -like '/api/records*' -and $req.Url.Query -like '*userId=*') {

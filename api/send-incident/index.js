@@ -9,6 +9,7 @@
 const { getContainers, getPrincipal, ensureUser, json } = require('../shared/auth');
 const { getEwtContainer, safeName } = require('../shared/blob');
 const { sendGraphMail } = require('../shared/mail');
+const { putSafetyCopy, incidentFileName } = require('../shared/jobBookSafety');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Incident reports always reach the office — Travis's call (2026-10-28).
@@ -60,6 +61,13 @@ module.exports = async function (context, req) {
     pdfBlobPath = '';
     container = null;
   }
+
+  // ---- Second copy under the job: Job Books > Safety. Off-site incidents have no job. ----
+  let jobBookFile = '';
+  try {
+    const { records } = await getContainers();
+    jobBookFile = await putSafetyCopy(context.log, records, str(s.projectCode, 40), incidentFileName(s.date, s.type, s.reportId), Buffer.from(pdfB64, 'base64'));
+  } catch (e) { context.log.warn('send-incident job book copy: ' + (e.message || e)); }
   // Photos: `photos` are new originals (data URIs) to archive; `photoBlobs`
   // are paths already archived by an earlier send — re-attached from the store.
   const newPhotos = [];
@@ -137,7 +145,7 @@ module.exports = async function (context, req) {
     context.log.error('send-incident record stamp', e);
   }
 
-  const out = { ok: true, recipients, archived: !!pdfBlobPath, pdfBlob: pdfBlobPath, photoBlobs, photosArchived: photoBlobs.length, photosAttached: attachments.length };
+  const out = { ok: true, recipients, archived: !!pdfBlobPath, jobBook: !!jobBookFile, pdfBlob: pdfBlobPath, photoBlobs, photosArchived: photoBlobs.length, photosAttached: attachments.length };
   if (mail.sent) return json(context, 200, Object.assign(out, { sent: true }));
   return json(context, 200, Object.assign(out, { sent: false, reason: mail.reason, detail: mail.detail }));
 };
