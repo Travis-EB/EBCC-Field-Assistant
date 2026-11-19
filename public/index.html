@@ -11734,31 +11734,43 @@ async function irBuildPDF(r, photoData) {
   const M = 34, CW = W - 2 * M;
   const PEACH = [249, 206, 187], BAND_TEXT = [122, 62, 22], INK = [31, 41, 55], GRAY = [120, 128, 138], RED = [220, 38, 38];
   let y = M;
-  const ensure = need => { if (y + need > H - M) { doc.addPage(); y = M; } };
+  const LH = 13;            // body line height
+  const PAD = 6;            // body text indent — lines up with the band label
+  const TW = CW - 2 * PAD;  // wrap width, kept inside the band on both sides
+  const BOTTOM = H - M - 14; // lowest baseline; the footer sits below it
+  // Phone keyboards type curly quotes, long dashes and no-break spaces that the
+  // PDF's built-in font has no widths for, so lines wrapped too late and ran
+  // past the margin. Swap them for plain equivalents before measuring.
+  const clean = (t) => String(t == null ? '' : t)
+    .replace(/[\u2018\u2019\u201A\u2032]/g, "'").replace(/[\u201C\u201D\u201E\u2033]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, '-').replace(/\u2026/g, '...').replace(/\u2022/g, '-')
+    .replace(/[\u00A0\u2007\u2009\u200A\u202F]/g, ' ').replace(/\t/g, '  ').replace(/\r\n?/g, '\n')
+    .replace(/[^\n\x20-\x7E\u00A1-\u00FF]/g, '').trim();
+  // y is always the BASELINE of the next line of text.
+  const ensure = need => { if (y + need > BOTTOM) { doc.addPage(); y = M + 10; } };
   const band = label => {
-    ensure(30);
-    doc.setFillColor(...PEACH); doc.rect(M, y, CW, 16, 'F');
+    y += 6;                                   // breathing room above each section
+    ensure(18 + 15 + LH);                     // a band never sits alone at the foot of a page
+    const top = y - 10;
+    doc.setFillColor(...PEACH); doc.rect(M, top, CW, 18, 'F');
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...BAND_TEXT);
-    doc.text(label, M + 6, y + 11);
-    doc.setTextColor(...INK); y += 22;
+    doc.text(label, M + PAD, top + 12);
+    doc.setTextColor(...INK); y = top + 18 + 15; // first line clears the band
   };
   const para = (text) => {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
-    const lines = doc.splitTextToSize(String(text || '—'), CW);
-    for (let i = 0; i < lines.length; i += 40) {
-      const chunk = lines.slice(i, i + 40);
-      ensure(chunk.length * 12 + 6);
-      doc.text(chunk, M, y);
-      y += chunk.length * 12;
-    }
-    y += 6;
+    const lines = doc.splitTextToSize(clean(text) || '—', TW);
+    lines.forEach(line => { ensure(LH); doc.text(line, M + PAD, y); y += LH; });
+    y += 4;
   };
 
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...INK);
-  doc.text('Incident Report', M, y + 4);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...INK);
+  doc.text('Incident Report', M, y + 12);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...GRAY);
-  doc.text('EBCC Field Assistant', W - M, y + 4, { align: 'right' });
-  y += 24;
+  doc.text('EBCC Field Assistant', W - M, y + 12, { align: 'right' });
+  y += 22;
+  doc.setDrawColor(...PEACH); doc.setLineWidth(1.5); doc.line(M, y, W - M, y);
+  y += 20;
 
   doc.setFontSize(9.5); doc.setTextColor(...INK);
   [
@@ -11770,22 +11782,23 @@ async function irBuildPDF(r, photoData) {
     ['Location', r.location || '—'],
     ['Witnesses', r.witnesses || '—'],
   ].forEach(pair => {
-    ensure(14);
-    doc.setFont('helvetica', 'bold'); doc.text(pair[0] + ':', M, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
+    const t = doc.splitTextToSize(clean(pair[1]) || '—', CW - 118 - PAD);
+    ensure(t.length * LH);
+    doc.setFont('helvetica', 'bold'); doc.text(pair[0] + ':', M + PAD, y);
     doc.setFont('helvetica', 'normal');
-    const t = doc.splitTextToSize(pair[1], CW - 110);
-    doc.text(t, M + 104, y);
-    y += Math.max(1, t.length) * 12 + 2;
+    t.forEach((line, i) => doc.text(line, M + 118, y + i * LH));
+    y += t.length * LH + 3;
   });
-  y += 4;
+  y += 6;
 
   band('WHAT HAPPENED');
   para(r.desc);
   band('INJURIES & MEDICAL TREATMENT');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...RED);
-  ensure(14);
-  doc.text('For all Life Threatening Injuries Call 911, for all other injuries call 1-844-334-6470', M, y);
-  y += 14;
+  ensure(LH + 4);
+  doc.text('For all Life Threatening Injuries Call 911, for all other injuries call 1-844-334-6470', M + PAD, y);
+  y += LH + 4;
   para(r.injury || 'None reported');
   band('IMMEDIATE ACTION TAKEN');
   para(r.action);
@@ -11793,8 +11806,10 @@ async function irBuildPDF(r, photoData) {
   const photos = Array.isArray(photoData) ? photoData.filter(Boolean) : [];
   if (photos.length) {
     band('PHOTOS (' + photos.length + ')');
+    y -= 7;                                   // images start 8pt under the band (y was a text baseline)
     const colW = (CW - 10) / 2;
     let col = 0, rowH = 0;
+    doc.setDrawColor(214, 219, 226); doc.setLineWidth(0.5);
     for (const d of photos) {
       const dim = await new Promise(res => {
         const im = new Image();
@@ -11805,8 +11820,8 @@ async function irBuildPDF(r, photoData) {
       if (!dim || !dim.w || !dim.h) continue;
       const h = Math.min(220, colW * dim.h / dim.w);
       const w = h * dim.w / dim.h;
-      if (col === 0) ensure(232);
-      try { doc.addImage(d, 'JPEG', M + col * (colW + 10), y, w, h); } catch (e) { continue; }
+      if (col === 0 && y + h > BOTTOM) { doc.addPage(); y = M; }
+      try { doc.addImage(d, 'JPEG', M + col * (colW + 10), y, w, h); doc.rect(M + col * (colW + 10), y, w, h); } catch (e) { continue; }
       rowH = Math.max(rowH, h);
       col++;
       if (col === 2) { y += rowH + 10; col = 0; rowH = 0; }
@@ -11814,8 +11829,14 @@ async function irBuildPDF(r, photoData) {
     if (col !== 0) y += rowH + 10;
   }
 
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-  doc.text('Submitted ' + (r.submittedAt ? new Date(r.submittedAt).toLocaleString() : '') + ' via EBCC Field Assistant', M, H - M + 12);
+  const pages = doc.getNumberOfPages();
+  const stamp = (r.submittedAt ? 'Submitted ' + new Date(r.submittedAt).toLocaleString() : 'Draft - not submitted') + ' via EBCC Field Assistant';
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+    doc.text(stamp, M, H - M + 12);
+    doc.text('Page ' + i + ' of ' + pages, W - M, H - M + 12, { align: 'right' });
+  }
   return doc;
 }
 // Email the PDF (with photos) from the foreman's mailbox; the server archives
