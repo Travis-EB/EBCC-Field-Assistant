@@ -8,13 +8,13 @@
 // GET ?code= -> { jha:[…], talks:[…], incidents:[…], generatedAt }
 // Any signed-in, non-disabled user (company safety records are shared).
 //
-// POST { code, mode:'backfillSafety' } (ADMIN) -> copies the archived JHA and
-// incident-report PDFs already filed on this job into its Job Book Safety
+// POST { code, mode:'backfillSafety' } (ADMIN) -> copies the archived JHA, tailgate-talk
+// and incident-report PDFs already filed on this job into its Job Book Safety
 // folder — for reports sent before that folder existed. Skips ones already
 // there; 100 copies per call ({ more:true } when there are more to do).
 const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
 const { getEwtContainer, getJobBooksContainer } = require('../shared/blob');
-const { jhaFileName, incidentFileName, safetyPath } = require('../shared/jobBookSafety');
+const { jhaFileName, incidentFileName, talkFileName, safetyPath } = require('../shared/jobBookSafety');
 const { BlobSASPermissions } = require('@azure/storage-blob');
 const { readDoc, findProject } = require('../shared/projects');
 
@@ -77,12 +77,13 @@ module.exports = async function (context, req) {
       let copied = 0, skipped = 0, missing = 0, more = false;
       outer:
       for (const d of docs) {
-        if (d.type !== 'jha_records' && d.type !== 'incident_reports') continue;
+        if (!TYPES.includes(d.type)) continue;
         for (const r of d.items) {
           const blob = r && r.pdfBlob ? String(r.pdfBlob) : '';
           if (!blob || !blob.startsWith(String(d.ownerId) + '/')) continue;   // only the filer's own archive
-          const name = d.type === 'jha_records'
-            ? jhaFileName(r.date, names[d.ownerId] || d.ownerEmail)
+          const who = names[d.ownerId] || d.ownerEmail;
+          const name = d.type === 'jha_records' ? jhaFileName(r.date, who)
+            : d.type === 'toolbox_records' ? talkFileName(r.date, who, r.id)
             : incidentFileName(r.date, r.type, r.id);
           const target = dst.getBlockBlobClient(safetyPath(p.code, name));
           try {

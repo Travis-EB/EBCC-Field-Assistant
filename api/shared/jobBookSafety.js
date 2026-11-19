@@ -1,4 +1,4 @@
-// Safety folder in a project's Job Book. JHA and incident-report PDFs are
+// Safety folder in a project's Job Book. JHA, tailgate-talk and incident-report PDFs are
 // archived per user (ewt-pdfs/<userId>/…, what Manage Users shows); this drops
 // a second copy at job-books/<code>/Safety/<name> so the same PDF also shows
 // under the job. Names are deterministic per record, so re-sending a report
@@ -19,6 +19,13 @@ function incidentFileName(date, type, id) {
   const t = String(type || '').split(',')[0].trim().slice(0, 40) || 'Incident';
   const tail = String(id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4);
   return safeFileName('Incident ' + day(date) + ' - ' + t + (tail ? ' - ' + tail : '')) + '.pdf';
+}
+
+// "Tailgate Talk 2026-11-18 - Tony Blood - x1y2.pdf" — a foreman can hold more
+// than one talk a day, so the id tail keeps them apart.
+function talkFileName(date, who, id) {
+  const tail = String(id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4);
+  return safeFileName('Tailgate Talk ' + day(date) + ' - ' + (String(who || '').trim() || 'unknown') + (tail ? ' - ' + tail : '')) + '.pdf';
 }
 
 function safetyPath(projectCode, fileName) {
@@ -43,4 +50,4 @@ async function putSafetyCopy(log, records, projectCode, fileName, buffer) {
   }
 }
 
-module.exports = { SAFETY_FOLDER, jhaFileName, incidentFileName, safetyPath, putSafetyCopy };
+module.exports = { SAFETY_FOLDER, jhaFileName, incidentFileName, talkFileName, safetyPath, putSafetyCopy };

@@ -8520,7 +8520,7 @@ const JB_FOLDERS = [
   { id: 'Contract',            color: '#dc2626' },
   { id: 'Meeting Minutes',     color: '#4f46e5' },
   { id: 'Site Photos',         color: '#0d9488' },
-  { id: 'Safety',              color: '#65a30d' },   // JHA + incident PDFs land here on send; SSSPs from the SSSP tab
+  { id: 'Safety',              color: '#65a30d' },   // JHA, tailgate talk + incident PDFs land here on send; SSSPs from the SSSP tab
 ];
 // Links (Procore / Autodesk / etc.) — a color-coded category of their own,
 // stored on the shared project record rather than in blob storage.
@@ -8571,8 +8571,8 @@ function jbRenderFiles() {
     ? jbCurrentFiles
     : (jbActiveFolder === JB_LINKS_ID ? [] : jbCurrentFiles.filter(f => (f.folder || '') === jbActiveFolder));
   const safetyHead = jbActiveFolder !== 'Safety' ? '' :
-    '<div class="ewt-hint" style="margin:0 0 10px">JHA’s and incident reports filed on this job save here automatically when they are emailed or submitted, and SSSP’s uploaded from the SSSP tab land here too. Each one still shows under its author in Manage Users.' +
-    (window.EBCC_IS_ADMIN ? '<div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="jb-safety-backfill">Pull in earlier JHA’s &amp; incident reports</button><span id="jb-safety-status" style="font-weight:600"></span></div>' : '') +
+    '<div class="ewt-hint" style="margin:0 0 10px">JHA’s, tailgate talks and incident reports filed on this job save here automatically when they are emailed or submitted, and SSSP’s uploaded from the SSSP tab land here too. Each one still shows under its author in Manage Users.' +
+    (window.EBCC_IS_ADMIN ? '<div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="jb-safety-backfill">Pull in earlier JHA’s, tailgate talks &amp; incident reports</button><span id="jb-safety-status" style="font-weight:600"></span></div>' : '') +
     '</div>';
   if (!files.length && !showLinks.length) {
     wrap.innerHTML = safetyHead + '<div class="empty">' + (jbActiveFolder === JB_LINKS_ID
@@ -8624,7 +8624,7 @@ document.addEventListener('click', (e) => {
       if (!out.ok || !out.j || !out.j.ok) throw new Error((out.j && out.j.error) || 'Could not pull them in.');
       total += out.j.copied || 0;
       if (out.j.more) { say('Copied ' + total + ' so far…'); return run(); }
-      const msg = total ? 'Added ' + total + ' report' + (total === 1 ? '' : 's') + '.' : (out.j.skipped ? 'Everything is already here.' : 'No archived JHA’s or incident reports were found for this job.');
+      const msg = total ? 'Added ' + total + ' report' + (total === 1 ? '' : 's') + '.' : (out.j.skipped ? 'Everything is already here.' : 'No archived JHA’s, tailgate talks or incident reports were found for this job.');
       if (jbCurrentCode === code) jbLoadFiles(code);
       setTimeout(() => say(msg + (out.j.missing ? ' ' + out.j.missing + ' had no saved PDF.' : ''), 'var(--green)'), 400);
     });
