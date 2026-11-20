@@ -4,9 +4,12 @@
 // the user picked, and the matching report in incident_reports is stamped.
 //
 // Body: { subject, text, recipients[], fileName, pdf (data URI or base64),
-//         summary: { reportId, date, projectCode, projectName, type } }
+//         summary: { reportId, date, projectCode, projectName, type }, ownerId? }
+// ownerId (ADMIN only): an admin who added to someone else's follow-up log
+// re-issues that person's PDF — it is archived in the owner's folder and the
+// owner's record is stamped; the email still goes from the admin's mailbox.
 // Reply: { ok:true, sent:true|false, reason?, recipients, archived:bool, pdfBlob }
-const { getContainers, getPrincipal, ensureUser, json } = require('../shared/auth');
+const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../shared/auth');
 const { getEwtContainer, safeName } = require('../shared/blob');
 const { sendGraphMail } = require('../shared/mail');
 const { putSafetyCopy, incidentFileName } = require('../shared/jobBookSafety');
@@ -45,6 +48,22 @@ module.exports = async function (context, req) {
   const s = body.summary && typeof body.summary === 'object' ? body.summary : {};
   const str = (v, n) => String(v == null ? '' : v).slice(0, n || 120);
 
+  // Whose report this is. Only an admin may act on another user's, and only
+  // for a report that really is on that user's account.
+  let ownerId = me.id;
+  const wantOwner = str(body.ownerId, 120);
+  if (wantOwner && wantOwner !== me.id) {
+    if (!isAdmin(me)) return json(context, 403, { ok: false, error: 'Forbidden.' });
+    let found = false;
+    try {
+      const { records } = await getContainers();
+      const od = (await records.item(wantOwner + ':incident_reports', wantOwner).read()).resource;
+      found = !!(od && Array.isArray(od.data) && od.data.some((x) => x && x.id === str(s.reportId, 60)));
+    } catch (e) { if (e.code !== 404) context.log.warn('send-incident owner check: ' + (e.message || e)); }
+    if (!found) return json(context, 404, { ok: false, error: 'Report not found.' });
+    ownerId = wantOwner;
+  }
+
   // ---- Archive the PDF + any new photos (same private container as the other sends) ----
   const stamp = Date.now();
   const base = 'incident-' + safeName(str(s.projectCode, 30) || 'noproj') + '-' + safeName(str(s.date, 20) || 'nodate') + '-' + stamp;
@@ -52,7 +71,7 @@ module.exports = async function (context, req) {
   let container = null;
   try {
     container = await getEwtContainer();
-    pdfBlobPath = me.id + '/' + base + '.pdf';
+    pdfBlobPath = ownerId + '/' + base + '.pdf';
     await container.getBlockBlobClient(pdfBlobPath).uploadData(Buffer.from(pdfB64, 'base64'), {
       blobHTTPHeaders: { blobContentType: 'application/pdf' },
     });
@@ -79,7 +98,7 @@ module.exports = async function (context, req) {
     newPhotos.push({ b64: d, type, name: base + '-' + (i + 1) + (type === 'image/png' ? '.png' : '.jpg') });
   });
   const photoBlobs = (Array.isArray(body.photoBlobs) ? body.photoBlobs : [])
-    .map((x) => String(x || '')).filter((x) => x.startsWith(me.id + '/')).slice(0, 12)
+    .map((x) => String(x || '')).filter((x) => x.startsWith(ownerId + '/')).slice(0, 12)
     .map((path) => ({ path }));
   const attachments = [];
   const MAIL_B64_BUDGET = 3.6 * 1024 * 1024;
@@ -87,7 +106,7 @@ module.exports = async function (context, req) {
   if (container) {
     for (const ph of newPhotos) {
       try {
-        const path = me.id + '/' + ph.name;
+        const path = ownerId + '/' + ph.name;
         await container.getBlockBlobClient(path).uploadData(Buffer.from(ph.b64, 'base64'), { blobHTTPHeaders: { blobContentType: ph.type } });
         photoBlobs.push({ path });
       } catch (e) { context.log.warn('send-incident photo upload failed: ' + (e.message || e)); }
@@ -95,7 +114,7 @@ module.exports = async function (context, req) {
     }
     // Re-sends: pull previously archived originals back out for the email.
     for (const pb of photoBlobs) {
-      if (newPhotos.some((ph) => me.id + '/' + ph.name === pb.path)) continue;
+      if (newPhotos.some((ph) => ownerId + '/' + ph.name === pb.path)) continue;
       try {
         const bc = container.getBlockBlobClient(pb.path);
         if (!(await bc.exists())) continue;
@@ -124,9 +143,9 @@ module.exports = async function (context, req) {
     if (reportId) {
       const now = new Date().toISOString();
       const { records } = await getContainers();
-      const docId = me.id + ':incident_reports';
+      const docId = ownerId + ':incident_reports';
       let doc = null;
-      try { doc = (await records.item(docId, me.id).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
+      try { doc = (await records.item(docId, ownerId).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
       if (doc && Array.isArray(doc.data)) {
         const r = doc.data.find((x) => x && x.id === reportId);
         if (r) {

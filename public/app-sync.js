@@ -1460,6 +1460,54 @@
       })
       .catch(function () { alert('Could not load this file.'); });
   });
+  function irs1(r) {
+    var n = Array.isArray(r.updates) ? r.updates.filter(function (u) { return u && u.text; }).length : 0;
+    return n ? n + ' update' + (n === 1 ? '' : 's') : '';
+  }
+  // Add to another user's (or your own) follow-up log from Manage Users. The
+  // entry is saved first; then the PDF is rebuilt with the log and re-issued.
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-ir-log-add]') : null;
+    if (!b) return;
+    var idx = b.getAttribute('data-ir-log-add');
+    var rec = ADMIN_IR_CACHE[+idx];
+    var box = document.querySelector('[data-ir-log-text="' + idx + '"]');
+    var st = document.querySelector('[data-ir-log-status="' + idx + '"]');
+    var list = document.querySelector('[data-ir-log="' + idx + '"]');
+    var say = function (msg, color) { if (st) { st.textContent = msg; st.style.color = color || 'var(--gray)'; } };
+    var text = box ? box.value.trim() : '';
+    if (!rec || !box) return;
+    if (!text) { say('Write what has changed first.', 'var(--red)'); box.focus(); return; }
+    if (!confirm('Add this entry to the incident log?\n\nIt is stamped with your name and the time, and it cannot be edited or removed afterwards.')) return;
+    var owner = ADMIN_EWT_OWNER, saved = false;
+    b.disabled = true;
+    say('Saving…');
+    apiFetch('/api/incident-update', { method: 'POST', body: { reportId: rec.id, ownerId: owner, text: text } })
+      .then(function (r) { return r.json().catch(function () { return null; }).then(function (j) { return { j: j, status: r.status }; }); })
+      .then(function (o) {
+        if (!o.j || !o.j.ok) { say('Not added — ' + ((o.j && o.j.error) || ('server error ' + o.status)), 'var(--red)'); return; }
+        saved = true;
+        rec.updates = o.j.updates;
+        box.value = '';
+        if (list && window.irLogHtml) list.innerHTML = window.irLogHtml(rec);
+        if (typeof window.irPostPdf !== 'function') { say('Added to the log ✓', 'var(--green)'); return; }
+        say('Added ✓ — sending the updated PDF to the office…');
+        return window.irPostPdf(rec, [], { update: o.j.update, ownerId: owner }).then(function (p) {
+          var res = p && p.res;
+          if (res && res.ok) {
+            if (res.pdfBlob) rec.pdfBlob = res.pdfBlob;
+            if (res.sent) say('Added ✓ — updated PDF emailed to ' + (res.recipients || []).join(', '), 'var(--green)');
+            else say('Added ✓ — the updated PDF was saved, but the email did not go through (' + (res.reason || 'unknown') + ').', '#d97706');
+          } else {
+            say('Added ✓ — but the updated PDF could not be sent (' + ((res && res.error) || ('server error ' + (p && p.status))) + ').', '#d97706');
+          }
+        });
+      })
+      .catch(function () {
+        say(saved ? 'Added ✓ — but the updated PDF could not be sent.' : 'Could not reach the server — the entry was NOT added.', saved ? '#d97706' : 'var(--red)');
+      })
+      .then(function () { b.disabled = false; });
+  });
   function irAdminHtml(arr) {
     ADMIN_IR_CACHE = Array.isArray(arr) ? arr : [];
     if (!ADMIN_IR_CACHE.length) return none();
@@ -1496,7 +1544,18 @@
           (r.desc ? '<div style="margin-bottom:6px;white-space:pre-wrap">' + esc(r.desc) + '</div>' : '') +
           line('Injuries / treatment', r.injury) +
           line('Immediate action', r.action) +
-          line('Witnesses', r.witnesses);
+          line('Witnesses', r.witnesses) +
+          // Follow-up log: the write-up above is locked; an admin can add a stamped entry here.
+          '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">' +
+            '<div style="font-weight:700">Follow-up log</div>' +
+            '<div data-ir-log="' + r.__idx + '">' + (window.irLogHtml ? window.irLogHtml(r) : '') + '</div>' +
+            '<textarea data-ir-log-text="' + r.__idx + '" rows="2" maxlength="2000" placeholder="Add to the log — what has changed since the report was filed…" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font:inherit;font-size:13px;background:var(--card);color:inherit"></textarea>' +
+            '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">' +
+              '<button type="button" data-ir-log-add="' + r.__idx + '" style="' + admBtn + '">Add to log</button>' +
+              '<span data-ir-log-status="' + r.__idx + '" style="font-size:11px;color:var(--gray)">Stamped with your name and the time. Entries can’t be edited or removed.</span>' +
+            '</div>' +
+          '</div>';
+        if (irs1(r)) head += ' · ' + irs1(r);
         return postDetails(head, body);
       }).join('');
       return '<div class="adm-group" data-filter="' + esc(proj) + '"><div style="margin:6px 0 2px;font-weight:700">' + esc(proj) + ' (' + reps.length + ')</div>' + inner + '</div>';

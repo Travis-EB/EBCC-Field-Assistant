@@ -159,6 +159,9 @@ module.exports = async function (context, req) {
             time: str(r.time, 10), type: str(r.type, 40), reporter: str(r.reporter, 80), involved: str(r.involved, 200), location: str(r.location, 200),
             desc: str(r.desc, 500), injury: str(r.injury, 300), action: str(r.action, 300), witnesses: str(r.witnesses, 200),
             photoCount: Math.max(blobs.length, thumbs.length), photoUrls, thumb: thumbs[0] && thumbs[0].thumb ? String(thumbs[0].thumb).slice(0, 60000) : '',
+            // follow-up log (read-only here; entries are added from the report or Manage Users)
+            updates: (Array.isArray(r.updates) ? r.updates : []).filter((u) => u && u.text).slice(0, 60)
+              .map((u) => ({ ts: str(u.ts, 30), by: str(u.by, 80), text: str(u.text, 2000) })),
           }));
         }
       }

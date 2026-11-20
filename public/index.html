@@ -341,6 +341,11 @@ body.tv-mode .aj-legend { font-size: 14px; }
 .aj-kind.is-ir { background: #dc2626; }
 .aj-saf-body { font-size: 14px; line-height: 1.45; margin: 8px 0 0 20px; overflow-wrap: anywhere; }
 .aj-saf-body > div { margin: 2px 0; }
+/* Incident follow-up log (report view, Manage Users, project hub) */
+.ir-log-ent { border-left: 3px solid #f9cebb; padding: 3px 0 3px 10px; margin: 8px 0; }
+.ir-log-meta { font-size: 12px; font-weight: 700; color: var(--gray); }
+.ir-log-text { font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; }
+.ir-log-none { font-size: 13px; color: var(--gray); padding: 4px 0; }
 .aj-saf-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .aj-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-bottom: 8px; }
 .aj-photo { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--light-gray); }
@@ -2661,6 +2666,17 @@ body.tv-mode .aj-legend { font-size: 14px; }
     <div class="ewt-hint">Add photos of the scene, damage, or injury — they go in the PDF and the email, and the originals are saved for the office.</div>
     <div id="ir-photos" style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0"></div>
     <label class="btn btn-primary" id="ir-photo-add" style="cursor:pointer;display:inline-block">+ Add photos<input type="file" id="ir-photo-input" accept="image/*" multiple style="display:none"></label>
+  </div>
+
+  <div class="ewt-section" id="ir-log-wrap" style="display:none">
+    <h3>Follow-up Log <span id="ir-log-count" style="font-weight:500;color:var(--gray);font-size:13px"></span></h3>
+    <div class="ewt-hint">The report above is locked and can&rsquo;t be changed. Use this log to record how the incident develops &mdash; doctor visits, return to work, repairs, insurance, anything learned later. Each entry is stamped with your name and the time, can&rsquo;t be edited or removed, and the updated PDF is emailed to Chris and Amber.</div>
+    <div id="ir-log-list"></div>
+    <div class="ewt-grid" style="margin-top:8px">
+      <label class="ewt-grid-wide">New entry <textarea id="ir-log-text" rows="3" maxlength="2000" placeholder="What has changed since the report was filed…"></textarea></label>
+    </div>
+    <div class="ewt-actions" style="margin-top:8px"><button class="btn btn-primary" id="ir-log-add">Add to log</button></div>
+    <div id="ir-log-status" style="margin-top:8px;font-size:13px;font-weight:600;min-height:18px"></div>
   </div>
 
   <div class="ewt-section">
@@ -10873,10 +10889,11 @@ function ajRenderSafety() {
     line('Work', r.description) + line('Hazards marked yes', (r.hazards || []).join(', ')) + (r.steps ? '<div><span class="aj-tjs">Steps:</span> ' + r.steps + '</div>' : ''))).join('');
   if (talks.length) html += '<div class="aj-glabel">Tailgate talks (' + talks.length + ')</div>' + talks.map(r => card('Talk', ' is-la', (r.leader ? r.leader + ' · ' : '') + r.attendees + ' attendee' + (r.attendees === 1 ? '' : 's'), r,
     line('Topics', (r.topics || []).join(', ')) + line('Comments', r.comments))).join('');
-  if (irs.length) html += '<div class="aj-glabel">Incident reports (' + irs.length + ')</div>' + irs.map(r => card('Incident', ' is-ir', (r.type || 'Incident') + (r.time ? ' · ' + r.time : '') + (r.involved ? ' · ' + r.involved : ''), r,
+  if (irs.length) html += '<div class="aj-glabel">Incident reports (' + irs.length + ')</div>' + irs.map(r => card('Incident', ' is-ir', (r.type || 'Incident') + (r.time ? ' · ' + r.time : '') + (r.involved ? ' · ' + r.involved : '') + (irUpdates(r).length ? ' · ' + irUpdates(r).length + ' update' + (irUpdates(r).length === 1 ? '' : 's') : ''), r,
     line('What happened', r.desc) + line('Where', r.location) + line('Injuries', r.injury) + line('Action taken', r.action) + line('Reported by', r.reporter) +
     ((r.photoUrls && r.photoUrls.length) ? '<div class="aj-saf-photos">' + r.photoUrls.map(u => '<a href="' + escAttr(u) + '" target="_blank" rel="noopener"><img src="' + escAttr(u) + '" loading="lazy" alt="Incident photo"></a>').join('') + '</div>'
-      : (r.thumb ? '<div class="aj-saf-photos"><img src="' + escAttr(r.thumb) + '" alt="Incident photo"></div>' : '')))).join('');
+      : (r.thumb ? '<div class="aj-saf-photos"><img src="' + escAttr(r.thumb) + '" alt="Incident photo"></div>' : '')) +
+    (irUpdates(r).length ? '<div style="margin-top:8px"><div class="aj-tjs" style="font-weight:700">Follow-up log (' + irUpdates(r).length + ')</div>' + irLogHtml(r) + '</div>' : ''))).join('');
   list.innerHTML = html || '<div class="empty">No JHAs, tailgate talks or incident reports have been filed against this job yet.</div>';
 }
 // ---- Site photos (job-books/<code>/Site Photos/<date>-<stamp>-<n>.jpg) ----
@@ -11645,7 +11662,7 @@ function irRenderList() {
         '<div class="rate">' +
           (r.status === 'draft'
             ? '<span style="color:#d97706;font-weight:700">Draft — not submitted</span> · '
-            : '<span style="color:var(--green);font-weight:700">Submitted</span> · ') +
+            : '<span style="color:var(--green);font-weight:700">Submitted</span> · ' + (irUpdates(r).length ? irUpdates(r).length + ' update' + (irUpdates(r).length === 1 ? '' : 's') + ' · ' : '')) +
           escHTML(r.reporter || '') + (snippet ? ' · ' + escHTML(snippet) : '') + '</div></div>' +
         '<button class="btn" data-ir-open="' + escAttr(r.id) + '">' + (r.status === 'draft' ? 'Continue' : 'View') + '</button>' +
         (r.status === 'draft' ? '<button class="remove-btn" title="Delete draft" aria-label="Delete draft" data-ir-del="' + escAttr(r.id) + '">&times;</button>' : '') +
@@ -11714,6 +11731,10 @@ function irOpenEditor(id) {
   // Email box: drafts send on Submit; submitted reports can be re-sent to more people.
   document.getElementById('ir-resend-wrap').style.display = locked ? '' : 'none';
   document.getElementById('ir-photo-add').style.display = locked ? 'none' : '';
+  document.getElementById('ir-log-wrap').style.display = locked ? '' : 'none';
+  document.getElementById('ir-log-text').value = '';
+  document.getElementById('ir-log-status').textContent = '';
+  irRenderLog(r);
   irRenderPhotos(r);
   irRenderSendStatus(r);
   window.scrollTo({ top: 0 });
@@ -11788,8 +11809,11 @@ function irStampSubmitted(id, fn) {
   irWriteSubmitted(all);
   return r;
 }
-function irFormatText(r) {
-  const lines = ['EBCC INCIDENT REPORT'];
+function irFormatText(r, latest) {
+  const lines = [];
+  if (latest) lines.push('UPDATE added ' + irFmtStamp(latest.ts) + ' by ' + (latest.by || 'Unknown') + ':', latest.text, '',
+    'The original report is below, unchanged, followed by the full log. The PDF is attached.', '', '----------------------------------------', '');
+  lines.push('EBCC INCIDENT REPORT');
   lines.push('Project: ' + irProjLabel(r));
   lines.push('Date: ' + jhaFmtDate(r.date) + (r.time ? ' ' + r.time : '') + ' · Reported by: ' + (r.reporter || '—'));
   lines.push('Type: ' + (r.type || '—'));
@@ -11799,6 +11823,11 @@ function irFormatText(r) {
   if (r.injury) lines.push('', 'INJURIES / MEDICAL TREATMENT', r.injury);
   if (r.action) lines.push('', 'IMMEDIATE ACTION TAKEN', r.action);
   if (r.witnesses) lines.push('', 'Witnesses: ' + r.witnesses);
+  const ups = irUpdates(r);
+  if (ups.length) {
+    lines.push('', 'FOLLOW-UP LOG (' + ups.length + ')');
+    ups.forEach(u => lines.push(irFmtStamp(u.ts) + ' - ' + (u.by || 'Unknown') + ': ' + u.text));
+  }
   lines.push('', 'Full report attached as PDF.', '', '— Submitted via EBCC Field Assistant');
   return lines.join('\n');
 }
@@ -11908,8 +11937,23 @@ async function irBuildPDF(r, photoData) {
     if (col !== 0) y += rowH + 10;
   }
 
+  // Follow-up log — entries added after the report was submitted, oldest first.
+  const ups = irUpdates(r);
+  if (ups.length) {
+    band('FOLLOW-UP LOG  -  ' + ups.length + (ups.length === 1 ? ' ENTRY' : ' ENTRIES') + ' ADDED AFTER THE REPORT WAS SUBMITTED');
+    ups.forEach(u => {
+      ensure(LH * 2 + 4);                     // the stamp line never sits alone at the foot of a page
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...BAND_TEXT);
+      doc.text(clean(irFmtStamp(u.ts) + '   -   ' + (u.by || 'Unknown')), M + PAD, y);
+      y += LH;
+      para(u.text);
+      y += 4;
+    });
+  }
+
   const pages = doc.getNumberOfPages();
-  const stamp = (r.submittedAt ? 'Submitted ' + new Date(r.submittedAt).toLocaleString() : 'Draft - not submitted') + ' via EBCC Field Assistant';
+  const stamp = clean((r.submittedAt ? 'Submitted ' + new Date(r.submittedAt).toLocaleString() : 'Draft - not submitted') + ' via EBCC Field Assistant' +
+    (ups.length ? '  -  log last updated ' + irFmtStamp(ups[ups.length - 1].ts) : ''));
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
@@ -11920,48 +11964,121 @@ async function irBuildPDF(r, photoData) {
 }
 // Email the PDF (with photos) from the foreman's mailbox; the server archives
 // the PDF and the original photos for the office. Stamps the submitted record.
-async function irSendPdf(rec, recipients) {
-  const el = document.getElementById('ir-send-status');
-  const setStatus = (msg, color) => { if (el) { el.textContent = msg; el.style.color = color || 'var(--dark)'; } };
-  const pending = irPendingGet(rec.id);   // full-size photos still on this device
+// irPostPdf builds and posts; opts.update is the log entry that prompted the
+// send (subject and lead-in say UPDATE), opts.ownerId is whose report it is
+// when an admin adds to someone else's log from Manage Users.
+async function irPostPdf(rec, recipients, opts) {
+  opts = opts || {};
+  const pending = opts.ownerId ? [] : irPendingGet(rec.id);   // full-size photos still on this device
   const pdfPhotos = pending.length ? pending : (rec.photos || []).map(p => p.thumb || p.data).filter(Boolean);
   let doc;
   try { doc = await irBuildPDF(rec, pdfPhotos); }
-  catch (e) { setStatus('Could not build the PDF: ' + (e && e.message ? e.message : e), 'var(--red)'); return; }
+  catch (e) { const err = new Error(e && e.message ? e.message : String(e)); err.irPdf = true; throw err; }
   const fileName = 'Incident_' + (irIsOffsite(rec) ? 'Offsite' : String(rec.projectCode || 'project').replace(/[^a-z0-9]/gi, '_')) + '_' + (rec.date || '') + '.pdf';
-  const subject = 'Incident Report - ' + (irIsOffsite(rec) ? 'Off-site' : (rec.projectName || rec.projectCode || '')) + ' - ' + jhaFmtDate(rec.date) + (rec.type ? ' - ' + rec.type : '');
-  setStatus('Emailing…', 'var(--gray)');
-  try {
-    const r = await fetch('/api/send-incident', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        subject, text: irFormatText(rec), recipients, fileName, pdf: doc.output('datauristring'),
-        summary: { reportId: rec.id, date: rec.date, projectCode: rec.projectCode, projectName: rec.projectName, type: rec.type },
-        photos: pending,                                              // originals to archive + attach
-        photoBlobs: (rec.photoBlobs || []).map(p => p && p.path).filter(Boolean),   // already archived — re-attach from the store
-      }),
-    });
-    const res = await r.json().catch(() => null);
-    if (res && res.ok) {
-      const stamped = irStampSubmitted(rec.id, x => {
-        x.emailedTo = res.recipients || recipients;
-        x.sent = !!res.sent;
-        x.sentTs = new Date().toISOString();
-        if (res.pdfBlob) x.pdfBlob = res.pdfBlob;
-        if (Array.isArray(res.photoBlobs) && res.photoBlobs.length) x.photoBlobs = res.photoBlobs;
-      });
-      // Originals reached the store — the device copy is no longer needed.
-      if (res.archived && Array.isArray(res.photoBlobs) && res.photoBlobs.length >= pending.length) irPendingSet(rec.id, null);
-      if (stamped && irCurrentId === rec.id) irRenderPhotos(Object.assign({}, stamped, { status: 'submitted' }));
-      if (res.sent || res.reason === 'no-recipients') { irRenderSendStatus(stamped); return; }
-      setStatus('Email service unavailable (' + (res.reason || 'unknown') + ') — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
-      return;
-    }
-    setStatus('Could not email it (' + ((res && res.error) || ('server error ' + r.status)) + ') — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
-  } catch (e) {
-    setStatus((navigator.onLine ? 'Email service unavailable' : 'Offline') + ' — the report is saved on your account; use "Email PDF again" when you\'re back online.', 'var(--red)');
-  }
+  const subject = 'Incident Report' + (opts.update ? ' UPDATE' : '') + ' - ' + (irIsOffsite(rec) ? 'Off-site' : (rec.projectName || rec.projectCode || '')) + ' - ' + jhaFmtDate(rec.date) + (rec.type ? ' - ' + rec.type : '');
+  const body = {
+    subject, text: irFormatText(rec, opts.update || null), recipients, fileName, pdf: doc.output('datauristring'),
+    summary: { reportId: rec.id, date: rec.date, projectCode: rec.projectCode, projectName: rec.projectName, type: rec.type },
+    photos: pending,                                              // originals to archive + attach
+    photoBlobs: (rec.photoBlobs || []).map(p => p && p.path).filter(Boolean),   // already archived — re-attach from the store
+  };
+  if (opts.ownerId) body.ownerId = opts.ownerId;
+  const r = await fetch('/api/send-incident', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await r.json().catch(() => null);
+  return { res, status: r.status, pending };
 }
+async function irSendPdf(rec, recipients, opts) {
+  const el = document.getElementById('ir-send-status');
+  const setStatus = (msg, color) => { if (el) { el.textContent = msg; el.style.color = color || 'var(--dark)'; } };
+  setStatus(opts && opts.update ? 'Emailing the updated report…' : 'Emailing…', 'var(--gray)');
+  let out;
+  try { out = await irPostPdf(rec, recipients, opts); }
+  catch (e) {
+    if (e && e.irPdf) { setStatus('Could not build the PDF: ' + e.message, 'var(--red)'); return; }
+    setStatus((navigator.onLine ? 'Email service unavailable' : 'Offline') + ' — the report is saved on your account; use "Email PDF again" when you\'re back online.', 'var(--red)');
+    return;
+  }
+  const res = out.res, pending = out.pending;
+  if (res && res.ok) {
+    const stamped = irStampSubmitted(rec.id, x => {
+      x.emailedTo = res.recipients || recipients;
+      x.sent = !!res.sent;
+      x.sentTs = new Date().toISOString();
+      if (res.pdfBlob) x.pdfBlob = res.pdfBlob;
+      if (Array.isArray(res.photoBlobs) && res.photoBlobs.length) x.photoBlobs = res.photoBlobs;
+    });
+    // Originals reached the store — the device copy is no longer needed.
+    if (res.archived && Array.isArray(res.photoBlobs) && res.photoBlobs.length >= pending.length) irPendingSet(rec.id, null);
+    if (stamped && irCurrentId === rec.id) irRenderPhotos(Object.assign({}, stamped, { status: 'submitted' }));
+    if (res.sent || res.reason === 'no-recipients') { irRenderSendStatus(stamped); return; }
+    setStatus('Email service unavailable (' + (res.reason || 'unknown') + ') — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
+    return;
+  }
+  setStatus('Could not email it (' + ((res && res.error) || ('server error ' + out.status)) + ') — the report is saved on your account; use "Email PDF again" later.', 'var(--red)');
+}
+
+// ---- follow-up log ----
+// A submitted report never changes. What happens afterwards goes in an
+// append-only log: /api/incident-update stamps each entry with the server's
+// clock and the signed-in user, and nothing can edit or remove one.
+function irUpdates(r) { return Array.isArray(r && r.updates) ? r.updates.filter(u => u && u.text) : []; }
+function irFmtStamp(ts) {
+  const d = new Date(ts);
+  return isNaN(d) ? '' : d.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+function irLogHtml(r) {
+  const ups = irUpdates(r);
+  if (!ups.length) return '<div class="ir-log-none">No follow-up entries yet.</div>';
+  return ups.map(u => '<div class="ir-log-ent"><div class="ir-log-meta">' + escHTML(irFmtStamp(u.ts)) + ' · ' + escHTML(u.by || u.byEmail || 'Unknown') + '</div>' +
+    '<div class="ir-log-text">' + escHTML(u.text) + '</div></div>').join('');
+}
+function irRenderLog(r) {
+  const n = irUpdates(r).length;
+  document.getElementById('ir-log-count').textContent = n ? '(' + n + ')' : '';
+  document.getElementById('ir-log-list').innerHTML = irLogHtml(r);
+}
+async function irPostUpdate(reportId, text, ownerId) {
+  const body = { reportId, text };
+  if (ownerId) body.ownerId = ownerId;
+  const r = await fetch('/api/incident-update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await r.json().catch(() => null);
+  return { res, status: r.status };
+}
+document.getElementById('ir-log-add').addEventListener('click', async () => {
+  const r = irCur();
+  if (!r || r.status !== 'submitted') return;
+  const box = document.getElementById('ir-log-text'), btn = document.getElementById('ir-log-add'), st = document.getElementById('ir-log-status');
+  const say = (msg, color) => { st.textContent = msg; st.style.color = color || 'var(--gray)'; };
+  const text = box.value.trim();
+  if (!text) { say('Write what has changed first.', 'var(--red)'); box.focus(); return; }
+  if (!confirm('Add this entry to the incident log?\n\nIt is stamped with your name and the time, and it cannot be edited or removed afterwards.')) return;
+  const recipients = irGetRecipients();
+  btn.disabled = true;
+  say('Saving…');
+  try {
+    let out = await irPostUpdate(r.id, text);
+    // A report submitted seconds ago (or offline) may not be on the account yet — sync, then try once more.
+    if (out.status === 404) {
+      say('Syncing the report first…');
+      try { window.dispatchEvent(new CustomEvent('ebcc-ir-pull')); } catch (e) {}
+      await new Promise(res => setTimeout(res, 4500));
+      out = await irPostUpdate(r.id, text);
+    }
+    const res = out.res;
+    if (!res || !res.ok) { say('Not added — ' + ((res && res.error) || ('server error ' + out.status)) + ' Your text is still in the box.', 'var(--red)'); return; }
+    const stamped = irStampSubmitted(r.id, x => { x.updates = res.updates; });
+    box.value = '';
+    const cur = Object.assign({}, stamped || r, { status: 'submitted' });
+    if (!stamped) cur.updates = res.updates;
+    if (irCurrentId === r.id) irRenderLog(cur);
+    say('Added to the log ✓ ' + irFmtStamp(res.update && res.update.ts), 'var(--green)');
+    irSendPdf(cur, recipients, { update: res.update });
+  } catch (e) {
+    say((navigator.onLine ? 'Could not reach the server' : 'Offline') + ' — the entry was NOT added. Your text is still in the box; try again when you have signal.', 'var(--red)');
+  } finally {
+    btn.disabled = false;
+  }
+});
 document.getElementById('ir-resend').addEventListener('click', () => {
   const r = irCur();
   if (!r || r.status !== 'submitted') return;
@@ -12634,7 +12751,9 @@ document.querySelector('.tab[data-tab="incident"]').addEventListener('click', ()
 });
 window.addEventListener('ebcc-ir-updated', () => {
   if (!document.getElementById('tab-incident').classList.contains('active')) return;
-  if (!irCurrentId) irRenderList();
+  if (!irCurrentId) { irRenderList(); return; }
+  const cur = irCur();
+  if (cur && cur.status === 'submitted') irRenderLog(cur);
 });
 window.addEventListener('pagehide', irFlushFields);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') irFlushFields(); });

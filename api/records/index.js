@@ -118,6 +118,33 @@ function mergeJhaRecords(prev, next) {
   return out;
 }
 
+// Incident reports. A submitted report is the record of what was known at the
+// time, so once it is on the account its write-up is frozen: a later push
+// cannot change the original fields. The follow-up log belongs to
+// /api/incident-update — a push can neither add, alter nor drop an entry.
+// (A report the account has never seen keeps whatever log it arrives with, so
+// restoring from a device after a wipe does not lose history.)
+const IR_FROZEN = ['projectCode', 'projectName', 'offsite', 'date', 'time', 'reporter', 'type', 'types', 'typeOther',
+  'involved', 'location', 'desc', 'injury', 'action', 'witnesses', 'photos', 'createdAt', 'submittedAt'];
+function cleanUpdates(list) {
+  const s = (v, n) => String(v == null ? '' : v).slice(0, n);
+  return (Array.isArray(list) ? list : []).filter((u) => u && u.id && u.ts && u.text).slice(0, 60)
+    .map((u) => ({ id: s(u.id, 40), ts: s(u.ts, 30), by: s(u.by, 80), byEmail: s(u.byEmail, 120), text: s(u.text, 2000) }));
+}
+function mergeIncidentReports(prev, next) {
+  const before = new Map();
+  prev.forEach((r) => { if (r && r.id) before.set(r.id, r); });
+  const out = mergeJhaRecords(prev, next);
+  out.forEach((r) => {
+    const old = before.get(r.id);
+    if (!old) { if (r.updates) r.updates = cleanUpdates(r.updates); return; }
+    if (old === r) return;
+    IR_FROZEN.forEach((k) => { if (k in old) r[k] = old[k]; else delete r[k]; });
+    if (Array.isArray(old.updates) && old.updates.length) r.updates = old.updates; else delete r.updates;
+  });
+  return out;
+}
+
 module.exports = async function (context, req) {
   const principal = getPrincipal(req);
   if (!principal) return json(context, 401, { error: 'Not authenticated.' });
@@ -170,7 +197,8 @@ module.exports = async function (context, req) {
           try { existing = (await records.item(me.id + ':' + body.type, me.id).read()).resource; } catch (e) { if (e.code !== 404) throw e; }
           const prev = existing && Array.isArray(existing.data) ? existing.data : [];
           body.data = body.type === 'ewt_records' ? mergeEwtRecords(prev, body.data)
-            : (body.type === 'jha_records' || body.type === 'incident_reports' || body.type === 'toolbox_records') ? mergeJhaRecords(prev, body.data)
+            : body.type === 'incident_reports' ? mergeIncidentReports(prev, body.data)
+            : (body.type === 'jha_records' || body.type === 'toolbox_records') ? mergeJhaRecords(prev, body.data)
             : mergeEwtDrafts(prev, body.data);
           if (body.type === 'ewt_drafts' || body.type === 'jha_records' || body.type === 'incident_reports' || body.type === 'toolbox_records') merged = body.data;
         } catch (e) { context.log.warn(body.type + ' merge failed', e); }
@@ -221,3 +249,4 @@ module.exports = async function (context, req) {
 };
 
 module.exports.mergeJhaRecords = mergeJhaRecords;
+module.exports.mergeIncidentReports = mergeIncidentReports;
