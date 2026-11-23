@@ -2446,6 +2446,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
       <button type="button" role="tab" class="adm-cat" data-aj-tab="contacts">Contacts</button>
       <button type="button" role="tab" class="adm-cat" data-aj-tab="safety">Safety</button>
       <button type="button" role="tab" class="adm-cat" data-aj-tab="photos">Photos</button>
+      <button type="button" role="tab" class="adm-cat" data-aj-tab="map">Map</button>
     </div>
     <div class="ewt-section aj-foreman-row">
       <span class="aj-glabel" style="margin:0">Foreman</span>
@@ -2603,6 +2604,8 @@ body.tv-mode .aj-legend { font-size: 14px; }
         <div id="aj-ph-list"><div class="empty">Loading…</div></div>
       </div>
     </div>
+    <!-- Job map: built by /job-map.js from the KMZ/KML files in the job book's Plans folder -->
+    <div id="aj-pane-map" style="display:none"></div>
     <div id="aj-admin-foot" class="admin-only" style="display:none;margin:4px 0 20px">
       <button class="btn btn-primary" id="aj-activate" style="display:none">Make this an active job</button>
       <button class="btn" id="aj-deactivate" style="color:var(--red);border-color:var(--red)">Remove from active jobs</button>
@@ -8721,7 +8724,8 @@ function jbOpenProject(code, folder) {
       '<button class="btn" id="jb-back-btn">&larr; Back</button>' +
       '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.name) + '</div>' +
       '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.code) + '</div></div>' +
-      '<button class="btn" id="jb-hub-btn" style="margin-left:auto;flex-shrink:0" title="Action items, notes, schedule and more for this job">Project hub</button>' +
+      '<button class="btn" id="jb-map-btn" style="margin-left:auto;flex-shrink:0" title="Site map from the KMZ / KML files in Plans, with the geotech borings">Map</button>' +
+      '<button class="btn" id="jb-hub-btn" style="flex-shrink:0" title="Action items, notes, schedule and more for this job">Project hub</button>' +
       (window.EBCC_IS_ADMIN ? '<button class="btn" id="jb-delete-project" style="flex-shrink:0;color:var(--red);border-color:var(--red)">Delete project</button>' : '') +
     '</div>' +
     // State picks the CA/TX rate library on Cost Per Yard and Flat Work for this job.
@@ -8761,6 +8765,10 @@ function jbOpenProject(code, folder) {
   window.scrollTo(0, 0);
   document.getElementById('jb-hub-btn').onclick = () => {
     ajOpen(code, '', { origin: 'jobbooks', tab: 'tasks' });
+    document.querySelector('.tab[data-tab="activejobs"]').click();
+  };
+  document.getElementById('jb-map-btn').onclick = () => {
+    ajOpen(code, '', { origin: 'jobbooks', tab: 'map' });
     document.querySelector('.tab[data-tab="activejobs"]').click();
   };
   document.getElementById('jb-state-seg').onclick = (e) => {
@@ -10694,7 +10702,7 @@ function ajRenderPane() {
     const on = b.getAttribute('data-aj-tab') === ajTab;
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  ['schedule', 'tasks', 'minutes', 'contacts', 'safety', 'photos'].forEach(k => {
+  ['schedule', 'tasks', 'minutes', 'contacts', 'safety', 'photos', 'map'].forEach(k => {
     const el = document.getElementById('aj-pane-' + k); if (el) el.style.display = k === ajTab ? '' : 'none';
   });
   document.getElementById('aj-edit-toggle').style.display = ajTab === 'schedule' ? '' : 'none';
@@ -10706,6 +10714,7 @@ function ajRenderPane() {
   if (ajTab === 'safety') ajRenderSafety();
   if (ajTab === 'photos') ajRenderPhotos();
   if (ajTab === 'contacts') ajRenderContacts();
+  if (ajTab === 'map' && typeof window.ajmRender === 'function') window.ajmRender(p.code);
 }
 
 // ---- Action items + notes ----
@@ -12761,6 +12770,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 </script>
 
 <script src="/app-sync.js" defer></script>
+<script src="/job-map.js" defer></script>
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {

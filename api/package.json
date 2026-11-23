@@ -5,6 +5,7 @@
   "engines": { "node": "20.x" },
   "dependencies": {
     "@azure/cosmos": "^4.1.1",
-    "@azure/storage-blob": "^12.17.0"
+    "@azure/storage-blob": "^12.17.0",
+    "pdf-lib": "^1.17.1"
   }
 }
