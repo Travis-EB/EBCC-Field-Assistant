@@ -378,6 +378,7 @@
     '.ajm-pop .l{color:#6b7280;font-size:11px}',
     '.ajm-pop pre{white-space:pre-wrap;font:inherit;margin:4px 0 0}',
     'body.ajm-noscroll{overflow:hidden}',
+    '#ajm-map.ajm-picking,#ajm-map.ajm-picking .leaflet-interactive,#ajm-map.ajm-picking .leaflet-grab{cursor:crosshair !important}',
     '#ajm-banner{border-radius:16px;line-height:1.35;width:max-content}',
     '#ajm-banner .bn-acts{display:flex;gap:8px;justify-content:center;margin-top:7px;flex-wrap:wrap}',
     '#ajm-banner .bn-acts button{margin:0}',
@@ -515,6 +516,61 @@
     if (f.desc) h += '<pre>' + esc(f.desc) + '</pre>';
     return h + '</div>';
   }
+  // A tap on a drawn line or area normally opens its details. While a point is
+  // being picked (tying the plan in, placing a boring) the tap belongs to the
+  // map instead — otherwise a design line under your finger swallows it and
+  // the corner you were aiming at can never be chosen.
+  function featureTap(obj, html, maxWidth) {
+    obj.on('click', function (e) {
+      if (M.align || M.placing) return;   // left alone, Leaflet hands the tap on to the map
+      window.L.DomEvent.stop(e);
+      window.L.popup({ maxWidth: maxWidth }).setLatLng(e.latlng).setContent(html).openOn(M.map);
+    });
+  }
+  function picking(on) { var mp = $('ajm-map'); if (mp) mp.classList.toggle('ajm-picking', !!on); if (on && M.map) M.map.closePopup(); }
+  // The spot on the visible linework nearest a tap: a corner (any vertex) within
+  // a fingertip, else the closest point along a line. null when nothing is near.
+  // -> { latlng, corner }
+  function snapToLinework(latlng) {
+    if (!M.parsed || !M.map) return null;
+    var map = M.map, L = window.L, zoom = map.getZoom(), px = function (q) { return map.project(q, zoom); }, p0 = px(latlng);
+    var CORNER = 16, LINE = 11;
+    var edge = map.unproject(L.point(p0.x + CORNER, p0.y + CORNER), zoom);
+    var dLat = Math.abs(edge.lat - latlng.lat) * 1.2, dLon = Math.abs(edge.lng - latlng.lng) * 1.2;
+    var lat = latlng.lat, lon = latlng.lng;
+    var best = null, bestD = CORNER, bestSeg = null, bestSegD = LINE;
+    var near = function (q) { return Math.abs(q[0] - lat) <= dLat && Math.abs(q[1] - lon) <= dLon; };
+    var eachRing = function (pts, closed) {
+      var n = pts.length;
+      for (var i = 0; i < n; i++) {
+        var a = pts[i];
+        if (near(a)) { var pa = px(a), d = Math.hypot(pa.x - p0.x, pa.y - p0.y); if (d < bestD) { bestD = d; best = a; } }
+        var b = i + 1 < n ? pts[i + 1] : (closed ? pts[0] : null);
+        if (!b) continue;
+        // skip segments whose box is nowhere near the tap
+        if (Math.min(a[0], b[0]) - dLat > lat || Math.max(a[0], b[0]) + dLat < lat || Math.min(a[1], b[1]) - dLon > lon || Math.max(a[1], b[1]) + dLon < lon) continue;
+        var A = px(a), B = px(b);
+        var vx = B.x - A.x, vy = B.y - A.y, len2 = vx * vx + vy * vy;
+        var t = len2 ? Math.max(0, Math.min(1, ((p0.x - A.x) * vx + (p0.y - A.y) * vy) / len2)) : 0;
+        var qx = A.x + t * vx, qy = A.y + t * vy, ds = Math.hypot(qx - p0.x, qy - p0.y);
+        if (ds < bestSegD) { bestSegD = ds; bestSeg = L.point(qx, qy); }
+      }
+    };
+    M.parsed.layers.forEach(function (l) {
+      if (!l.on) return;
+      l.features.forEach(function (ft) {
+        if (ft.hidden) return;
+        ft.geoms.forEach(function (g) {
+          if (g.type === 'line') eachRing(g.pts, false);
+          else if (g.type === 'poly') g.rings.forEach(function (r) { eachRing(r, true); });
+          else if (near(g.at)) { var pp = px(g.at), dp = Math.hypot(pp.x - p0.x, pp.y - p0.y); if (dp < bestD) { bestD = dp; best = g.at; } }
+        });
+      });
+    });
+    if (best) return { latlng: L.latLng(best[0], best[1]), corner: true };
+    if (bestSeg) return { latlng: map.unproject(bestSeg, zoom), corner: false };
+    return null;
+  }
   // Build the Leaflet objects for one KML layer the first time it is shown.
   function materialize(layer) {
     var L = window.L;
@@ -533,7 +589,7 @@
           obj = L.circleMarker(gm.at, { renderer: M.renderer, radius: 6, color: '#fff', weight: 2, fillColor: f.style.iconColor || f.style.color || '#f59e0b', fillOpacity: 1 });
           if (f.name && showLabels) obj.bindTooltip(f.name, { permanent: true, direction: 'right', offset: [8, 0], className: 'ajm-pt' });
         }
-        obj.bindPopup(html, { maxWidth: 260 });
+        featureTap(obj, html, 260);
         g.addLayer(obj);
       });
     });
@@ -542,7 +598,7 @@
       M.parsed.resolve(o.href).then(function (url) {
         if (!url || !layer.group_) return;
         var img = new QuadOverlay(url, o.quad, { pane: 'ajmImages', opacity: o.opacity * M.strength, interactive: !!o.desc });
-        if (o.desc) img.bindPopup(popupHtml({ name: o.name, desc: o.desc }, layer), { maxWidth: 280 });
+        if (o.desc) featureTap(img, popupHtml({ name: o.name, desc: o.desc }, layer), 280);
         img._base = o.opacity;
         layer.images_.push(img);
         g.addLayer(img);
@@ -863,7 +919,7 @@
     boringsPlaced().forEach(function (b) {
       var cls = 'ajm-bor' + (b.kind === 'test pit' ? ' is-pit' : '') + (b.placed === 'manual' ? ' is-manual' : b.placed === 'auto' ? ' is-auto' : '') + (M.selBoring === b.id ? ' is-sel' : '');
       var mk = L.marker([b.lat, b.lon], { icon: L.divIcon({ className: '', html: '<div class="' + cls + '"><i></i><span>' + esc(b.id) + '</span></div>', iconSize: [0, 0] }), keyboard: false, zIndexOffset: M.selBoring === b.id ? 1000 : 0 });
-      mk.on('click', function (ev) { if (ev.originalEvent) ev.originalEvent.stopPropagation(); if (!M.placing) selectBoring(b.id, false); });
+      mk.on('click', function (ev) { if (ev.originalEvent) ev.originalEvent.stopPropagation(); if (M.align) { alignTap(ev.latlng); return; } if (!M.placing) selectBoring(b.id, false); });
       M.boringGroup.addLayer(mk);
     });
   }
@@ -959,9 +1015,9 @@
     banner((M.autoNote ? '<div style="font-weight:500;margin-bottom:5px">' + esc(M.autoNote) + '</div>' : '') +
       'Tap ' + (planOn() ? 'the ' + esc(id) + ' mark on the plan' : 'the map where ' + esc(id) + ' was drilled') + (q ? ' (' + q.length + ' left)' : '') +
       (planOn() ? bnSlider(M.planStrength) : '') + '<div class="bn-acts">' + (q ? bnBtn('skip', 'Skip this one') + bnBtn('stop', 'Stop') : bnBtn('stop', 'Cancel')) + '</div>');
-    $('ajm-map').style.cursor = 'crosshair';
+    picking(true);
   }
-  function stopPlacing() { M.placing = null; if (!M.align) banner(''); var mp = $('ajm-map'); if (mp) mp.style.cursor = ''; }
+  function stopPlacing() { M.placing = null; if (!M.align) { banner(''); picking(false); } }
   // Walk through every boring that is not on the map yet, one tap each.
   function startQueue() {
     var g = M.state && M.state.geotech;
@@ -1226,7 +1282,7 @@
       drawPlan();   // hides the saved copy while this one is being moved
       M.align.layer = new QuadOverlay(M.align.url, planQuad(M.align.T, img.w, img.h), { pane: 'ajmPlan', opacity: 0.75, interactive: false }).addTo(M.map);
       M.map.fitBounds(M.align.layer.getBounds().pad(0.05), { animate: false });
-      $('ajm-map').style.cursor = 'crosshair';
+      picking(true);
       alignPrompt();
     };
     if (reuse && p && p.page === page) { begin({ url: fileUrl(M.code, p), w: p.w, h: p.h, labels: p.labels || [] }, false); return; }
@@ -1236,14 +1292,14 @@
   function alignPrompt() {
     var a = M.align; if (!a) return;
     var text = a.step === 1 ? '<b>Step 1 of 4.</b> Tap a spot on the PLAN that you can also find on the map — a building corner, a road intersection, a property corner.'
-      : a.step === 2 ? '<b>Step 2 of 4.</b> Now tap where that same spot really is on the map.'
+      : a.step === 2 ? '<b>Step 2 of 4.</b> Now tap where that same spot really is on the map. Tap right on a design line or corner and it snaps to it.'
       : a.step === 3 ? '<b>Step 3 of 4.</b> Tap a second spot on the PLAN, as far from the first as you can.'
-      : a.step === 4 ? '<b>Step 4 of 4.</b> Tap where that second spot really is.'
+      : a.step === 4 ? '<b>Step 4 of 4.</b> Tap where that second spot really is — on a design line or corner if you can.'
       : 'Does the plan sit right? Roads, buildings and property lines should line up with the map.';
     // Faint while you look for the real spot underneath, strong while you pick on the drawing — until you set it yourself.
     var op = a.userOpacity != null ? a.userOpacity : (a.step === 2 || a.step === 4 ? 0.3 : a.step === 5 ? 0.6 : 0.75);
     a.layer.setOpacity(op);
-    banner(text + bnSlider(op) + '<div class="bn-acts">' + (a.step === 5 ? bnBtn('align-save', 'Save', true) : '') + (a.step > 1 ? bnBtn('align-restart', 'Start over') : '') + bnBtn('align-cancel', 'Cancel') + '</div>');
+    banner((a.snapNote ? '<div style="font-weight:500;margin-bottom:5px">' + esc(a.snapNote) + '</div>' : '') + text + bnSlider(op) + '<div class="bn-acts">' + (a.step === 5 ? bnBtn('align-save', 'Save', true) : '') + (a.step > 1 ? bnBtn('align-restart', 'Start over') : '') + bnBtn('align-cancel', 'Cancel') + '</div>');
     // pins: green = where it really is, orange = the spot picked on the plan (rides with the plan)
     var L = window.L; M.alignMarks.clearLayers();
     var pin = function (ll, n, cls) { M.alignMarks.addLayer(L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="ajm-pin ' + cls + '">' + n + '</div>', iconSize: [0, 0] }), interactive: false, keyboard: false })); };
@@ -1256,8 +1312,11 @@
       var p = planFromLL(a.T, latlng);
       if (p.x < 0 || p.y < 0 || p.x > a.w || p.y > a.h) { banner('That tap was off the plan — tap a spot on the drawing itself.<div class="bn-acts">' + bnBtn('align-cancel', 'Cancel') + '</div>'); setTimeout(alignPrompt, 1800); return; }
       if (a.step === 3 && Math.hypot(p.x - a.pts[0].x, p.y - a.pts[0].y) < Math.max(a.w, a.h) * 0.08) { banner('Too close to the first spot — pick one well away from it for a good fit.<div class="bn-acts">' + bnBtn('align-cancel', 'Cancel') + '</div>'); setTimeout(alignPrompt, 2000); return; }
-      a.pick = p; a.step++;
+      a.pick = p; a.step++; a.snapNote = '';
     } else {
+      var snap = snapToLinework(latlng);
+      if (snap) latlng = snap.latlng;
+      a.snapNote = snap ? (snap.corner ? 'Snapped to a corner of the linework.' : 'Snapped onto the line.') : '';
       var pt = { x: a.pick.x, y: a.pick.y, lat: latlng.lat, lon: latlng.lng };
       a.pts.push(pt); a.pick = null;
       if (a.pts.length === 1) {   // slide the plan so the first spot lands where it belongs
@@ -1273,11 +1332,11 @@
   function alignEnd() {
     var a = M.align; if (!a) return;
     if (a.layer) M.map.removeLayer(a.layer);
-    M.alignMarks.clearLayers(); M.align = null; banner(''); $('ajm-map').style.cursor = '';
+    M.alignMarks.clearLayers(); M.align = null; banner(''); picking(false);
     drawPlan();
   }
   function alignCancel() { alignEnd(); }
-  function alignRestart() { var a = M.align; if (!a) return; a.pts = []; a.pick = null; a.step = 1; a.T = planGuess(a.w, a.h); a.layer.setQuad(planQuad(a.T, a.w, a.h)); M.map.fitBounds(a.layer.getBounds().pad(0.05), { animate: false }); alignPrompt(); }
+  function alignRestart() { var a = M.align; if (!a) return; a.pts = []; a.pick = null; a.snapNote = ''; a.step = 1; a.T = planGuess(a.w, a.h); a.layer.setQuad(planQuad(a.T, a.w, a.h)); M.map.fitBounds(a.layer.getBounds().pad(0.05), { animate: false }); alignPrompt(); }
   function alignSave() {
     var a = M.align; if (!a || a.step !== 5 || a.saving) return;
     a.saving = true;
