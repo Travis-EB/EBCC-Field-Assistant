@@ -449,7 +449,7 @@
       else { M.planStrength = v; if (M.planLayer) M.planLayer.setOpacity(v); }
     });
     $('ajm-geo').addEventListener('click', onGeoClick);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (M.align) alignCancel(); else if (M.placing) { M.queue = null; stopPlacing(); } else if ($('ajm-stage') && $('ajm-stage').classList.contains('is-full')) setFull(false); } });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (M.align || M.alignLoading) alignCancel(); else if (M.placing) { M.queue = null; stopPlacing(); } else if ($('ajm-stage') && $('ajm-stage').classList.contains('is-full')) setFull(false); } });
   }
   function openPlans() {
     if (typeof window.jbOpenProject !== 'function') return;
@@ -793,7 +793,7 @@
     M.pollTimer = setTimeout(function () {
       if (M.code !== code) return;
       if (!visible() || document.hidden) { schedulePoll(); return; }
-      loadState(code).then(function () { if (M.code === code) { renderGeo(); drawBorings(); renderLayerPanel(); schedulePoll(); } });
+      loadState(code).then(function () { if (M.code === code) { renderGeo(); drawBorings(); drawPlan(); renderLayerPanel(); schedulePoll(); } });
     }, 15000);
   }
 
@@ -860,7 +860,7 @@
         b.disabled = true;
         post({ mode: 'geoStart', folder: f.folder || '', name: f.name }).then(function (j) {
           if (!j || !j.ok) { b.disabled = false; alert((j && j.error) || 'Could not start reading the report.'); return; }
-          M.state = j.map; M.selBoring = null; closeSheet(); renderGeo(); drawBorings(); drive();
+          M.state = j.map; M.selBoring = null; closeSheet(); renderGeo(); drawBorings(); drawPlan(); renderLayerPanel(); drive();
         });
       };
       if (g && g.status === 'done') { post({ mode: 'geoClear' }).then(function (j) { if (j && j.ok) { M.state = j.map; go(); } else alert((j && j.error) || 'Could not replace the report.'); }); }
@@ -879,7 +879,7 @@
     else if (act === 'clear') {
       if (!confirm('Cancel reading this report?')) return;
       M.driving = false;
-      post({ mode: 'geoClear' }).then(function (j) { if (j && j.ok) { M.state = j.map; closeSheet(); renderGeo(); drawBorings(); renderLayerPanel(); schedulePoll(); } });
+      post({ mode: 'geoClear' }).then(function (j) { if (j && j.ok) { M.state = j.map; closeSheet(); renderGeo(); drawBorings(); drawPlan(); renderLayerPanel(); schedulePoll(); } });
     } else if (act === 'replace') {
       var slot = $('ajm-replace');
       if (slot) slot.innerHTML = '<div class="ajm-warn">Reading a different report replaces these borings. Borings you placed by hand keep their spot if the new report uses the same numbers.</div>' + pdfPicker('Read this report instead');
@@ -902,7 +902,7 @@
         var retry = !ok && ++misses <= 2;
         var again = (retry || (ok && g && g.status === 'preparing')) && ++n < 80;
         if (!again) M.driving = false;
-        renderGeo();
+        renderGeo(); drawPlan(); renderLayerPanel();
         if (again) setTimeout(step, retry ? 2500 : 400);
         else { schedulePoll(); if (!ok) msg('ajm-msg', esc((j && j.error) || 'Could not prepare the report.') + ' Tap Continue to try again.', 'err'); }
       });
@@ -1046,7 +1046,7 @@
       if (!j || !j.ok) { alert((j && j.error) || 'Could not save the location.'); return false; }
       M.state = j.map;
       if (openSheet) { M.selBoring = id; var b = boring(id); if (b) renderSheet(b); }
-      drawBorings(); renderGeo(); renderLayerPanel();
+      drawBorings(); drawPlan(); renderGeo(); renderLayerPanel();
       return true;
     });
   }
@@ -1082,17 +1082,27 @@
   function planOn() {
     var p = M.state && M.state.plan;
     if (!p) return false;
-    if (M.showPlan != null) return M.showPlan;
-    var g = M.state.geotech;   // on by itself while there are still borings to place
-    return !!(g && g.borings && g.borings.some(function (b) { return b.lat == null; }));
+    return !!M.showPlan;   // off until it is ticked under Layers, or switched on to place borings from it
+  }
+  // Only the copy that is meant to be there may sit in the plan pane. Anything
+  // else is a leftover (a tie-in that was started twice, a plan since removed)
+  // and would otherwise stay on the map with no switch to turn it off.
+  function sweepPlan() {
+    if (!M.map) return;
+    var stray = [];
+    M.map.eachLayer(function (l) { if (l.options && l.options.pane === 'ajmPlan' && l !== M.planLayer && !(M.align && l === M.align.layer)) stray.push(l); });
+    stray.forEach(function (l) { M.map.removeLayer(l); });
   }
   function drawPlan() {
     if (!M.map) return;
-    if (M.planLayer) { M.map.removeLayer(M.planLayer); M.planLayer = null; }
-    if (M.align) return;
     var p = M.state && M.state.plan;
-    if (!p || !planOn()) return;
+    var want = p && planOn() && !M.align ? [M.code, p.folder, p.name, p.w, p.h, JSON.stringify(p.pts)].join('|') : '';
+    if (M.planLayer && M.planKey !== want) { M.map.removeLayer(M.planLayer); M.planLayer = null; }
+    if (!M.planLayer) M.planKey = '';
+    sweepPlan();
+    if (!want || M.planLayer) return;
     M.planLayer = new QuadOverlay(fileUrl(M.code, p), planQuad(planFit(p.pts), p.w, p.h), { pane: 'ajmPlan', opacity: M.planStrength, interactive: false }).addTo(M.map);
+    M.planKey = want;
   }
   function planBlockHtml(g, admin, unplaced) {
     var p = M.state && M.state.plan;
@@ -1100,7 +1110,7 @@
     var found = g.planPages && g.planPages.length ? g.planPages : [];
     var h = '<div class="ajm-planbox"><div class="ajm-lh" style="margin-top:0">Boring location plan</div>';
     if (p) {
-      h += '<div class="ajm-note">Report page ' + p.page + ' is pinned to the map' + (p.by ? ' (lined up by ' + esc(p.by) + ')' : '') + '. Switch it on and off under Layers.</div><div class="ajm-acts">' +
+      h += '<div class="ajm-note">Report page ' + p.page + ' is pinned to the map' + (p.by ? ' (lined up by ' + esc(p.by) + ')' : '') + '. Switch it on and off under Layers › Boring location plan.</div><div class="ajm-acts">' +
         (unplaced ? '<button type="button" class="btn btn-primary aj-mini" data-ajm-geo="plan-auto">Find the ' + unplaced + ' boring' + (unplaced === 1 ? '' : 's') + ' left on the plan</button>' +
           '<button type="button" class="btn aj-mini" data-ajm-geo="plan-queue">Place by hand</button>' : '') +
         '<button type="button" class="btn aj-mini" data-ajm-geo="plan-again">Line it up again</button><button type="button" class="btn aj-mini" data-ajm-geo="plan-remove">Remove</button></div>';
@@ -1272,7 +1282,7 @@
     return { z: [sc, 0], t: [cx - sc * w / 2, cy - sc * h / 2] };
   }
   function alignStart(page, reuse) {
-    if (M.align || !M.map) return;
+    if (M.align || M.alignLoading || !M.map) return;
     var p = M.state && M.state.plan;
     M.queue = null; stopPlacing(); closeSheet(); M.selBoring = null;
     $('ajm-layers').classList.remove('open'); $('ajm-t-layers').classList.remove('on');
@@ -1286,8 +1296,17 @@
       alignPrompt();
     };
     if (reuse && p && p.page === page) { begin({ url: fileUrl(M.code, p), w: p.w, h: p.h, labels: p.labels || [] }, false); return; }
-    banner('Getting report page ' + page + '…');
-    renderPlanPage(page).then(function (img) { begin(img, true); }).catch(function (e) { banner(''); alert(e && e.message ? e.message : 'Could not load that page.'); });
+    var code = M.code, ticket = M.alignLoading = {};
+    banner('Getting report page ' + page + '…<div class="bn-acts">' + bnBtn('align-cancel', 'Cancel') + '</div>');
+    renderPlanPage(page).then(function (img) {
+      if (M.alignLoading !== ticket) return;   // cancelled, or the job changed, while the page was loading
+      M.alignLoading = null;
+      if (M.code !== code || M.align) return;
+      begin(img, true);
+    }).catch(function (e) {
+      if (M.alignLoading !== ticket) return;
+      M.alignLoading = null; banner(''); alert(e && e.message ? e.message : 'Could not load that page.');
+    });
   }
   function alignPrompt() {
     var a = M.align; if (!a) return;
@@ -1335,7 +1354,7 @@
     M.alignMarks.clearLayers(); M.align = null; banner(''); picking(false);
     drawPlan();
   }
-  function alignCancel() { alignEnd(); }
+  function alignCancel() { if (M.alignLoading) { M.alignLoading = null; if (!M.align) banner(''); } alignEnd(); }
   function alignRestart() { var a = M.align; if (!a) return; a.pts = []; a.pick = null; a.snapNote = ''; a.step = 1; a.T = planGuess(a.w, a.h); a.layer.setQuad(planQuad(a.T, a.w, a.h)); M.map.fitBounds(a.layer.getBounds().pad(0.05), { animate: false }); alignPrompt(); }
   function alignSave() {
     var a = M.align; if (!a || a.step !== 5 || a.saving) return;
@@ -1375,8 +1394,9 @@
   function reset(code) {
     M.code = code; M.sel = null; M.parsed = null; M.state = null; M.stateFor = null; M.filesFor = null; M.files = []; M.pdfs = [];
     M.selBoring = null; M.driving = false; M.fileErr = ''; M.loadingFile = '';
-    clearTimeout(M.pollTimer); if (M.align) alignEnd(); M.queue = null; M.autoNote = ''; M.autoBusy = false; M.showPlan = null; stopPlacing(); closeSheet();
+    clearTimeout(M.pollTimer); M.alignLoading = null; if (M.align) alignEnd(); M.queue = null; M.autoNote = ''; M.autoBusy = false; M.showPlan = null; stopPlacing(); closeSheet();
     if (M.map && M.planLayer) { M.map.removeLayer(M.planLayer); M.planLayer = null; }
+    M.planKey = ''; sweepPlan();
     M.objectUrls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} }); M.objectUrls = []; M.parseCache = {};
     if (M.map) { M.kmlGroup.clearLayers(); M.boringGroup.clearLayers(); }
     msg('ajm-msg', ''); var fb = $('ajm-filebar'); if (fb) fb.innerHTML = ''; var sm = $('ajm-sum'); if (sm) sm.textContent = '';
