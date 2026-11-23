@@ -88,31 +88,61 @@ async function updateMap(records, code, fn) {
 }
 
 // ---- background read: preparation step ----
+// The opened report is kept for the next step on a warm instance, so a big
+// PDF is downloaded and parsed once rather than on every step.
+let warm = null;   // { key, buffer, pdf, pages, loadError }
+function dropWarm() { if (warm && warm.pdf) warm.pdf.close(); warm = null; }
+async function openReport(context, code, g) {
+  const key = code + '|' + g.file.folder + '|' + g.file.name + '|' + g.startedAt;
+  if (warm && warm.key === key) return warm;
+  dropWarm();
+  const container = await getJobBooksContainer();
+  const bc = container.getBlockBlobClient(blobPath(code, g.file.folder, g.file.name));
+  if (!(await bc.exists())) return { missing: true };
+  const buffer = await bc.downloadToBuffer();
+  const out = { key, buffer, pdf: null, pages: 0, loadError: '', password: false };
+  try { out.pdf = await geo.openPdf(buffer, 22000); out.pages = out.pdf.pages; }
+  catch (e) {
+    out.pdf = null; out.pages = 0; out.password = e && e.code === 'PDF_PASSWORD';
+    out.loadError = (e && e.message) || String(e);
+    context.log.warn('job-map pdf load: ' + out.loadError);
+  }
+  warm = out;
+  return out;
+}
+
 async function geoStep(context, records, code) {
   const started = Date.now();
   const doc = await readMap(records, code);
   const g = doc && doc.geotech;
-  if (!g || g.status !== 'preparing') return { doc: doc || emptyMap(code) };
-  const fail = (msg) => updateMap(records, code, (d) => { if (d.geotech) { d.geotech.status = 'failed'; d.geotech.error = msg; d.geotech.finishedAt = new Date().toISOString(); } });
+  if (!g || g.status !== 'preparing') { dropWarm(); return { doc: doc || emptyMap(code) }; }
+  const fail = (msg) => { dropWarm(); return updateMap(records, code, (d) => { if (d.geotech) { d.geotech.status = 'failed'; d.geotech.error = msg; d.geotech.finishedAt = new Date().toISOString(); } }); };
+  // Anything unexpected is written onto the reading (so the screen says why) instead of a bare 500.
+  const stall = (msg) => updateMap(records, code, (d) => {
+    const cur = d.geotech;
+    if (!cur || cur.status !== 'preparing' || cur.startedAt !== g.startedAt) return;
+    cur.stalls = (cur.stalls || 0) + 1; cur.error = msg;
+    if (cur.stalls >= 3) { cur.status = 'failed'; cur.finishedAt = new Date().toISOString(); dropWarm(); }
+  });
 
-  const container = await getJobBooksContainer();
-  const bc = container.getBlockBlobClient(blobPath(code, g.file.folder, g.file.name));
-  if (!(await bc.exists())) return fail('The report file is no longer in the job book.');
-  const buffer = await bc.downloadToBuffer();
+  let report;
+  try { report = await openReport(context, code, g); }
+  catch (e) { context.log.error('job-map open report', e); return stall('Could not open the report: ' + ((e && e.message) || e)); }
+  if (report.missing) return fail('The report file is no longer in the job book.');
+  if (report.password) return fail('This PDF needs a password to open. Save an unlocked copy, put that in the job book and read it instead.');
+  const buffer = report.buffer, pdf = report.pdf;
 
   let chunks = Array.isArray(g.chunks) ? g.chunks.map((c) => Object.assign({}, c)) : [];
   let pageCount = g.pageCount || 0;
-  let src = null;
-  try { src = await geo.loadPdf(buffer); } catch (e) { context.log.warn('job-map pdf load: ' + (e.message || e)); }
   if (!chunks.length) {
-    if (src) {
-      pageCount = src.getPageCount();
+    if (pdf) {
+      pageCount = report.pages;
       if (!pageCount) return fail('That PDF has no pages.');
       if (pageCount > geo.MAX_PAGES) return fail('That report is ' + pageCount + ' pages — the limit is ' + geo.MAX_PAGES + '. Upload just the boring logs as their own PDF.');
       chunks = geo.splitPlan(pageCount).map((c) => ({ from: c.from, to: c.to, fileId: '' }));
     } else {
       // Could not take the PDF apart (odd or protected file): send it whole if it is small enough.
-      if (buffer.length > WHOLE_FILE_MAX) return fail('This PDF could not be split into pages and is too large to read whole. Re-save it as a standard PDF and try again.');
+      if (buffer.length > WHOLE_FILE_MAX) return fail('This PDF could not be split into pages (' + report.loadError.slice(0, 160) + ') and is too large to read whole. Re-save it with Print to PDF and try again.');
       chunks = [{ from: 1, to: 1, fileId: '', whole: true }];
       pageCount = 0;
     }
@@ -124,7 +154,8 @@ async function geoStep(context, records, code) {
     if (c.fileId) continue;
     if (Date.now() - started > STEP_BUDGET_MS) break;
     try {
-      const bytes = c.whole ? buffer : await geo.extractPages(src, c.from, c.to);
+      if (!c.whole && !pdf) throw new Error('the PDF could not be opened (' + report.loadError.slice(0, 160) + ')');
+      const bytes = c.whole ? buffer : await pdf.extract(c.from, c.to);
       c.fileId = await geo.uploadPdf(bytes, 'geotech-' + safeName(code) + '-p' + c.from + '-' + c.to + '.pdf', 32000 - Math.min(20000, Date.now() - started));
     } catch (e) {
       stepError = e.message || String(e);
@@ -152,8 +183,8 @@ async function geoStep(context, records, code) {
     cur.chunks = chunks; cur.pageCount = pageCount; cur.shape = shape;
     cur.stalls = progressed ? 0 : (cur.stalls || 0) + 1;
     cur.error = stepError;
-    if (batchId) { cur.status = 'reading'; cur.batchId = batchId; cur.submittedAt = new Date().toISOString(); cur.checkedAt = ''; cur.error = ''; }
-    else if (cur.stalls >= 3) { cur.status = 'failed'; cur.error = stepError || 'Could not prepare the report.'; cur.finishedAt = new Date().toISOString(); }
+    if (batchId) { cur.status = 'reading'; cur.batchId = batchId; cur.submittedAt = new Date().toISOString(); cur.checkedAt = ''; cur.error = ''; dropWarm(); }
+    else if (cur.stalls >= 3) { cur.status = 'failed'; cur.error = stepError || 'Could not prepare the report.'; cur.finishedAt = new Date().toISOString(); dropWarm(); }
   });
 }
 
@@ -259,7 +290,11 @@ module.exports = async function (context, req) {
           checkedAt: '', finishedAt: '', error: '', warnings: [], report: null, planPages: [], borings: [] };
       });
     } else if (mode === 'geoStep') {
-      r = await geoStep(context, records, code);
+      try { r = await geoStep(context, records, code); }
+      catch (e) {
+        context.log.error('job-map geoStep', e);
+        return json(context, 500, { error: 'Could not prepare the report: ' + String((e && e.message) || e).slice(0, 300) });
+      }
     } else if (mode === 'geoClear') {
       r = await updateMap(records, code, (d) => { d.geotech = null; });
     } else if (mode === 'placeBoring' || mode === 'unplaceBoring') {
@@ -278,6 +313,7 @@ module.exports = async function (context, req) {
     return json(context, 200, { ok: true, map: publicMap(r.doc) });
   } catch (e) {
     context.log.error('job-map', e);
-    return json(context, 500, { error: 'Server error.' + (e && e.message && /ANTHROPIC|Claude API/.test(e.message) ? ' ' + e.message : '') });
+    // Admins see the reason — they are the ones who have to act on it.
+    return json(context, 500, { error: 'Server error.' + (e && e.message && (isAdmin(me) || /ANTHROPIC|Claude API/.test(e.message)) ? ' ' + String(e.message).slice(0, 300) : '') });
   }
 };

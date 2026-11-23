@@ -780,17 +780,22 @@
   function drive() {
     if (M.driving) return;
     M.driving = true;
-    var code = M.code, n = 0;
+    var code = M.code, n = 0, misses = 0;
+    msg('ajm-msg', '');
     var step = function () {
       if (M.code !== code || !M.driving) { M.driving = false; return; }
       post({ mode: 'geoStep' }).then(function (j) {
         if (M.code !== code) { M.driving = false; return; }
-        if (j && j.ok) M.state = j.map;
+        var ok = !!(j && j.ok);
+        if (ok) { M.state = j.map; misses = 0; }
         var g = M.state && M.state.geotech;
-        var again = j && j.ok && g && g.status === 'preparing' && ++n < 80;
+        // One failed call is often a blip (a cold server, a dropped connection): try twice more before stopping.
+        var retry = !ok && ++misses <= 2;
+        var again = (retry || (ok && g && g.status === 'preparing')) && ++n < 80;
         if (!again) M.driving = false;
         renderGeo();
-        if (again) setTimeout(step, 400); else { schedulePoll(); if (!j || !j.ok) msg('ajm-msg', esc((j && j.error) || 'Could not prepare the report.'), 'err'); }
+        if (again) setTimeout(step, retry ? 2500 : 400);
+        else { schedulePoll(); if (!ok) msg('ajm-msg', esc((j && j.error) || 'Could not prepare the report.') + ' Tap Continue to try again.', 'err'); }
       });
     };
     step();

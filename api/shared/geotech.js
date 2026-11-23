@@ -10,7 +10,8 @@
 // Claude calls here are raw fetch, like the rest of this API (no SDK
 // dependency). Batches cannot use server-side fallbacks, so a refusal or an
 // error on a page range is reported as a warning instead of retried elsewhere.
-const { PDFDocument } = require('pdf-lib');
+const path = require('path');
+const { Worker } = require('worker_threads');
 
 const API = 'https://api.anthropic.com/v1';
 const VERSION = '2026-10-21';
@@ -99,15 +100,42 @@ function splitPlan(pageCount) {
   for (let from = 1; from <= pageCount; from += CHUNK_PAGES) out.push({ from, to: Math.min(pageCount, from + CHUNK_PAGES - 1) });
   return out;
 }
-async function loadPdf(buffer) {
-  return PDFDocument.load(buffer, { ignoreEncryption: true, updateMetadata: false });
-}
-async function extractPages(src, from, to) {
-  const out = await PDFDocument.create();
-  const idx = [];
-  for (let i = from - 1; i <= to - 1; i++) idx.push(i);
-  (await out.copyPages(src, idx)).forEach((p) => out.addPage(p));
-  return Buffer.from(await out.save());
+
+// Open a report in a worker thread (see pdfWorker.js for why). Resolves to
+// { pages, extract(from, to) -> Buffer, close() }. Rejects with code
+// PDF_PASSWORD (needs a password), PDF_TIMEOUT (too slow to open) or the
+// parser's own error for a file it cannot make sense of.
+function openPdf(buffer, timeoutMs) {
+  const worker = new Worker(path.join(__dirname, 'pdfWorker.js'));
+  worker.unref();
+  let seq = 0, dead = false;
+  const pending = new Map();
+  const failAll = (err) => { pending.forEach((p) => { clearTimeout(p.timer); p.rej(err); }); pending.clear(); };
+  worker.on('message', (m) => {
+    const p = pending.get(m.id);
+    if (!p) return;
+    pending.delete(m.id); clearTimeout(p.timer);
+    if (m.error) { const err = new Error(m.error); err.code = m.code || ''; p.rej(err); } else p.res(m);
+  });
+  worker.on('error', (e) => { dead = true; failAll(e); });
+  worker.on('exit', () => { dead = true; failAll(new Error('The PDF reader stopped unexpectedly.')); });
+  const close = () => { dead = true; worker.terminate().catch(() => {}); };
+  const ask = (msg, ms, transfer) => new Promise((res, rej) => {
+    if (dead) { rej(new Error('The PDF reader is no longer running.')); return; }
+    const id = ++seq;
+    const timer = setTimeout(() => {
+      pending.delete(id); close();
+      const err = new Error('The PDF took too long to open (over ' + Math.round(ms / 1000) + ' seconds).'); err.code = 'PDF_TIMEOUT'; rej(err);
+    }, ms);
+    pending.set(id, { res, rej, timer });
+    worker.postMessage(Object.assign({ id }, msg), transfer || []);
+  });
+  // the worker gets its own copy; the caller keeps the original bytes
+  const copy = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  return ask({ op: 'load', buffer: copy }, timeoutMs || 22000, [copy]).then(
+    (r) => ({ pages: r.pages, extract: (from, to, ms) => ask({ op: 'extract', from, to }, ms || 15000).then((x) => Buffer.from(x.bytes)), close }),
+    (e) => { close(); throw e; }
+  );
 }
 
 // ---- Files API ----
@@ -283,5 +311,5 @@ function mergeResults(chunks, results) {
 
 module.exports = {
   MODEL, CHUNK_PAGES, MAX_PAGES, SCHEMA, SYSTEM,
-  splitPlan, loadPdf, extractPages, uploadPdf, deleteFile, buildParams, createBatch, getBatch, getResults, readResult, mergeResults, normId,
+  splitPlan, openPdf, uploadPdf, deleteFile, buildParams, createBatch, getBatch, getResults, readResult, mergeResults, normId,
 };
