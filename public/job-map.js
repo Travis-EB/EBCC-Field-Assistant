@@ -17,6 +17,9 @@
   var FILE_PREF_KEY = 'ebcc_jobmap_file_v1';     // { code: "folder/name" } — this device's pick per job
   var LAYER_PREF_KEY = 'ebcc_jobmap_layers_v1';  // { "code|file": { key: true|false } } — layer switches
   var MAX_FILE_BYTES = 40 * 1024 * 1024;
+  var PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  var PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  var PLAN_Z = 22;   // zoom level whose pixel grid the plan's fit is worked out in
 
   var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
   var escA = function (s) { return esc(s).replace(/"/g, '&quot;'); };
@@ -38,6 +41,9 @@
     strength: 0.7,        // multiplier on polygon fill + image opacity
     showBorings: true,
     selBoring: null, placing: null, driving: false,
+    queue: null,          // borings still to place, when walking through them one after another
+    planLayer: null, showPlan: null, planStrength: 0.65,
+    align: null,          // the boring location plan while it is being pinned to the map
     pollTimer: null, objectUrls: [],
     me: null, watchId: null,
   };
@@ -70,6 +76,7 @@
         this._image.style.transformOrigin = '0 0';
         this.on('load', this._reset, this);
       },
+      setQuad: function (quad) { this._quad = quad; this._bounds = L.latLngBounds([quad.tl, quad.tr, quad.bl, quad.br]); this._reset(); return this; },
       _reset: function () { var map = this._map; if (map) this._place(function (p) { return map.latLngToLayerPoint(p); }); },
       _animateZoom: function (e) { var map = this._map; this._place(function (p) { return map._latLngToNewLayerPoint(p, e.zoom, e.center); }); },
       _place: function (proj) {
@@ -368,6 +375,15 @@
     '.ajm-pop .l{color:#6b7280;font-size:11px}',
     '.ajm-pop pre{white-space:pre-wrap;font:inherit;margin:4px 0 0}',
     'body.ajm-noscroll{overflow:hidden}',
+    '#ajm-banner{border-radius:16px;line-height:1.35;width:max-content}',
+    '#ajm-banner .bn-acts{display:flex;gap:8px;justify-content:center;margin-top:7px;flex-wrap:wrap}',
+    '#ajm-banner .bn-acts button{margin:0}',
+    '#ajm-banner button.go{background:#f59e0b;color:#1f2937}',
+    '.ajm-pin{width:22px;height:22px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.7);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;transform:translate(-11px,-11px)}',
+    '.ajm-pin.real{background:#16a34a}',
+    '.ajm-pin.plan{background:#ea580c}',
+    '.ajm-planbox{border-top:1px solid var(--border);margin-top:12px;padding-top:10px}',
+    '.ajm-planbox input[type=number]{width:84px;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--dark)}',
   ].join('\n');
 
   function build() {
@@ -414,12 +430,15 @@
     });
     $('ajm-msg').addEventListener('click', function (e) { if (e.target.id === 'ajm-open-plans') openPlans(); });
     $('ajm-layers').addEventListener('change', onLayerChange);
-    $('ajm-layers').addEventListener('input', function (e) { if (e.target.id === 'ajm-strength') { M.strength = Number(e.target.value) / 100; applyStrength(); } });
+    $('ajm-layers').addEventListener('input', function (e) {
+      if (e.target.id === 'ajm-strength') { M.strength = Number(e.target.value) / 100; applyStrength(); }
+      if (e.target.id === 'ajm-plan-strength') { M.planStrength = Number(e.target.value) / 100; if (M.planLayer) M.planLayer.setOpacity(M.planStrength); }
+    });
     $('ajm-layers').addEventListener('click', onLayerClick);
     $('ajm-sheet').addEventListener('click', onSheetClick);
-    $('ajm-banner').addEventListener('click', function (e) { if (e.target.tagName === 'BUTTON') stopPlacing(); });
+    $('ajm-banner').addEventListener('click', onBannerClick);
     $('ajm-geo').addEventListener('click', onGeoClick);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (M.placing) stopPlacing(); else if ($('ajm-stage') && $('ajm-stage').classList.contains('is-full')) setFull(false); } });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (M.align) alignCancel(); else if (M.placing) { M.queue = null; stopPlacing(); } else if ($('ajm-stage') && $('ajm-stage').classList.contains('is-full')) setFull(false); } });
   }
   function openPlans() {
     if (typeof window.jbOpenProject !== 'function') return;
@@ -445,12 +464,15 @@
     M.baseLayers.street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 21, maxNativeZoom: 19, attribution: '© OpenStreetMap contributors' });
     M.baseLayers[M.base].addTo(M.map);
     M.map.createPane('ajmImages').style.zIndex = 350;      // sheets under the linework
+    M.map.createPane('ajmPlan').style.zIndex = 380;        // the boring location plan, over the sheets
+    M.map.getPane('ajmPlan').style.pointerEvents = 'none';
     M.renderer = L.canvas({ padding: 0.4, tolerance: 7 });
     M.kmlGroup = L.layerGroup().addTo(M.map);
     M.boringGroup = L.layerGroup().addTo(M.map);
     M.meGroup = L.layerGroup().addTo(M.map);
     M.map.setView([32.9, -97.0], 10);
-    M.map.on('click', function (e) { if (M.placing) placeAt(e.latlng); });
+    M.alignMarks = L.layerGroup().addTo(M.map);
+    M.map.on('click', function (e) { if (M.align) alignTap(e.latlng); else if (M.placing) placeAt(e.latlng); });
     M.map.on('locationfound', onLocated);
     M.map.on('locationerror', function (e) { stopLocate(); msg('ajm-msg', 'Could not get your location' + (e && e.message ? ' — ' + esc(e.message) : '') + '.', 'warn'); });
   }
@@ -571,8 +593,14 @@
     var h = '<div class="ajm-lh">Base map</div>' +
       '<div class="seg" style="margin:0 0 4px"><button type="button" data-ajm-base="sat" class="' + (M.base === 'sat' ? 'on' : '') + '">Satellite</button><button type="button" data-ajm-base="street" class="' + (M.base === 'street' ? 'on' : '') + '">Street</button></div>';
     var g = M.state && M.state.geotech;
+    var plan = M.state && M.state.plan;
+    if ((g && g.status === 'done' && g.borings.length) || plan) h += '<div class="ajm-lh">Geotech</div>';
+    if (plan) {
+      h += '<label class="ajm-row"><input type="checkbox" id="ajm-l-plan"' + (planOn() ? ' checked' : '') + '><span class="ajm-sw" style="background:#fff"></span><span class="nm">Boring location plan</span><span class="ct">p. ' + plan.page + '</span></label>';
+      if (planOn()) h += '<input type="range" id="ajm-plan-strength" min="15" max="100" step="5" value="' + Math.round(M.planStrength * 100) + '" style="width:100%" aria-label="Plan strength">';
+    }
     if (g && g.status === 'done' && g.borings.length) {
-      h += '<div class="ajm-lh">Geotech</div><label class="ajm-row"><input type="checkbox" id="ajm-l-borings"' + (M.showBorings ? ' checked' : '') + '><span class="ajm-sw" style="background:#b45309;border-radius:50%"></span><span class="nm">Borings</span><span class="ct">' + boringsPlaced().length + ' of ' + g.borings.length + '</span></label>';
+      h += '<label class="ajm-row"><input type="checkbox" id="ajm-l-borings"' + (M.showBorings ? ' checked' : '') + '><span class="ajm-sw" style="background:#b45309;border-radius:50%"></span><span class="nm">Borings</span><span class="ct">' + boringsPlaced().length + ' of ' + g.borings.length + '</span></label>';
     }
     if (M.parsed && M.parsed.layers.length) {
       h += '<div class="ajm-lh">' + esc(M.sel ? M.sel.name : 'Site file') + '</div>' +
@@ -601,6 +629,8 @@
   function onLayerChange(e) {
     var t = e.target;
     if (t.id === 'ajm-l-borings') { M.showBorings = t.checked; drawBorings(); return; }
+    if (t.id === 'ajm-l-plan') { M.showPlan = t.checked; drawPlan(); renderLayerPanel(); return; }
+    if (t.id === 'ajm-plan-strength') return;
     if (!M.parsed) return;
     var key = t.getAttribute('data-ajm-layer'), grp = t.getAttribute('data-ajm-group');
     if (key) { var l = M.parsed.layers.find(function (x) { return x.key === key; }); if (l) { showLayer(l, t.checked); setLayerPref(l.key, t.checked); } }
@@ -744,6 +774,7 @@
       }
       if (g.warnings && g.warnings.length) h += '<details class="ajm-warn"><summary>' + g.warnings.length + ' part' + (g.warnings.length === 1 ? '' : 's') + ' of the report could not be read</summary>' + g.warnings.map(function (w) { return '<div>' + esc(w) + '</div>'; }).join('') + '</details>';
       h += '<div class="ajm-fine">Read from the report by AI on ' + esc(new Date(g.finishedAt || g.startedAt).toLocaleDateString()) + '. Check the boring log itself before relying on a number — every boring links to its page.</div>';
+      if (total) h += planBlockHtml(g, admin, total - placed);
       if (admin) h += '<div class="ajm-acts"><button type="button" class="btn aj-mini" data-ajm-geo="replace">Read a different report</button></div><div id="ajm-replace"></div>';
     }
     box.innerHTML = h;
@@ -766,6 +797,15 @@
       };
       if (g && g.status === 'done') { post({ mode: 'geoClear' }).then(function (j) { if (j && j.ok) { M.state = j.map; go(); } else alert((j && j.error) || 'Could not replace the report.'); }); }
       else go();
+    } else if (act === 'plan') {
+      var inp = $('ajm-plan-page'), pg = inp ? Math.round(Number(inp.value)) : 0;
+      if (!(pg >= 1)) { alert('Type the report page that shows the boring location plan.'); if (inp) inp.focus(); return; }
+      alignStart(pg, false);
+    } else if (act === 'plan-again') { var pl = M.state && M.state.plan; if (pl) alignStart(pl.page, true); }
+    else if (act === 'plan-queue') { startQueue(); }
+    else if (act === 'plan-remove') {
+      if (!confirm('Take the boring location plan off the map? Borings already placed stay where they are.')) return;
+      post({ mode: 'clearPlan' }).then(function (j) { if (j && j.ok) { M.state = j.map; M.showPlan = null; drawPlan(); renderGeo(); renderLayerPanel(); } else alert((j && j.error) || 'Could not remove the plan.'); });
     } else if (act === 'resume') { drive(); renderGeo(); }
     else if (act === 'clear') {
       if (!confirm('Cancel reading this report?')) return;
@@ -858,6 +898,7 @@
     h += '<div class="ajm-acts"><button type="button" class="btn btn-primary aj-mini" data-ajm-sheet="log">Open the log — report page ' + b.page + '</button>';
     if (admin) {
       h += '<button type="button" class="btn aj-mini" data-ajm-sheet="place">' + (b.lat == null ? 'Place on map' : 'Move on map') + '</button>';
+      if (navigator.geolocation) h += '<button type="button" class="btn aj-mini" data-ajm-sheet="gps" title="Stand on the boring and use your phone’s GPS">I’m standing on it</button>';
       if (b.placed === 'manual') h += '<button type="button" class="btn aj-mini" data-ajm-sheet="unplace">' + (b.reportLat != null ? 'Back to the report’s spot' : 'Take off the map') + '</button>';
     }
     h += '</div><div class="ajm-fine">Read from ' + esc(g.file.name) + ' by AI. Check the log before relying on a number.</div>';
@@ -877,24 +918,234 @@
         var url = res.url + '#page=' + b.page;
         if (win) win.location = url; else window.open(url, '_blank');
       }).catch(function () { if (win) { try { win.close(); } catch (er) {} } alert('Could not open the report.'); });
-    } else if (act === 'place') { startPlacing(b.id); }
+    } else if (act === 'place') { M.queue = null; startPlacing(b.id); }
+    else if (act === 'gps') {
+      t.disabled = true; t.textContent = 'Getting your location…';
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        t.disabled = false; t.textContent = 'I’m standing on it';
+        var ft = Math.round(pos.coords.accuracy * 3.281);
+        if (!confirm('Place ' + b.id + ' where you are standing?\n\nYour phone says this fix is good to about ' + ft + ' feet.' + (ft > 15 ? ' Wait a moment under open sky and try again for a tighter one.' : ''))) return;
+        savePlacement(b.id, pos.coords.latitude, pos.coords.longitude, true);
+      }, function (err) {
+        t.disabled = false; t.textContent = 'I’m standing on it';
+        alert('Could not get your location' + (err && err.message ? ' — ' + err.message : '') + '.');
+      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+    }
     else if (act === 'unplace') {
       post({ mode: 'unplaceBoring', id: b.id }).then(function (j) { if (j && j.ok) { M.state = j.map; var nb = boring(b.id); drawBorings(); renderGeo(); renderLayerPanel(); if (nb) renderSheet(nb); } else alert((j && j.error) || 'Could not save.'); });
     }
   }
+  function banner(html) { var bn = $('ajm-banner'); if (!bn) return; bn.innerHTML = html || ''; bn.style.display = html ? 'block' : 'none'; }
+  function bnBtn(act, label, go) { return '<button type="button" data-ajm-bn="' + act + '"' + (go ? ' class="go"' : '') + '>' + label + '</button>'; }
   function startPlacing(id) {
     M.placing = id; closeSheet();
     $('ajm-layers').classList.remove('open'); $('ajm-t-layers').classList.remove('on');
-    var bn = $('ajm-banner'); bn.innerHTML = 'Tap the map where ' + esc(id) + ' was drilled <button type="button">Cancel</button>'; bn.style.display = 'block';
+    var q = M.queue;
+    banner('Tap ' + (planOn() ? 'the ' + esc(id) + ' mark on the plan' : 'the map where ' + esc(id) + ' was drilled') + (q ? ' (' + q.length + ' left)' : '') +
+      '<div class="bn-acts">' + (q ? bnBtn('skip', 'Skip this one') + bnBtn('stop', 'Stop') : bnBtn('stop', 'Cancel')) + '</div>');
     $('ajm-map').style.cursor = 'crosshair';
   }
-  function stopPlacing() { M.placing = null; var bn = $('ajm-banner'); if (bn) bn.style.display = 'none'; var mp = $('ajm-map'); if (mp) mp.style.cursor = ''; }
-  function placeAt(latlng) {
-    var id = M.placing; stopPlacing();
-    post({ mode: 'placeBoring', id: id, lat: latlng.lat, lon: latlng.lng }).then(function (j) {
-      if (j && j.ok) { M.state = j.map; M.selBoring = id; drawBorings(); renderGeo(); renderLayerPanel(); var b = boring(id); if (b) renderSheet(b); }
-      else alert((j && j.error) || 'Could not save the location.');
+  function stopPlacing() { M.placing = null; if (!M.align) banner(''); var mp = $('ajm-map'); if (mp) mp.style.cursor = ''; }
+  // Walk through every boring that is not on the map yet, one tap each.
+  function startQueue() {
+    var g = M.state && M.state.geotech;
+    M.queue = g && g.borings ? g.borings.filter(function (b) { return b.lat == null; }).map(function (b) { return b.id; }) : [];
+    M.selBoring = null; closeSheet();
+    if (M.state.plan && !planOn()) { M.showPlan = true; drawPlan(); renderLayerPanel(); }
+    var st = $('ajm-stage'); if (st && !st.classList.contains('is-full')) st.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    nextInQueue();
+  }
+  function nextInQueue() {
+    if (!M.queue || !M.queue.length) { M.queue = null; stopPlacing(); drawBorings(); renderGeo(); return; }
+    startPlacing(M.queue[0]);
+  }
+  function onBannerClick(e) {
+    var b = e.target.closest('[data-ajm-bn]'); if (!b) return;
+    var act = b.getAttribute('data-ajm-bn');
+    if (act === 'skip') { if (M.queue) M.queue.shift(); nextInQueue(); }
+    else if (act === 'stop') { M.queue = null; stopPlacing(); }
+    else if (act === 'align-cancel') alignCancel();
+    else if (act === 'align-restart') alignRestart();
+    else if (act === 'align-save') alignSave();
+  }
+  function savePlacement(id, lat, lon, openSheet) {
+    return post({ mode: 'placeBoring', id: id, lat: lat, lon: lon }).then(function (j) {
+      if (!j || !j.ok) { alert((j && j.error) || 'Could not save the location.'); return false; }
+      M.state = j.map;
+      if (openSheet) { M.selBoring = id; var b = boring(id); if (b) renderSheet(b); }
+      drawBorings(); renderGeo(); renderLayerPanel();
+      return true;
     });
+  }
+  function placeAt(latlng) {
+    var id = M.placing, queued = !!M.queue;
+    stopPlacing();
+    savePlacement(id, latlng.lat, latlng.lng, !queued).then(function (ok) {
+      if (!queued || !M.queue) return;
+      if (ok) M.queue = M.queue.filter(function (x) { return x !== id; });
+      nextInQueue();
+    });
+  }
+
+  // ------------------------------------------------------------------ boring location plan
+  // Most reports give no coordinates, only a drawing that shows where each
+  // boring was drilled. That page is turned into an image, laid on the map and
+  // pinned down by two points the admin can find on both (a building corner, a
+  // road intersection). Two points fix position, scale and rotation. After
+  // that every boring is one tap on its mark.
+  //
+  // The fit is P = z·p + t on complex numbers: p a pixel on the plan image, P a
+  // pixel on the map's zoom-22 grid (Web Mercator keeps shapes, so one scale
+  // and one rotation are enough).
+  function cdiv(a, b) { var d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; }
+  function planFit(pts) {
+    var A = M.map.project([pts[0].lat, pts[0].lon], PLAN_Z), B = M.map.project([pts[1].lat, pts[1].lon], PLAN_Z);
+    var z = cdiv([B.x - A.x, B.y - A.y], [pts[1].x - pts[0].x, pts[1].y - pts[0].y]);
+    return { z: z, t: [A.x - (z[0] * pts[0].x - z[1] * pts[0].y), A.y - (z[1] * pts[0].x + z[0] * pts[0].y)] };
+  }
+  function planToLL(T, x, y) { return M.map.unproject(window.L.point(T.z[0] * x - T.z[1] * y + T.t[0], T.z[1] * x + T.z[0] * y + T.t[1]), PLAN_Z); }
+  function planFromLL(T, latlng) { var P = M.map.project(latlng, PLAN_Z); var p = cdiv([P.x - T.t[0], P.y - T.t[1]], T.z); return { x: p[0], y: p[1] }; }
+  function planQuad(T, w, h) { var c = function (x, y) { var ll = planToLL(T, x, y); return [ll.lat, ll.lng]; }; return { tl: c(0, 0), tr: c(w, 0), bl: c(0, h), br: c(w, h) }; }
+  function planOn() {
+    var p = M.state && M.state.plan;
+    if (!p) return false;
+    if (M.showPlan != null) return M.showPlan;
+    var g = M.state.geotech;   // on by itself while there are still borings to place
+    return !!(g && g.borings && g.borings.some(function (b) { return b.lat == null; }));
+  }
+  function drawPlan() {
+    if (!M.map) return;
+    if (M.planLayer) { M.map.removeLayer(M.planLayer); M.planLayer = null; }
+    if (M.align) return;
+    var p = M.state && M.state.plan;
+    if (!p || !planOn()) return;
+    M.planLayer = new QuadOverlay(fileUrl(M.code, p), planQuad(planFit(p.pts), p.w, p.h), { pane: 'ajmPlan', opacity: M.planStrength, interactive: false }).addTo(M.map);
+  }
+  function planBlockHtml(g, admin, unplaced) {
+    var p = M.state && M.state.plan;
+    if (!admin) return p ? '<div class="ajm-note">The report’s boring location plan (page ' + p.page + ') can be switched on under Layers.</div>' : '';
+    var found = g.planPages && g.planPages.length ? g.planPages : [];
+    var h = '<div class="ajm-planbox"><div class="ajm-lh" style="margin-top:0">Boring location plan</div>';
+    if (p) {
+      h += '<div class="ajm-note">Report page ' + p.page + ' is pinned to the map' + (p.by ? ' (lined up by ' + esc(p.by) + ')' : '') + '. Switch it on and off under Layers.</div><div class="ajm-acts">' +
+        (unplaced ? '<button type="button" class="btn btn-primary aj-mini" data-ajm-geo="plan-queue">Place the ' + unplaced + ' boring' + (unplaced === 1 ? '' : 's') + ' left</button>' : '') +
+        '<button type="button" class="btn aj-mini" data-ajm-geo="plan-again">Line it up again</button><button type="button" class="btn aj-mini" data-ajm-geo="plan-remove">Remove</button></div>';
+    } else {
+      h += '<div class="ajm-note">Reports rarely print coordinates — they show the borings on a drawing. Put that page on the map, pin it down with two points you can find on both, then tap each boring on it. How close that gets depends on the drawing: most reports call their boring locations approximate.</div>';
+    }
+    h += '<div class="ajm-filebar"><label class="ajm-note" style="margin:0" for="ajm-plan-page">' + (p ? 'Use a different report page' : 'Report page with the plan') + '</label>' +
+      '<input type="number" id="ajm-plan-page" min="1" max="' + (g.pageCount || 9999) + '" inputmode="numeric" value="' + (p ? '' : (found[0] || '')) + '">' +
+      '<button type="button" class="btn ' + (p ? '' : 'btn-primary ') + 'aj-mini" data-ajm-geo="plan">Put this page on the map</button></div>';
+    if (!p) h += '<div class="ajm-fine">' + (found.length ? 'The AI found a boring location plan on page ' + found.join(', ') + '.' : 'The AI did not spot the plan page — open the report, find the drawing that shows the borings, and type its page number.') + '</div>';
+    return h + '</div>';
+  }
+  function ensurePdfJs() {
+    if (window.pdfjsLib) return Promise.resolve();
+    return loadScript(PDFJS).then(function () { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; });
+  }
+  // One report page -> a JPEG the map can show ({ dataUrl, w, h }).
+  function renderPlanPage(page) {
+    return fetch('/api/job-map?code=' + encodeURIComponent(M.code) + '&planPage=' + page).then(function (r) {
+      if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.error || 'Could not load that page (' + r.status + ').'); });
+      return r.arrayBuffer();
+    }).then(function (buf) { return ensurePdfJs().then(function () { return window.pdfjsLib.getDocument({ data: buf }).promise; }); })
+      .then(function (pdf) { return pdf.getPage(1); })
+      .then(function (pg) {
+        var one = pg.getViewport({ scale: 1 });
+        var vp = pg.getViewport({ scale: Math.min(4, 2600 / Math.max(one.width, one.height)) });
+        var cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+        return pg.render({ canvasContext: ctx, viewport: vp }).promise.then(function () { return { dataUrl: cv.toDataURL('image/jpeg', 0.85), w: cv.width, h: cv.height }; });
+      });
+  }
+  // Where the plan sits before it is pinned: centred on the site, about as wide as the site.
+  function planGuess(w, h) {
+    var L = window.L;
+    var bb = M.parsed && M.parsed.bounds ? L.latLngBounds(M.parsed.bounds) : M.map.getBounds();
+    var nw = M.map.project(bb.getNorthWest(), PLAN_Z), se = M.map.project(bb.getSouthEast(), PLAN_Z);
+    var sc = Math.min((se.x - nw.x) / w, (se.y - nw.y) / h) * 1.1;
+    if (!(sc > 0)) sc = 1;
+    var cx = (nw.x + se.x) / 2, cy = (nw.y + se.y) / 2;
+    return { z: [sc, 0], t: [cx - sc * w / 2, cy - sc * h / 2] };
+  }
+  function alignStart(page, reuse) {
+    if (M.align || !M.map) return;
+    var p = M.state && M.state.plan;
+    M.queue = null; stopPlacing(); closeSheet(); M.selBoring = null;
+    $('ajm-layers').classList.remove('open'); $('ajm-t-layers').classList.remove('on');
+    var st = $('ajm-stage'); if (st && !st.classList.contains('is-full')) st.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    var begin = function (img, isNew) {
+      M.align = { page: page, url: img.dataUrl || img.url, dataUrl: img.dataUrl || '', w: img.w, h: img.h, isNew: isNew, pts: [], step: 1, pick: null, T: planGuess(img.w, img.h) };
+      drawPlan();   // hides the saved copy while this one is being moved
+      M.align.layer = new QuadOverlay(M.align.url, planQuad(M.align.T, img.w, img.h), { pane: 'ajmPlan', opacity: 0.75, interactive: false }).addTo(M.map);
+      M.map.fitBounds(M.align.layer.getBounds().pad(0.05), { animate: false });
+      $('ajm-map').style.cursor = 'crosshair';
+      alignPrompt();
+    };
+    if (reuse && p && p.page === page) { begin({ url: fileUrl(M.code, p), w: p.w, h: p.h }, false); return; }
+    banner('Getting report page ' + page + '…');
+    renderPlanPage(page).then(function (img) { begin(img, true); }).catch(function (e) { banner(''); alert(e && e.message ? e.message : 'Could not load that page.'); });
+  }
+  function alignPrompt() {
+    var a = M.align; if (!a) return;
+    var text = a.step === 1 ? '<b>Step 1 of 4.</b> Tap a spot on the PLAN that you can also find on the map — a building corner, a road intersection, a property corner.'
+      : a.step === 2 ? '<b>Step 2 of 4.</b> Now tap where that same spot really is on the map.'
+      : a.step === 3 ? '<b>Step 3 of 4.</b> Tap a second spot on the PLAN, as far from the first as you can.'
+      : a.step === 4 ? '<b>Step 4 of 4.</b> Tap where that second spot really is.'
+      : 'Does the plan sit right? Roads, buildings and property lines should line up with the map.';
+    a.layer.setOpacity(a.step === 2 || a.step === 4 ? 0.3 : a.step === 5 ? 0.6 : 0.75);
+    banner(text + '<div class="bn-acts">' + (a.step === 5 ? bnBtn('align-save', 'Save', true) : '') + (a.step > 1 ? bnBtn('align-restart', 'Start over') : '') + bnBtn('align-cancel', 'Cancel') + '</div>');
+    // pins: green = where it really is, orange = the spot picked on the plan (rides with the plan)
+    var L = window.L; M.alignMarks.clearLayers();
+    var pin = function (ll, n, cls) { M.alignMarks.addLayer(L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="ajm-pin ' + cls + '">' + n + '</div>', iconSize: [0, 0] }), interactive: false, keyboard: false })); };
+    a.pts.forEach(function (p, i) { pin([p.lat, p.lon], i + 1, 'real'); });
+    if (a.pick) pin(planToLL(a.T, a.pick.x, a.pick.y), a.pts.length + 1, 'plan');
+  }
+  function alignTap(latlng) {
+    var a = M.align; if (!a || a.step > 4) return;
+    if (a.step === 1 || a.step === 3) {
+      var p = planFromLL(a.T, latlng);
+      if (p.x < 0 || p.y < 0 || p.x > a.w || p.y > a.h) { banner('That tap was off the plan — tap a spot on the drawing itself.<div class="bn-acts">' + bnBtn('align-cancel', 'Cancel') + '</div>'); setTimeout(alignPrompt, 1800); return; }
+      if (a.step === 3 && Math.hypot(p.x - a.pts[0].x, p.y - a.pts[0].y) < Math.max(a.w, a.h) * 0.08) { banner('Too close to the first spot — pick one well away from it for a good fit.<div class="bn-acts">' + bnBtn('align-cancel', 'Cancel') + '</div>'); setTimeout(alignPrompt, 2000); return; }
+      a.pick = p; a.step++;
+    } else {
+      var pt = { x: a.pick.x, y: a.pick.y, lat: latlng.lat, lon: latlng.lng };
+      a.pts.push(pt); a.pick = null;
+      if (a.pts.length === 1) {   // slide the plan so the first spot lands where it belongs
+        var A = M.map.project(latlng, PLAN_Z), z = a.T.z;
+        a.T = { z: z, t: [A.x - (z[0] * pt.x - z[1] * pt.y), A.y - (z[1] * pt.x + z[0] * pt.y)] };
+      } else a.T = planFit(a.pts);   // two spots: position, scale and rotation
+      a.layer.setQuad(planQuad(a.T, a.w, a.h));
+      a.step++;
+      if (a.step === 5) M.map.fitBounds(a.layer.getBounds().pad(0.05));
+    }
+    alignPrompt();
+  }
+  function alignEnd() {
+    var a = M.align; if (!a) return;
+    if (a.layer) M.map.removeLayer(a.layer);
+    M.alignMarks.clearLayers(); M.align = null; banner(''); $('ajm-map').style.cursor = '';
+    drawPlan();
+  }
+  function alignCancel() { alignEnd(); }
+  function alignRestart() { var a = M.align; if (!a) return; a.pts = []; a.pick = null; a.step = 1; a.T = planGuess(a.w, a.h); a.layer.setQuad(planQuad(a.T, a.w, a.h)); M.map.fitBounds(a.layer.getBounds().pad(0.05), { animate: false }); alignPrompt(); }
+  function alignSave() {
+    var a = M.align; if (!a || a.step !== 5 || a.saving) return;
+    a.saving = true;
+    var old = M.state && M.state.plan;
+    var name = a.isNew ? 'Boring location plan - page ' + a.page + '.jpg' : old.name, folder = a.isNew ? 'Geotech' : (old.folder || '');
+    banner('Saving…');
+    // The image goes in the job book (Geotech) so everyone's map can load it.
+    var up = a.isNew ? fetch('/api/project-files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: M.code, name: name, folder: folder, contentType: 'image/jpeg', data: a.dataUrl }) })
+      .then(function (r) { return r.json().catch(function () { return null; }).then(function (j) { if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || 'Could not save the plan image (' + r.status + ').'); return (j && j.name) || name; }); })
+      : Promise.resolve(name);
+    up.then(function (saved) { return post({ mode: 'setPlan', folder: folder, name: saved, page: a.page, w: a.w, h: a.h, pts: a.pts }); }).then(function (j) {
+      if (!j || !j.ok) throw new Error((j && j.error) || 'Could not save the alignment.');
+      M.state = j.map; M.showPlan = true;
+      alignEnd(); renderGeo(); renderLayerPanel();
+      var g = M.state.geotech;
+      if (g && g.borings && g.borings.some(function (b) { return b.lat == null; })) startQueue();
+    }).catch(function (e) { a.saving = false; alignPrompt(); alert(e && e.message ? e.message : 'Could not save.'); });
   }
 
   // ------------------------------------------------------------------ my location
@@ -916,7 +1167,8 @@
   function reset(code) {
     M.code = code; M.sel = null; M.parsed = null; M.state = null; M.stateFor = null; M.filesFor = null; M.files = []; M.pdfs = [];
     M.selBoring = null; M.driving = false; M.fileErr = ''; M.loadingFile = '';
-    clearTimeout(M.pollTimer); stopPlacing(); closeSheet();
+    clearTimeout(M.pollTimer); if (M.align) alignEnd(); M.queue = null; M.showPlan = null; stopPlacing(); closeSheet();
+    if (M.map && M.planLayer) { M.map.removeLayer(M.planLayer); M.planLayer = null; }
     M.objectUrls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} }); M.objectUrls = []; M.parseCache = {};
     if (M.map) { M.kmlGroup.clearLayers(); M.boringGroup.clearLayers(); }
     msg('ajm-msg', ''); var fb = $('ajm-filebar'); if (fb) fb.innerHTML = ''; var sm = $('ajm-sum'); if (sm) sm.textContent = '';
@@ -951,7 +1203,7 @@
       initMap();
       setTimeout(function () { M.map.invalidateSize(); if (!M.files.length) fit(false); }, 30);
       msg('ajm-msg', M.files.length ? '' : 'No KMZ or KML in Plans yet — showing the borings on the satellite view. <button type="button" class="btn aj-mini" id="ajm-open-plans" style="margin-left:6px">Open the Plans folder</button>');
-      drawBorings(); renderLayerPanel(); renderFileBar();
+      drawBorings(); drawPlan(); renderLayerPanel(); renderFileBar();
       var f = pickFile();
       if (f) selectFile(f);
       var g = M.state && M.state.geotech;

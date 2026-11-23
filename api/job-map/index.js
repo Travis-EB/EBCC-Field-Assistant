@@ -7,6 +7,8 @@
 // of the geotech report, and where each boring sits on the map.
 //
 // GET  ?code=            -> { map }  (also moves a background report read along)
+// GET  ?code=&planPage=N -> one page of the geotech report as a PDF (ADMIN) — the
+//                           browser renders it into the boring location plan image
 // POST { code, mode, … } -> { ok, map }
 //   admin only:
 //     setDefault  { folder, name }        which KMZ/KML opens first for everyone
@@ -15,6 +17,10 @@
 //     geoClear    {}                      discard the reading
 //     placeBoring { id, lat, lon }        put / move a boring on the map
 //     unplaceBoring { id }                back to the report's own coordinates (or unplaced)
+//     setPlan     { folder, name, page, w, h, pts:[{x,y,lat,lon}×2] }
+//                                         the boring location plan image (a JPG in the job book) and the
+//                                         two points that pin it to the ground
+//     clearPlan   {}                      take the plan off the map
 //
 // Reading a report: geoStart -> geoStep × n (split the PDF into page ranges,
 // upload each to the Files API, then submit one Message Batch) -> the batch
@@ -26,7 +32,7 @@ const { readDoc, findProject } = require('../shared/projects');
 const geo = require('../shared/geotech');
 
 const DOC_PK = '__shared__';
-const ADMIN_MODES = new Set(['setDefault', 'geoStart', 'geoStep', 'geoClear', 'placeBoring', 'unplaceBoring']);
+const ADMIN_MODES = new Set(['setDefault', 'geoStart', 'geoStep', 'geoClear', 'placeBoring', 'unplaceBoring', 'setPlan', 'clearPlan']);
 const STEP_BUDGET_MS = 24000;      // stop starting new uploads after this
 const MAX_REPORT_BYTES = 120 * 1024 * 1024;
 const WHOLE_FILE_MAX = 30 * 1024 * 1024;
@@ -42,7 +48,7 @@ function emptyMap(code) {
 // What the browser gets: no file ids or batch ids, borings with their final spot.
 function publicMap(doc) {
   const g = doc.geotech;
-  const out = { code: doc.code, defaultFile: doc.defaultFile || null, geotech: null, updatedAt: doc.updatedAt || '' };
+  const out = { code: doc.code, defaultFile: doc.defaultFile || null, geotech: null, plan: doc.plan || null, updatedAt: doc.updatedAt || '' };
   if (!g) return out;
   const chunks = Array.isArray(g.chunks) ? g.chunks : [];
   const placements = doc.placements || {};
@@ -253,6 +259,28 @@ module.exports = async function (context, req) {
     if (!p) return json(context, 404, { error: 'Project not found.' });
     const code = p.code;
 
+    // One page of the report, so the admin's browser can turn the boring location plan into an image.
+    if (method === 'GET' && req.query && req.query.planPage) {
+      if (!isAdmin(me)) return json(context, 403, { error: 'Only an admin can set up the boring location plan.' });
+      const page = Math.round(Number(req.query.planPage));
+      const cur = await readMap(records, code);
+      const file = cur && cur.geotech && cur.geotech.file;
+      if (!file) return json(context, 404, { error: 'No geotech report has been read for this job.' });
+      const bc = (await getJobBooksContainer()).getBlockBlobClient(blobPath(code, file.folder, file.name));
+      if (!(await bc.exists())) return json(context, 404, { error: 'The report file is no longer in the job book.' });
+      let pdf = null;
+      try {
+        pdf = await geo.openPdf(await bc.downloadToBuffer(), 25000);
+        if (!(page >= 1 && page <= pdf.pages)) return json(context, 400, { error: 'The report has ' + pdf.pages + ' pages — pick a page between 1 and ' + pdf.pages + '.' });
+        const bytes = await pdf.extract(page, page, 12000);
+        context.res = { status: 200, isRaw: true, headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'private, max-age=300' }, body: bytes };
+        return;
+      } catch (e) {
+        context.log.warn('job-map plan page: ' + (e.message || e));
+        return json(context, 500, { error: 'Could not open that page: ' + String((e && e.message) || e).slice(0, 200) });
+      } finally { if (pdf) pdf.close(); }
+    }
+
     if (method === 'GET') {
       let doc = (await readMap(records, code)) || emptyMap(code);
       if (doc.geotech && doc.geotech.status === 'reading') {
@@ -286,6 +314,7 @@ module.exports = async function (context, req) {
         // A read in flight is paid for — it has to be cancelled on purpose, not overwritten by a second tap.
         if (cur && cur.status === 'reading') return { error: 'A report is already being read for this job. Cancel it first to start over.', status: 409 };
         if (cur && cur.status === 'preparing' && Date.now() - Date.parse(cur.startedAt || 0) < 3 * 60 * 1000) return { error: 'A report is already being prepared for this job.', status: 409 };
+        if (d.plan && d.plan.report && d.plan.report !== name) d.plan = null;   // the pinned plan came from a different report
         d.geotech = { status: 'preparing', file: { folder, name, size }, pageCount: 0, chunks: [], shape: 0, stalls: 0, batchId: '', startedBy: who(me), startedAt: now,
           checkedAt: '', finishedAt: '', error: '', warnings: [], report: null, planPages: [], borings: [] };
       });
@@ -297,6 +326,22 @@ module.exports = async function (context, req) {
       }
     } else if (mode === 'geoClear') {
       r = await updateMap(records, code, (d) => { d.geotech = null; });
+    } else if (mode === 'setPlan') {
+      const name = safeFileName(body.name || ''), folder = safeFileName(body.folder || '');
+      if (!/\.(jpe?g|png)$/i.test(name)) return json(context, 400, { error: 'The plan has to be a JPG or PNG image.' });
+      const w = Math.round(Number(body.w)), h = Math.round(Number(body.h)), page = Math.round(Number(body.page)) || 0;
+      const pts = (Array.isArray(body.pts) ? body.pts : []).slice(0, 2).map((p) => ({ x: Number(p && p.x), y: Number(p && p.y), lat: Number(p && p.lat), lon: Number(p && p.lon) }));
+      const good = (p) => [p.x, p.y, p.lat, p.lon].every(isFinite) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180 && p.x >= -w && p.x <= 2 * w && p.y >= -h && p.y <= 2 * h;
+      if (!(w >= 50 && w <= 12000 && h >= 50 && h <= 12000) || pts.length !== 2 || !pts.every(good)) return json(context, 400, { error: 'Bad plan alignment.' });
+      // Two reference points on top of each other pin nothing down.
+      if (Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) < 20 || (Math.abs(pts[0].lat - pts[1].lat) < 1e-6 && Math.abs(pts[0].lon - pts[1].lon) < 1e-6)) {
+        return json(context, 400, { error: 'The two reference points are too close together — pick two that are far apart.' });
+      }
+      const container = await getJobBooksContainer();
+      if (!(await container.getBlockBlobClient(blobPath(code, folder, name)).exists())) return json(context, 404, { error: 'The plan image is not in the job book.' });
+      r = await updateMap(records, code, (d) => { d.plan = { folder, name, page, w, h, pts, report: (d.geotech && d.geotech.file && d.geotech.file.name) || '', by: me.name || me.email, at: now }; });
+    } else if (mode === 'clearPlan') {
+      r = await updateMap(records, code, (d) => { d.plan = null; });
     } else if (mode === 'placeBoring' || mode === 'unplaceBoring') {
       const id = String(body.id || '').slice(0, 40);
       const lat = Number(body.lat), lon = Number(body.lon);

@@ -69,6 +69,7 @@ $jobMapJson = '{"code":"26-292-03","defaultFile":{"folder":"Plans","name":"Site 
 $script:jobMap = $jobMapJson | ConvertFrom-Json
 $script:jobMapDone = $jobMapJson | ConvertFrom-Json
 $script:jobMapPolls = 0
+$script:planJpg = $null
 function JobMap-Json { return '{"ok":true,"map":' + (ConvertTo-Json -InputObject $script:jobMap -Depth 12 -Compress) + '}' }
 function New-BoardId { return ([guid]::NewGuid().ToString('N').Substring(0, 10)) }
 function Board-Recompute { $open = @($script:board.tasks | Where-Object { -not $_.done }).Count; $script:board.summary.open = $open; $script:board.summary.done = @($script:board.tasks).Count - $open; $script:board.summary.updatedAt = (Get-Date).ToUniversalTime().ToString('o'); $script:board.updatedAt = $script:board.summary.updatedAt }
@@ -193,7 +194,16 @@ while ($listener.IsListening) {
       } elseif ($path -eq '/api/project-files' -and $req.HttpMethod -eq 'DELETE') {
         $json = '{"ok":true}'
       } elseif ($path -eq '/api/project-files' -and $req.HttpMethod -eq 'POST') {
+        $reader = New-Object IO.StreamReader($req.InputStream); $bodyTxt = $reader.ReadToEnd(); $reader.Close()
         $json = '{"ok":true,"name":"uploaded.pdf"}'
+        # The job map saves the boring location plan as a JPG: keep it so the map can load it back.
+        $nm = [regex]::Match($bodyTxt, '"name":"([^"]+\.jpg)"')
+        $at = $bodyTxt.IndexOf('base64,')
+        if ($nm.Success -and $at -gt 0) {
+          $end = $bodyTxt.IndexOf('"', $at)
+          $script:planJpg = [Convert]::FromBase64String($bodyTxt.Substring($at + 7, $end - $at - 7))
+          $json = '{"ok":true,"name":"' + $nm.Groups[1].Value + '"}'
+        }
       } elseif ($path -eq '/api/job-map' -and $req.HttpMethod -eq 'POST') {
         $reader = New-Object IO.StreamReader($req.InputStream); $bodyTxt = $reader.ReadToEnd(); $reader.Close()
         $jb = $bodyTxt | ConvertFrom-Json
@@ -202,9 +212,17 @@ while ($listener.IsListening) {
         elseif ($jb.mode -eq 'unplaceBoring') { foreach ($b in $g.borings) { if ($b.id -eq $jb.id) { $b.lat = $b.reportLat; $b.lon = $b.reportLon; if ($null -ne $b.reportLat) { $b.placed = 'report' } else { $b.placed = '' } } } }
         elseif ($jb.mode -eq 'setDefault') { $script:jobMap.defaultFile = [pscustomobject]@{ folder = [string]$jb.folder; name = [string]$jb.name } }
         elseif ($jb.mode -eq 'geoClear') { $script:jobMap.geotech = $null }
+        elseif ($jb.mode -eq 'setPlan') { $script:jobMap | Add-Member -NotePropertyName plan -NotePropertyValue ([pscustomobject]@{ folder = [string]$jb.folder; name = [string]$jb.name; page = [int]$jb.page; w = [int]$jb.w; h = [int]$jb.h; pts = $jb.pts; by = 'Travis Pecoy'; at = [DateTime]::UtcNow.ToString('o') }) -Force }
+        elseif ($jb.mode -eq 'clearPlan') { $script:jobMap | Add-Member -NotePropertyName plan -NotePropertyValue $null -Force }
         elseif ($jb.mode -eq 'geoStart') { $script:jobMapPolls = 0; $script:jobMap.geotech = [pscustomobject]@{ status = 'preparing'; file = [pscustomobject]@{ folder = [string]$jb.folder; name = [string]$jb.name; size = 900000 }; pageCount = 0; prepared = 0; parts = 0; startedBy = [pscustomobject]@{ email = 'travis@earthbasics.net'; name = 'Travis Pecoy' }; startedAt = [DateTime]::UtcNow.ToString('o'); finishedAt = ''; error = ''; warnings = @(); report = $null; planPages = @(); borings = @() } }
         elseif ($jb.mode -eq 'geoStep' -and $g) { if ($g.parts -eq 0) { $g.pageCount = 64; $g.parts = 3; $g.prepared = 1 } elseif ($g.prepared -lt $g.parts) { $g.prepared = $g.prepared + 1 } else { $g.status = 'reading' } }
         $json = JobMap-Json
+      } elseif ($path -eq '/api/job-map' -and $req.Url.Query -like '*planPage=*') {
+        # One report page as a PDF. Put a one-page PDF at public/_tmp/plan.pdf to test the boring location plan.
+        $pp = Join-Path $Root '_tmp\plan.pdf'
+        if (Test-Path $pp) { $raw = [System.IO.File]::ReadAllBytes($pp); $res.StatusCode = 200; $res.ContentType = 'application/pdf' }
+        else { $raw = [Text.Encoding]::UTF8.GetBytes('{"error":"Mock: no public/_tmp/plan.pdf to serve."}'); $res.StatusCode = 404; $res.ContentType = 'application/json' }
+        $res.ContentLength64 = $raw.Length; $res.OutputStream.Write($raw, 0, $raw.Length); $res.Close(); continue
       } elseif ($path -eq '/api/job-map') {
         if ($req.Url.Query -notlike '*code=26-292-03*') { $json = '{"map":{"code":"x","defaultFile":null,"geotech":null,"updatedAt":""}}' }
         else {
@@ -215,7 +233,8 @@ while ($listener.IsListening) {
       } elseif ($path -eq '/api/project-files' -and $req.Url.Query -like '*name=*' -and $req.Url.Query -notlike '*sas=*') {
         # Raw download (the job map reads KMZ/KML this way). Drop a real takeoff at public/_tmp/sample.kmz to test with it.
         $sample = Join-Path $Root '_tmp\sample.kmz'
-        if ($req.Url.Query -like '*.kmz*' -and (Test-Path $sample)) { $raw = [System.IO.File]::ReadAllBytes($sample) } else { $raw = [Text.Encoding]::UTF8.GetBytes($script:sampleKml) }
+        if ($req.Url.Query -like '*.jpg*' -and $script:planJpg) { $raw = $script:planJpg }
+        elseif ($req.Url.Query -like '*.kmz*' -and (Test-Path $sample)) { $raw = [System.IO.File]::ReadAllBytes($sample) } else { $raw = [Text.Encoding]::UTF8.GetBytes($script:sampleKml) }
         $res.StatusCode = 200; $res.ContentType = 'application/octet-stream'; $res.ContentLength64 = $raw.Length; $res.OutputStream.Write($raw, 0, $raw.Length); $res.Close(); continue
       } elseif ($path -eq '/api/project-files' -and $req.Url.Query -like '*sas=list*') {
         $json = '{"files":[{"name":"' + $d0 + '-1760000000000-1.jpg","folder":"Site Photos","size":180000,"lastModified":"' + $d0 + 'T14:00:00Z","contentType":"image/jpeg","url":"/icons/logo.png"},{"name":"' + $d0 + '-1760000000000-2.jpg","folder":"Site Photos","size":170000,"lastModified":"' + $d0 + 'T14:00:01Z","contentType":"image/jpeg","url":"/icons/logo.png"},{"name":"' + $dm3 + '-1759000000000-1.jpg","folder":"Site Photos","size":160000,"lastModified":"' + $dm3 + 'T15:00:00Z","contentType":"image/jpeg","url":"/icons/logo.png"}]}'
