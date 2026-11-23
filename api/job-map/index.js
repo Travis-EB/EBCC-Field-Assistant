@@ -20,7 +20,8 @@
 //     setPlan     { folder, name, page, w, h, pts:[{x,y,lat,lon}×2] }
 //                                         the boring location plan image (a JPG in the job book) and the
 //                                         two points that pin it to the ground
-//     clearPlan   {}                      take the plan off the map
+//                                         every saved page is kept (doc.plans, one per report page)
+//     clearPlan   { id }                  take ONE saved plan page off the map
 //     planLocate  { stage:'coarse', image:{data,w,h}, ids[] } | { stage:'refine', crops:[{id,data,w,h}] }
 //                                         ask the AI where borings are drawn on the plan -> { ok, results } (saves nothing)
 //     placeBorings { items:[{id,lat,lon}], auto }   several borings at once (auto = found on the plan by the AI)
@@ -49,10 +50,18 @@ function emptyMap(code) {
   return { id: mapId(code), ownerId: DOC_PK, type: 'project_map', code, defaultFile: null, geotech: null, placements: {}, updatedAt: '' };
 }
 
+// Every boring location plan page that has been tied in, one entry per report
+// page. Older records held a single `plan`; it becomes the first entry.
+const MAX_PLANS = 20;
+function plansOf(doc) {
+  const list = Array.isArray(doc.plans) ? doc.plans : (doc.plan ? [doc.plan] : []);
+  return list.filter((p) => p && p.name).map((p) => Object.assign({}, p, { id: p.id || 'p' + (p.page || 0) }));
+}
+
 // What the browser gets: no file ids or batch ids, borings with their final spot.
 function publicMap(doc) {
   const g = doc.geotech;
-  const out = { code: doc.code, defaultFile: doc.defaultFile || null, geotech: null, plan: doc.plan || null, updatedAt: doc.updatedAt || '' };
+  const out = { code: doc.code, defaultFile: doc.defaultFile || null, geotech: null, plans: plansOf(doc), updatedAt: doc.updatedAt || '' };
   if (!g) return out;
   const chunks = Array.isArray(g.chunks) ? g.chunks : [];
   const placements = doc.placements || {};
@@ -318,7 +327,8 @@ module.exports = async function (context, req) {
         // A read in flight is paid for — it has to be cancelled on purpose, not overwritten by a second tap.
         if (cur && cur.status === 'reading') return { error: 'A report is already being read for this job. Cancel it first to start over.', status: 409 };
         if (cur && cur.status === 'preparing' && Date.now() - Date.parse(cur.startedAt || 0) < 3 * 60 * 1000) return { error: 'A report is already being prepared for this job.', status: 409 };
-        if (d.plan && d.plan.report && d.plan.report !== name) d.plan = null;   // the pinned plan came from a different report
+        d.plans = plansOf(d).filter((p) => !p.report || p.report === name);   // plans pinned from a different report go
+        delete d.plan;
         d.geotech = { status: 'preparing', file: { folder, name, size }, pageCount: 0, chunks: [], shape: 0, stalls: 0, batchId: '', startedBy: who(me), startedAt: now,
           checkedAt: '', finishedAt: '', error: '', warnings: [], report: null, planPages: [], borings: [] };
       });
@@ -346,9 +356,24 @@ module.exports = async function (context, req) {
       const labels = (Array.isArray(body.labels) ? body.labels : []).slice(0, 300)
         .map((l) => ({ id: String((l && l.id) || '').slice(0, 40), x: Math.round(Number(l && l.x)), y: Math.round(Number(l && l.y)) }))
         .filter((l) => l.id && isFinite(l.x) && isFinite(l.y));
-      r = await updateMap(records, code, (d) => { d.plan = { folder, name, page, w, h, pts, labels, report: (d.geotech && d.geotech.file && d.geotech.file.name) || '', by: me.name || me.email, at: now }; });
+      // One saved plan per report page: saving a page again replaces that page's tie-in, every other page stays.
+      r = await updateMap(records, code, (d) => {
+        const id = 'p' + page;
+        const list = plansOf(d).filter((p) => p.id !== id);
+        if (list.length >= MAX_PLANS) return { error: 'This job already has ' + MAX_PLANS + ' saved plan pages — remove one first.', status: 409 };
+        list.push({ id, folder, name, page, w, h, pts, labels, report: (d.geotech && d.geotech.file && d.geotech.file.name) || '', by: me.name || me.email, at: now });
+        list.sort((a, b) => (a.page || 0) - (b.page || 0));
+        d.plans = list; delete d.plan;
+      });
     } else if (mode === 'clearPlan') {
-      r = await updateMap(records, code, (d) => { d.plan = null; });
+      // Takes ONE saved page off the map — never all of them by accident.
+      const id = String(body.id || '').slice(0, 20);
+      if (!id) return json(context, 400, { error: 'Say which plan page to remove.' });
+      r = await updateMap(records, code, (d) => {
+        const list = plansOf(d);
+        if (!list.some((p) => p.id === id)) return { error: 'That plan page is not saved on this job.', status: 404 };
+        d.plans = list.filter((p) => p.id !== id); delete d.plan;
+      });
     } else if (mode === 'planLocate') {
       // Pictures in, pixel positions out. Nothing is saved here — the browser turns positions it trusts into placements.
       const okImg = (i) => i && typeof i.data === 'string' && i.data.length > 200 && i.data.length < 2.2 * 1024 * 1024 && i.w >= 50 && i.w <= 2000 && i.h >= 50 && i.h <= 2000;
