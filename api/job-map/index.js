@@ -21,6 +21,9 @@
 //                                         the boring location plan image (a JPG in the job book) and the
 //                                         two points that pin it to the ground
 //     clearPlan   {}                      take the plan off the map
+//     planLocate  { stage:'coarse', image:{data,w,h}, ids[] } | { stage:'refine', crops:[{id,data,w,h}] }
+//                                         ask the AI where borings are drawn on the plan -> { ok, results } (saves nothing)
+//     placeBorings { items:[{id,lat,lon}], auto }   several borings at once (auto = found on the plan by the AI)
 //
 // Reading a report: geoStart -> geoStep × n (split the PDF into page ranges,
 // upload each to the Files API, then submit one Message Batch) -> the batch
@@ -30,9 +33,10 @@ const { getContainers, getPrincipal, ensureUser, isAdmin, json } = require('../s
 const { getJobBooksContainer, safeName, safeFileName } = require('../shared/blob');
 const { readDoc, findProject } = require('../shared/projects');
 const geo = require('../shared/geotech');
+const planLocate = require('../shared/planLocate');
 
 const DOC_PK = '__shared__';
-const ADMIN_MODES = new Set(['setDefault', 'geoStart', 'geoStep', 'geoClear', 'placeBoring', 'unplaceBoring', 'setPlan', 'clearPlan']);
+const ADMIN_MODES = new Set(['setDefault', 'geoStart', 'geoStep', 'geoClear', 'placeBoring', 'unplaceBoring', 'setPlan', 'clearPlan', 'planLocate', 'placeBorings']);
 const STEP_BUDGET_MS = 24000;      // stop starting new uploads after this
 const MAX_REPORT_BYTES = 120 * 1024 * 1024;
 const WHOLE_FILE_MAX = 30 * 1024 * 1024;
@@ -62,7 +66,7 @@ function publicMap(doc) {
       const p = placements[b.id];
       const o = Object.assign({}, b);
       o.reportLat = b.lat; o.reportLon = b.lon;
-      if (p) { o.lat = p.lat; o.lon = p.lon; o.placed = 'manual'; o.placedBy = p.by || ''; }
+      if (p) { o.lat = p.lat; o.lon = p.lon; o.placed = p.auto ? 'auto' : 'manual'; o.placedBy = p.by || ''; }
       else o.placed = b.lat != null && b.lon != null ? 'report' : '';
       return o;
     }),
@@ -339,9 +343,49 @@ module.exports = async function (context, req) {
       }
       const container = await getJobBooksContainer();
       if (!(await container.getBlockBlobClient(blobPath(code, folder, name)).exists())) return json(context, 404, { error: 'The plan image is not in the job book.' });
-      r = await updateMap(records, code, (d) => { d.plan = { folder, name, page, w, h, pts, report: (d.geotech && d.geotech.file && d.geotech.file.name) || '', by: me.name || me.email, at: now }; });
+      const labels = (Array.isArray(body.labels) ? body.labels : []).slice(0, 300)
+        .map((l) => ({ id: String((l && l.id) || '').slice(0, 40), x: Math.round(Number(l && l.x)), y: Math.round(Number(l && l.y)) }))
+        .filter((l) => l.id && isFinite(l.x) && isFinite(l.y));
+      r = await updateMap(records, code, (d) => { d.plan = { folder, name, page, w, h, pts, labels, report: (d.geotech && d.geotech.file && d.geotech.file.name) || '', by: me.name || me.email, at: now }; });
     } else if (mode === 'clearPlan') {
       r = await updateMap(records, code, (d) => { d.plan = null; });
+    } else if (mode === 'planLocate') {
+      // Pictures in, pixel positions out. Nothing is saved here — the browser turns positions it trusts into placements.
+      const okImg = (i) => i && typeof i.data === 'string' && i.data.length > 200 && i.data.length < 2.2 * 1024 * 1024 && i.w >= 50 && i.w <= 2000 && i.h >= 50 && i.h <= 2000;
+      const clean = (i) => ({ data: i.data.replace(/^data:image\/jpeg;base64,/, ''), w: Math.round(i.w), h: Math.round(i.h) });
+      let content;
+      if (body.stage === 'coarse') {
+        const ids = (Array.isArray(body.ids) ? body.ids : []).map((x) => String(x).slice(0, 40)).filter(Boolean).slice(0, 80);
+        if (!okImg(body.image) || !ids.length) return json(context, 400, { error: 'Bad request.' });
+        content = planLocate.coarseContent(clean(body.image), ids);
+      } else if (body.stage === 'refine') {
+        const crops = (Array.isArray(body.crops) ? body.crops : []).slice(0, 8);
+        if (!crops.length || !crops.every((c) => okImg(c) && c.id)) return json(context, 400, { error: 'Bad request.' });
+        content = planLocate.refineContent(crops.map((c) => Object.assign(clean(c), { id: String(c.id).slice(0, 40) })));
+      } else return json(context, 400, { error: 'Unknown stage.' });
+      try {
+        const out = await planLocate.locate(content, Date.now() + 38000);
+        return json(context, 200, { ok: true, results: out.results });
+      } catch (e) {
+        context.log.warn('job-map planLocate: ' + (e.message || e));
+        return json(context, 502, { error: String((e && e.message) || e).slice(0, 300) });
+      }
+    } else if (mode === 'placeBorings') {
+      const items = (Array.isArray(body.items) ? body.items : []).slice(0, 200)
+        .map((i) => ({ id: String((i && i.id) || '').slice(0, 40), lat: Number(i && i.lat), lon: Number(i && i.lon) }))
+        .filter((i) => i.id && isFinite(i.lat) && isFinite(i.lon) && Math.abs(i.lat) <= 90 && Math.abs(i.lon) <= 180);
+      if (!items.length) return json(context, 400, { error: 'Nothing to place.' });
+      const auto = !!body.auto;
+      r = await updateMap(records, code, (d) => {
+        const known = new Set(((d.geotech && Array.isArray(d.geotech.borings)) ? d.geotech.borings : []).map((b) => b.id));
+        d.placements = d.placements || {};
+        items.forEach((i) => {
+          if (!known.has(i.id)) return;
+          const p = { lat: Math.round(i.lat * 1e7) / 1e7, lon: Math.round(i.lon * 1e7) / 1e7, by: auto ? 'the boring location plan' : (me.name || me.email), at: now };
+          if (auto) p.auto = true;
+          d.placements[i.id] = p;
+        });
+      });
     } else if (mode === 'placeBoring' || mode === 'unplaceBoring') {
       const id = String(body.id || '').slice(0, 40);
       const lat = Number(body.lat), lon = Number(body.lon);

@@ -356,6 +356,9 @@
     '.ajm-bor span{font-size:11.5px;font-weight:750;color:#fff;background:rgba(20,24,30,.82);border-radius:6px;padding:1px 5px;line-height:1.35}',
     '.ajm-bor.is-pit i{border-radius:4px}',
     '.ajm-bor.is-manual i{background:#0e7490}',
+    '.ajm-bor.is-auto i{background:#7c3aed}',
+    '.bn-op{display:flex;align-items:center;gap:8px;justify-content:center;margin-top:8px;font-size:12px;font-weight:600}',
+    '.bn-op input{width:150px;accent-color:#f59e0b}',
     '.ajm-bor.is-sel i{background:#dc2626;transform:scale(1.25)}',
     '.ajm-bor.is-sel span{background:#dc2626}',
     '.ajm-me{width:16px;height:16px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 2px rgba(37,99,235,.35),0 1px 4px rgba(0,0,0,.5);transform:translate(-8px,-8px)}',
@@ -437,6 +440,13 @@
     $('ajm-layers').addEventListener('click', onLayerClick);
     $('ajm-sheet').addEventListener('click', onSheetClick);
     $('ajm-banner').addEventListener('click', onBannerClick);
+    // "Plan" slider in the banner: how strongly the drawing shows while picking points or tapping borings
+    $('ajm-banner').addEventListener('input', function (e) {
+      if (!e.target.hasAttribute('data-ajm-bn-op')) return;
+      var v = Number(e.target.value) / 100;
+      if (M.align) { M.align.userOpacity = v; M.align.layer.setOpacity(v); }
+      else { M.planStrength = v; if (M.planLayer) M.planLayer.setOpacity(v); }
+    });
     $('ajm-geo').addEventListener('click', onGeoClick);
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (M.align) alignCancel(); else if (M.placing) { M.queue = null; stopPlacing(); } else if ($('ajm-stage') && $('ajm-stage').classList.contains('is-full')) setFull(false); } });
   }
@@ -770,10 +780,12 @@
           var on = M.selBoring === b.id, off = b.lat == null || offSite(b) > 0;
           return '<button type="button" class="ajm-chip' + (on ? ' on' : '') + (off ? ' off' : '') + '" data-ajm-boring="' + escA(b.id) + '"' + (off ? ' title="Not on the map yet"' : '') + '>' + esc(b.id) + (b.totalDepthFt != null ? ' · ' + b.totalDepthFt + '′' : '') + '</button>';
         }).join('') + '</div>';
-        if (total > placed) h += '<div class="ajm-note">Dashed borings have no coordinates in the report. ' + (admin ? 'Tap one, then “Place on map”, and tap where it was drilled' + (g.planPages && g.planPages.length ? ' — the boring location plan is on report page ' + g.planPages[0] : '') + '.' : 'An admin can place them on the map.') + '</div>';
+        if (total > placed) h += '<div class="ajm-note">Dashed borings have no coordinates in the report. ' + (admin ? 'Put the report’s boring location plan on the map below and they are placed from it.' : 'An admin can place them from the report’s boring location plan.') + '</div>';
       }
       if (g.warnings && g.warnings.length) h += '<details class="ajm-warn"><summary>' + g.warnings.length + ' part' + (g.warnings.length === 1 ? '' : 's') + ' of the report could not be read</summary>' + g.warnings.map(function (w) { return '<div>' + esc(w) + '</div>'; }).join('') + '</details>';
       h += '<div class="ajm-fine">Read from the report by AI on ' + esc(new Date(g.finishedAt || g.startedAt).toLocaleDateString()) + '. Check the boring log itself before relying on a number — every boring links to its page.</div>';
+      var autoN = g.borings.filter(function (b) { return b.placed === 'auto'; }).length;
+      if (autoN) h += '<div class="ajm-note">' + autoN + ' boring' + (autoN === 1 ? ' was' : 's were') + ' found on the boring location plan automatically (purple). Check each against the drawing' + (admin ? ' — tap one and use “Move on map” if it is off.' : '.') + '</div>';
       if (total) h += planBlockHtml(g, admin, total - placed);
       if (admin) h += '<div class="ajm-acts"><button type="button" class="btn aj-mini" data-ajm-geo="replace">Read a different report</button></div><div id="ajm-replace"></div>';
     }
@@ -802,7 +814,8 @@
       if (!(pg >= 1)) { alert('Type the report page that shows the boring location plan.'); if (inp) inp.focus(); return; }
       alignStart(pg, false);
     } else if (act === 'plan-again') { var pl = M.state && M.state.plan; if (pl) alignStart(pl.page, true); }
-    else if (act === 'plan-queue') { startQueue(); }
+    else if (act === 'plan-queue') { M.autoNote = ''; startQueue(); }
+    else if (act === 'plan-auto') { runAuto(); }
     else if (act === 'plan-remove') {
       if (!confirm('Take the boring location plan off the map? Borings already placed stay where they are.')) return;
       post({ mode: 'clearPlan' }).then(function (j) { if (j && j.ok) { M.state = j.map; M.showPlan = null; drawPlan(); renderGeo(); renderLayerPanel(); } else alert((j && j.error) || 'Could not remove the plan.'); });
@@ -848,7 +861,7 @@
     M.boringGroup.clearLayers();
     if (!M.showBorings) return;
     boringsPlaced().forEach(function (b) {
-      var cls = 'ajm-bor' + (b.kind === 'test pit' ? ' is-pit' : '') + (b.placed === 'manual' ? ' is-manual' : '') + (M.selBoring === b.id ? ' is-sel' : '');
+      var cls = 'ajm-bor' + (b.kind === 'test pit' ? ' is-pit' : '') + (b.placed === 'manual' ? ' is-manual' : b.placed === 'auto' ? ' is-auto' : '') + (M.selBoring === b.id ? ' is-sel' : '');
       var mk = L.marker([b.lat, b.lon], { icon: L.divIcon({ className: '', html: '<div class="' + cls + '"><i></i><span>' + esc(b.id) + '</span></div>', iconSize: [0, 0] }), keyboard: false, zIndexOffset: M.selBoring === b.id ? 1000 : 0 });
       mk.on('click', function (ev) { if (ev.originalEvent) ev.originalEvent.stopPropagation(); if (!M.placing) selectBoring(b.id, false); });
       M.boringGroup.addLayer(mk);
@@ -874,7 +887,8 @@
     var g = M.state.geotech, admin = isAdmin();
     var kind = b.kind === 'boring' ? 'Boring' : b.kind.charAt(0).toUpperCase() + b.kind.slice(1);
     var meta = [kind, b.totalDepthFt != null ? b.totalDepthFt + ' ft deep' : '', b.dateDrilled ? 'drilled ' + b.dateDrilled : '', b.surfaceElevation ? 'surface el. ' + b.surfaceElevation : ''].filter(Boolean).join(' · ');
-    var where = b.placed === 'manual' ? 'Placed on the map by ' + (b.placedBy || 'an admin') + (b.reportLat != null ? ' (the report’s own coordinates differ)' : '')
+    var where = b.placed === 'auto' ? 'Found on the boring location plan automatically — check it against the drawing'
+      : b.placed === 'manual' ? 'Placed on the map by ' + (b.placedBy || 'an admin') + (b.reportLat != null ? ' (the report’s own coordinates differ)' : '')
       : b.placed === 'report' ? 'From the coordinates printed in the report (' + b.lat.toFixed(6) + ', ' + b.lon.toFixed(6) + ')'
       : 'Not on the map yet — the report gives no coordinates for it' + (b.northing || b.easting ? ' (N ' + (b.northing || '?') + ', E ' + (b.easting || '?') + ')' : '');
     var h = '<div class="ajm-sh-top"><div><h4>' + esc(b.id) + '</h4><div class="ajm-meta">' + esc(meta) + '</div></div><button type="button" class="ajm-x" data-ajm-sheet="close" aria-label="Close">&times;</button></div>';
@@ -899,7 +913,7 @@
     if (admin) {
       h += '<button type="button" class="btn aj-mini" data-ajm-sheet="place">' + (b.lat == null ? 'Place on map' : 'Move on map') + '</button>';
       if (navigator.geolocation) h += '<button type="button" class="btn aj-mini" data-ajm-sheet="gps" title="Stand on the boring and use your phone’s GPS">I’m standing on it</button>';
-      if (b.placed === 'manual') h += '<button type="button" class="btn aj-mini" data-ajm-sheet="unplace">' + (b.reportLat != null ? 'Back to the report’s spot' : 'Take off the map') + '</button>';
+      if (b.placed === 'manual' || b.placed === 'auto') h += '<button type="button" class="btn aj-mini" data-ajm-sheet="unplace">' + (b.reportLat != null ? 'Back to the report’s spot' : 'Take off the map') + '</button>';
     }
     h += '</div><div class="ajm-fine">Read from ' + esc(g.file.name) + ' by AI. Check the log before relying on a number.</div>';
     s.innerHTML = h; s.classList.add('open'); s.scrollTop = 0;
@@ -936,13 +950,15 @@
     }
   }
   function banner(html) { var bn = $('ajm-banner'); if (!bn) return; bn.innerHTML = html || ''; bn.style.display = html ? 'block' : 'none'; }
+  function bnSlider(v) { return '<label class="bn-op">Plan <input type="range" data-ajm-bn-op="1" min="5" max="100" step="5" value="' + Math.round(v * 100) + '" aria-label="How strongly the plan shows"></label>'; }
   function bnBtn(act, label, go) { return '<button type="button" data-ajm-bn="' + act + '"' + (go ? ' class="go"' : '') + '>' + label + '</button>'; }
   function startPlacing(id) {
     M.placing = id; closeSheet();
     $('ajm-layers').classList.remove('open'); $('ajm-t-layers').classList.remove('on');
     var q = M.queue;
-    banner('Tap ' + (planOn() ? 'the ' + esc(id) + ' mark on the plan' : 'the map where ' + esc(id) + ' was drilled') + (q ? ' (' + q.length + ' left)' : '') +
-      '<div class="bn-acts">' + (q ? bnBtn('skip', 'Skip this one') + bnBtn('stop', 'Stop') : bnBtn('stop', 'Cancel')) + '</div>');
+    banner((M.autoNote ? '<div style="font-weight:500;margin-bottom:5px">' + esc(M.autoNote) + '</div>' : '') +
+      'Tap ' + (planOn() ? 'the ' + esc(id) + ' mark on the plan' : 'the map where ' + esc(id) + ' was drilled') + (q ? ' (' + q.length + ' left)' : '') +
+      (planOn() ? bnSlider(M.planStrength) : '') + '<div class="bn-acts">' + (q ? bnBtn('skip', 'Skip this one') + bnBtn('stop', 'Stop') : bnBtn('stop', 'Cancel')) + '</div>');
     $('ajm-map').style.cursor = 'crosshair';
   }
   function stopPlacing() { M.placing = null; if (!M.align) banner(''); var mp = $('ajm-map'); if (mp) mp.style.cursor = ''; }
@@ -956,14 +972,15 @@
     nextInQueue();
   }
   function nextInQueue() {
-    if (!M.queue || !M.queue.length) { M.queue = null; stopPlacing(); drawBorings(); renderGeo(); return; }
+    if (!M.queue || !M.queue.length) { M.queue = null; M.autoNote = ''; stopPlacing(); drawBorings(); renderGeo(); return; }
     startPlacing(M.queue[0]);
   }
   function onBannerClick(e) {
     var b = e.target.closest('[data-ajm-bn]'); if (!b) return;
     var act = b.getAttribute('data-ajm-bn');
     if (act === 'skip') { if (M.queue) M.queue.shift(); nextInQueue(); }
-    else if (act === 'stop') { M.queue = null; stopPlacing(); }
+    else if (act === 'stop') { M.queue = null; M.autoNote = ''; stopPlacing(); }
+    else if (act === 'ok') banner('');
     else if (act === 'align-cancel') alignCancel();
     else if (act === 'align-restart') alignRestart();
     else if (act === 'align-save') alignSave();
@@ -1028,7 +1045,8 @@
     var h = '<div class="ajm-planbox"><div class="ajm-lh" style="margin-top:0">Boring location plan</div>';
     if (p) {
       h += '<div class="ajm-note">Report page ' + p.page + ' is pinned to the map' + (p.by ? ' (lined up by ' + esc(p.by) + ')' : '') + '. Switch it on and off under Layers.</div><div class="ajm-acts">' +
-        (unplaced ? '<button type="button" class="btn btn-primary aj-mini" data-ajm-geo="plan-queue">Place the ' + unplaced + ' boring' + (unplaced === 1 ? '' : 's') + ' left</button>' : '') +
+        (unplaced ? '<button type="button" class="btn btn-primary aj-mini" data-ajm-geo="plan-auto">Find the ' + unplaced + ' boring' + (unplaced === 1 ? '' : 's') + ' left on the plan</button>' +
+          '<button type="button" class="btn aj-mini" data-ajm-geo="plan-queue">Place by hand</button>' : '') +
         '<button type="button" class="btn aj-mini" data-ajm-geo="plan-again">Line it up again</button><button type="button" class="btn aj-mini" data-ajm-geo="plan-remove">Remove</button></div>';
     } else {
       h += '<div class="ajm-note">Reports rarely print coordinates — they show the borings on a drawing. Put that page on the map, pin it down with two points you can find on both, then tap each boring on it. How close that gets depends on the drawing: most reports call their boring locations approximate.</div>';
@@ -1055,8 +1073,137 @@
         var vp = pg.getViewport({ scale: Math.min(4, 2600 / Math.max(one.width, one.height)) });
         var cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
         var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
-        return pg.render({ canvasContext: ctx, viewport: vp }).promise.then(function () { return { dataUrl: cv.toDataURL('image/jpeg', 0.85), w: cv.width, h: cv.height }; });
+        return pg.render({ canvasContext: ctx, viewport: vp }).promise
+          .then(function () { return pg.getTextContent().catch(function () { return { items: [] }; }); })
+          .then(function (tc) { return { dataUrl: cv.toDataURL('image/jpeg', 0.85), w: cv.width, h: cv.height, labels: planLabels(tc, vp) }; });
       });
+  }
+  function normId(v) {
+    var t = String(v || '').toUpperCase().trim();
+    var m = t.match(/^([A-Z]{1,6})[\s._-]*0*(\d{1,4})([A-Z]?)$/);
+    return m ? m[1] + '-' + m[2] + m[3] : t;
+  }
+  // A plan drawn in CAD keeps its lettering as real text. Where a boring number
+  // is written is a sure pointer to where its symbol is — no guessing needed.
+  // -> [{ id, x, y }] in image pixels, only for borings on this job.
+  function planLabels(tc, vp) {
+    var g = M.state && M.state.geotech, want = {};
+    (g && g.borings ? g.borings : []).forEach(function (b) { want[b.id] = 1; });
+    var out = [], per = {};
+    (tc.items || []).forEach(function (it) {
+      var str = String(it.str || '');
+      if (!str.trim() || !it.transform) return;
+      var m = window.pdfjsLib.Util.transform(vp.transform, it.transform);
+      var len = Math.hypot(m[0], m[1]) || 1, ux = m[0] / len, uy = m[1] / len, wpx = (it.width || 0) * vp.scale;
+      var re = /(^|[^A-Za-z0-9])([A-Za-z]{1,6}[\s._-]{0,2}\d{1,4}[A-Za-z]?)(?![A-Za-z0-9])/g, hit;
+      while ((hit = re.exec(str))) {
+        var id = normId(hit[2]);
+        if (!want[id]) continue;
+        var frac = (hit.index + hit[1].length + hit[2].length / 2) / str.length;
+        per[id] = (per[id] || 0) + 1;
+        if (per[id] > 3) continue;
+        out.push({ id: id, x: Math.round(m[4] + ux * wpx * frac + m[2] * 0.35), y: Math.round(m[5] + uy * wpx * frac + m[3] * 0.35) });
+      }
+    });
+    return out;
+  }
+  function loadImage(url) {
+    return new Promise(function (res, rej) { var im = new Image(); im.onload = function () { res(im); }; im.onerror = function () { rej(new Error('could not load the plan image')); }; im.src = url; });
+  }
+  // A close-up of the plan around (cx, cy): 520 px of the drawing blown up to 832.
+  function planCrop(im, cx, cy) {
+    var size = Math.min(520, im.naturalWidth, im.naturalHeight), out = 832;
+    var x0 = Math.round(Math.max(0, Math.min(im.naturalWidth - size, cx - size / 2))), y0 = Math.round(Math.max(0, Math.min(im.naturalHeight - size, cy - size / 2)));
+    var cv = document.createElement('canvas'); cv.width = out; cv.height = out;
+    cv.getContext('2d').drawImage(im, x0, y0, size, size, 0, 0, out, out);
+    return { data: cv.toDataURL('image/jpeg', 0.9).split(',')[1], w: out, h: out, ox: x0, oy: y0, k: size / out };
+  }
+  // Find the borings on the pinned plan and place the ones it is sure of.
+  // -> { placed: [ids], left: [ids], error }
+  function autoPlace(ids, progress) {
+    var plan = M.state && M.state.plan, code = M.code;
+    if (!plan || !ids.length) return Promise.resolve({ placed: [], left: ids, error: '' });
+    var T = planFit(plan.pts), error = '';
+    var call = function (body) { return post(Object.assign({ mode: 'planLocate' }, body)).then(function (j) { if (!j || !j.ok) throw new Error((j && j.error) || 'no answer'); return j.results || []; }); };
+    return loadImage(fileUrl(code, plan)).then(function (im) {
+      // 1. where each number is written, from the PDF's own text
+      var cands = {};
+      (plan.labels || []).forEach(function (l) { if (ids.indexOf(l.id) >= 0) (cands[l.id] = cands[l.id] || []).push({ x: l.x, y: l.y }); });
+      // 2. anything not lettered as text (a scanned drawing): ask for a rough spot on the whole plan
+      var missing = ids.filter(function (id) { return !cands[id]; });
+      var coarse = Promise.resolve();
+      if (missing.length) {
+        var sc = Math.min(1, 1400 / Math.max(im.naturalWidth, im.naturalHeight));
+        var cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * sc); cv.height = Math.round(im.naturalHeight * sc);
+        cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+        if (progress) progress('Looking over the whole plan…');
+        coarse = call({ stage: 'coarse', ids: missing, image: { data: cv.toDataURL('image/jpeg', 0.85).split(',')[1], w: cv.width, h: cv.height } }).then(function (res) {
+          res.forEach(function (r) { var id = normId(r.id); if (r.found && missing.indexOf(id) >= 0 && !cands[id]) cands[id] = [{ x: r.x / sc, y: r.y / sc }]; });
+        }).catch(function (e) { error = e.message; });
+      }
+      return coarse.then(function () {
+        // 3. a close-up of every candidate: the centre of the symbol itself
+        var tasks = [];
+        ids.forEach(function (id) { (cands[id] || []).forEach(function (c) { tasks.push({ id: id, crop: planCrop(im, c.x, c.y) }); }); });
+        var groups = []; for (var i = 0; i < tasks.length; i += 6) groups.push(tasks.slice(i, i + 6));
+        var done = 0;
+        var runGroup = function (grp) {
+          return call({ stage: 'refine', crops: grp.map(function (t) { return { id: t.id, data: t.crop.data, w: t.crop.w, h: t.crop.h, ox: t.crop.ox, oy: t.crop.oy, k: t.crop.k }; }) }).then(function (res) {
+            res.forEach(function (r) { var t = grp[r.n - 1]; if (t && !t.hit) t.hit = r; });
+          }).catch(function (e) { error = e.message; }).then(function () { done += grp.length; if (progress) progress('Finding the borings on the plan… ' + Math.min(done, tasks.length) + ' of ' + tasks.length); });
+        };
+        var lanes = [0, 1].map(function (lane) { return (function next(i) { return i < groups.length ? runGroup(groups[i]).then(function () { return next(i + 2); }) : Promise.resolve(); })(lane); });
+        if (progress && tasks.length) progress('Finding the borings on the plan… 0 of ' + tasks.length);
+        return Promise.all(lanes).then(function () { return tasks; });
+      });
+    }).then(function (tasks) {
+      if (M.code !== code) return { placed: [], left: [], error: '' };
+      // 4. keep only answers it is sure of, and that land on the site
+      var L = window.L, site = M.parsed && M.parsed.bounds ? L.latLngBounds(M.parsed.bounds).pad(1) : null, items = [];
+      ids.forEach(function (id) {
+        var hits = tasks.filter(function (t) { var h = t.hit; return t.id === id && h && h.found && h.confidence !== 'low' && h.x >= 0 && h.y >= 0 && h.x <= t.crop.w && h.y <= t.crop.h; })
+          .map(function (t) { return { x: t.crop.ox + t.hit.x * t.crop.k, y: t.crop.oy + t.hit.y * t.crop.k, c: t.hit.confidence === 'high' ? 2 : 1 }; });
+        if (!hits.length) return;
+        hits.sort(function (a, b) { return b.c - a.c; });
+        // the number drawn in two places that disagree: do not pick one
+        if (hits.some(function (h) { return Math.hypot(h.x - hits[0].x, h.y - hits[0].y) > 30; })) return;
+        var ll = planToLL(T, hits[0].x, hits[0].y);
+        if (site && !site.contains(ll)) return;
+        items.push({ id: id, lat: ll.lat, lon: ll.lng });
+      });
+      if (!items.length) return { placed: [], left: ids, error: error };
+      return post({ mode: 'placeBorings', auto: true, items: items }).then(function (j) {
+        if (!j || !j.ok) return { placed: [], left: ids, error: (j && j.error) || 'could not save' };
+        M.state = j.map;
+        var placed = items.map(function (i) { return i.id; });
+        return { placed: placed, left: ids.filter(function (id) { return placed.indexOf(id) < 0; }), error: error };
+      });
+    }).catch(function (e) { return { placed: [], left: ids, error: (e && e.message) || 'something went wrong' }; });
+  }
+  // Automatic first; whatever it could not find goes to the tap-by-hand walk-through.
+  function runAuto() {
+    var g = M.state && M.state.geotech;
+    if (M.autoBusy || M.align || !g || !g.borings) return;
+    var ids = g.borings.filter(function (b) { return b.lat == null; }).map(function (b) { return b.id; });
+    if (!ids.length) return;
+    M.autoBusy = true; M.queue = null; M.autoNote = ''; stopPlacing(); closeSheet(); M.selBoring = null;
+    if (!planOn()) { M.showPlan = true; drawPlan(); renderLayerPanel(); }
+    var st = $('ajm-stage'); if (st && !st.classList.contains('is-full')) st.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    var code = M.code;
+    banner('Finding the borings on the plan…');
+    autoPlace(ids, function (text) { if (M.code === code && M.autoBusy) banner(esc(text)); }).then(function (res) {
+      M.autoBusy = false;
+      if (M.code !== code) return;
+      drawBorings(); renderGeo(); renderLayerPanel();
+      var n = res.placed.length;
+      if (!res.left.length) {
+        banner(n + ' boring' + (n === 1 ? '' : 's') + ' placed from the plan. Check them against the drawing.<div class="bn-acts">' + bnBtn('ok', 'OK', true) + '</div>');
+        return;
+      }
+      M.autoNote = n ? n + ' placed automatically. Could not be sure of ' + res.left.join(', ') + ' — tap ' + (res.left.length === 1 ? 'it' : 'them') + ' in.'
+        : 'Could not find the borings automatically' + (res.error ? ' (' + res.error + ')' : '') + ' — tap them in.';
+      startQueue();
+    });
   }
   // Where the plan sits before it is pinned: centred on the site, about as wide as the site.
   function planGuess(w, h) {
@@ -1075,14 +1222,14 @@
     $('ajm-layers').classList.remove('open'); $('ajm-t-layers').classList.remove('on');
     var st = $('ajm-stage'); if (st && !st.classList.contains('is-full')) st.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     var begin = function (img, isNew) {
-      M.align = { page: page, url: img.dataUrl || img.url, dataUrl: img.dataUrl || '', w: img.w, h: img.h, isNew: isNew, pts: [], step: 1, pick: null, T: planGuess(img.w, img.h) };
+      M.align = { page: page, url: img.dataUrl || img.url, dataUrl: img.dataUrl || '', w: img.w, h: img.h, labels: img.labels || [], isNew: isNew, pts: [], step: 1, pick: null, T: planGuess(img.w, img.h) };
       drawPlan();   // hides the saved copy while this one is being moved
       M.align.layer = new QuadOverlay(M.align.url, planQuad(M.align.T, img.w, img.h), { pane: 'ajmPlan', opacity: 0.75, interactive: false }).addTo(M.map);
       M.map.fitBounds(M.align.layer.getBounds().pad(0.05), { animate: false });
       $('ajm-map').style.cursor = 'crosshair';
       alignPrompt();
     };
-    if (reuse && p && p.page === page) { begin({ url: fileUrl(M.code, p), w: p.w, h: p.h }, false); return; }
+    if (reuse && p && p.page === page) { begin({ url: fileUrl(M.code, p), w: p.w, h: p.h, labels: p.labels || [] }, false); return; }
     banner('Getting report page ' + page + '…');
     renderPlanPage(page).then(function (img) { begin(img, true); }).catch(function (e) { banner(''); alert(e && e.message ? e.message : 'Could not load that page.'); });
   }
@@ -1093,8 +1240,10 @@
       : a.step === 3 ? '<b>Step 3 of 4.</b> Tap a second spot on the PLAN, as far from the first as you can.'
       : a.step === 4 ? '<b>Step 4 of 4.</b> Tap where that second spot really is.'
       : 'Does the plan sit right? Roads, buildings and property lines should line up with the map.';
-    a.layer.setOpacity(a.step === 2 || a.step === 4 ? 0.3 : a.step === 5 ? 0.6 : 0.75);
-    banner(text + '<div class="bn-acts">' + (a.step === 5 ? bnBtn('align-save', 'Save', true) : '') + (a.step > 1 ? bnBtn('align-restart', 'Start over') : '') + bnBtn('align-cancel', 'Cancel') + '</div>');
+    // Faint while you look for the real spot underneath, strong while you pick on the drawing — until you set it yourself.
+    var op = a.userOpacity != null ? a.userOpacity : (a.step === 2 || a.step === 4 ? 0.3 : a.step === 5 ? 0.6 : 0.75);
+    a.layer.setOpacity(op);
+    banner(text + bnSlider(op) + '<div class="bn-acts">' + (a.step === 5 ? bnBtn('align-save', 'Save', true) : '') + (a.step > 1 ? bnBtn('align-restart', 'Start over') : '') + bnBtn('align-cancel', 'Cancel') + '</div>');
     // pins: green = where it really is, orange = the spot picked on the plan (rides with the plan)
     var L = window.L; M.alignMarks.clearLayers();
     var pin = function (ll, n, cls) { M.alignMarks.addLayer(L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="ajm-pin ' + cls + '">' + n + '</div>', iconSize: [0, 0] }), interactive: false, keyboard: false })); };
@@ -1139,12 +1288,12 @@
     var up = a.isNew ? fetch('/api/project-files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: M.code, name: name, folder: folder, contentType: 'image/jpeg', data: a.dataUrl }) })
       .then(function (r) { return r.json().catch(function () { return null; }).then(function (j) { if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || 'Could not save the plan image (' + r.status + ').'); return (j && j.name) || name; }); })
       : Promise.resolve(name);
-    up.then(function (saved) { return post({ mode: 'setPlan', folder: folder, name: saved, page: a.page, w: a.w, h: a.h, pts: a.pts }); }).then(function (j) {
+    up.then(function (saved) { return post({ mode: 'setPlan', folder: folder, name: saved, page: a.page, w: a.w, h: a.h, pts: a.pts, labels: a.labels }); }).then(function (j) {
       if (!j || !j.ok) throw new Error((j && j.error) || 'Could not save the alignment.');
       M.state = j.map; M.showPlan = true;
       alignEnd(); renderGeo(); renderLayerPanel();
       var g = M.state.geotech;
-      if (g && g.borings && g.borings.some(function (b) { return b.lat == null; })) startQueue();
+      if (g && g.borings && g.borings.some(function (b) { return b.lat == null; })) runAuto();
     }).catch(function (e) { a.saving = false; alignPrompt(); alert(e && e.message ? e.message : 'Could not save.'); });
   }
 
@@ -1167,7 +1316,7 @@
   function reset(code) {
     M.code = code; M.sel = null; M.parsed = null; M.state = null; M.stateFor = null; M.filesFor = null; M.files = []; M.pdfs = [];
     M.selBoring = null; M.driving = false; M.fileErr = ''; M.loadingFile = '';
-    clearTimeout(M.pollTimer); if (M.align) alignEnd(); M.queue = null; M.showPlan = null; stopPlacing(); closeSheet();
+    clearTimeout(M.pollTimer); if (M.align) alignEnd(); M.queue = null; M.autoNote = ''; M.autoBusy = false; M.showPlan = null; stopPlacing(); closeSheet();
     if (M.map && M.planLayer) { M.map.removeLayer(M.planLayer); M.planLayer = null; }
     M.objectUrls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} }); M.objectUrls = []; M.parseCache = {};
     if (M.map) { M.kmlGroup.clearLayers(); M.boringGroup.clearLayers(); }
