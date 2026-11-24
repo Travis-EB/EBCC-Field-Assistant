@@ -8590,7 +8590,7 @@ function jbRenderFiles() {
     ? jbCurrentFiles
     : (jbActiveFolder === JB_LINKS_ID ? [] : jbCurrentFiles.filter(f => (f.folder || '') === jbActiveFolder));
   const safetyHead = jbActiveFolder !== 'Safety' ? '' :
-    '<div class="ewt-hint" style="margin:0 0 10px">JHA’s, tailgate talks and incident reports filed on this job save here automatically when they are emailed or submitted, and SSSP’s uploaded from the SSSP tab land here too. Each one still shows under its author in Manage Users.' +
+    '<div class="ewt-hint" style="margin:0 0 10px">JHA’s, tailgate talks and incident reports filed on this job save here automatically when they are emailed or submitted, and SSSP’s uploaded from the SSSP tab land here too. Tap a group to open it.' + (window.EBCC_IS_ADMIN ? ' Each report still shows under its author in Manage Users.' : '') +
     (window.EBCC_IS_ADMIN ? '<div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="jb-safety-backfill">Pull in earlier JHA’s, tailgate talks &amp; incident reports</button><span id="jb-safety-status" style="font-weight:600"></span></div>' : '') +
     '</div>';
   if (!files.length && !showLinks.length) {
@@ -8600,6 +8600,8 @@ function jbRenderFiles() {
     return;
   }
   const isAdmin = !!window.EBCC_IS_ADMIN;
+  // (the file list flows in newspaper columns on a wide screen; the Safety groups take the full width)
+  if (jbActiveFolder === 'Safety') { wrap.innerHTML = '<div style="column-span:all">' + safetyHead + jbSafetyHtml(files, isAdmin) + '</div>'; return; }
   const linkRows = showLinks.map(l => {
     return '<div class="equipment-card" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:start">' +
       '<div style="min-width:0;grid-area:auto">' +
@@ -8613,21 +8615,115 @@ function jbRenderFiles() {
       '</div>' +
     '</div>';
   }).join('');
-  wrap.innerHTML = safetyHead + linkRows + files.map(f => {
-    const folder = f.folder || '';
-    return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:start;cursor:grab">' +
-      '<div style="min-width:0;grid-area:auto">' +
-        '<div class="name" style="display:flex;align-items:flex-start;gap:7px;min-width:0">' +
-          '<span title="' + escAttr(jbFolderLabel(folder)) + '" style="width:9px;height:9px;border-radius:50%;background:' + jbFolderColor(folder) + ';flex-shrink:0;margin-top:4px"></span>' +
-          '<span style="word-break:break-word;line-height:1.35">' + escHTML(f.name) + '</span></div>' +
-        '<div class="rate" style="margin-top:2px">' + escHTML(jbFolderLabel(folder)) + ' · ' + jbFmtSize(f.size) + (f.lastModified ? ' · ' + new Date(f.lastModified).toLocaleDateString() : '') + '</div></div>' +
-      '<div style="display:flex;gap:6px;align-items:center">' +
-        '<button class="btn" data-jb-file="' + escAttr(f.name) + '" data-jb-proj="' + escAttr(jbCurrentCode) + '" data-jb-folder="' + escAttr(folder) + '">Open</button>' +
-        (isAdmin ? '<button class="remove-btn" title="Delete file (admin)" data-jb-del="' + escAttr(f.name) + '" data-jb-del-folder="' + escAttr(folder) + '">&times;</button>' : '') +
-      '</div>' +
-    '</div>';
+  wrap.innerHTML = safetyHead + linkRows + files.map(f => jbFileRowHtml(f, isAdmin)).join('');
+}
+
+// One file row. `title` / `sub` replace the file name and the detail line (the Safety
+// groups show "Nov 18, 2026 — Tony Blood" instead of the full file name).
+function jbFileRowHtml(f, isAdmin, title, sub) {
+  const folder = f.folder || '';
+  return '<div class="equipment-card" draggable="true" data-jb-drag-name="' + escAttr(f.name) + '" data-jb-drag-from="' + escAttr(folder) + '" title="' + escAttr(f.name) + '" style="grid-template-areas:none;grid-template-columns:1fr auto;align-items:start;cursor:grab">' +
+    '<div style="min-width:0;grid-area:auto">' +
+      '<div class="name" style="display:flex;align-items:flex-start;gap:7px;min-width:0">' +
+        '<span title="' + escAttr(jbFolderLabel(folder)) + '" style="width:9px;height:9px;border-radius:50%;background:' + jbFolderColor(folder) + ';flex-shrink:0;margin-top:4px"></span>' +
+        '<span style="word-break:break-word;line-height:1.35">' + escHTML(title || f.name) + '</span></div>' +
+      '<div class="rate" style="margin-top:2px">' + (sub != null ? escHTML(sub) : escHTML(jbFolderLabel(folder)) + ' · ' + jbFmtSize(f.size) + (f.lastModified ? ' · ' + new Date(f.lastModified).toLocaleDateString() : '')) + '</div></div>' +
+    '<div style="display:flex;gap:6px;align-items:center">' +
+      '<button class="btn" data-jb-file="' + escAttr(f.name) + '" data-jb-proj="' + escAttr(jbCurrentCode) + '" data-jb-folder="' + escAttr(folder) + '">Open</button>' +
+      (isAdmin ? '<button class="remove-btn" title="Delete file (admin)" data-jb-del="' + escAttr(f.name) + '" data-jb-del-folder="' + escAttr(folder) + '">&times;</button>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+// ---- Safety folder: one collapsible group per kind of record ----
+// A job collects a JHA per foreman per day plus tailgate talks, so one flat list gets
+// long fast. The files are sorted into groups by their name only — nothing moves in
+// storage, so the SSSP tab, the "pull in earlier reports" button and Open keep working.
+const JB_SAFETY_GROUPS = [
+  { id: 'jha',      label: 'JHA’s',              re: /^jha\b/i,      dated: true },
+  { id: 'talk',     label: 'Tailgate Talks',     re: /^tailgate/i,   dated: true },
+  { id: 'incident', label: 'Incident Reports',   re: /^incident/i,   dated: true },
+  { id: 'sssp',     label: 'SSSP’s',             re: /^sssp/i },
+  { id: 'other',    label: 'Other safety files', re: null },
+];
+const JB_SAFETY_PREVIEW = 10;   // rows shown in an open group before "Show all"
+let jbSafetyOpen = {};          // group id -> open? (per job; reset when a job opens)
+let jbSafetyAll = {};           // group id -> showing every row?
+
+function jbSafetyDay(ymd, opts) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ymd || ''));
+  if (!m) return '';
+  return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(undefined, opts || { month: 'short', day: 'numeric', year: 'numeric' });
+}
+// What a Safety file is: its group, the day it is for, and a short title.
+function jbSafetyParse(f) {
+  const name = String(f.name || '');
+  const g = JB_SAFETY_GROUPS.find(x => x.re && x.re.test(name)) || JB_SAFETY_GROUPS[JB_SAFETY_GROUPS.length - 1];
+  let saved = '';
+  try { if (f.lastModified) saved = new Date(f.lastModified).toISOString(); } catch (e) {}
+  const out = { f: f, group: g.id, day: '', title: name, sub: jbFmtSize(f.size) + (f.lastModified ? ' · saved ' + new Date(f.lastModified).toLocaleDateString() : ''), sort: saved };
+  if (!g.dated) return out;
+  // "JHA 2026-11-18 - Tony Blood.pdf", "Tailgate Talk 2026-11-18 - Tony Blood - x1y2.pdf",
+  // "Incident 2026-11-18 - Injury - a1b2.pdf" (the names the app gives them when they are sent)
+  const m = /^(?:JHA|Tailgate Talk|Incident) (\d{4}-\d{2}-\d{2}) - (.+?)(?: - ([A-Za-z0-9]{4}))?\.pdf$/i.exec(name);
+  if (!m) return out;   // named by hand: keep the file name, order it by when it was saved
+  const what = g.id === 'jha' && m[3] ? m[2] + ' - ' + m[3] : m[2];
+  out.day = m[1];
+  // this year's records drop the year so the line stays short on a phone
+  const thisYear = m[1].slice(0, 4) === String(new Date().getFullYear());
+  out.title = jbSafetyDay(m[1], thisYear ? { weekday: 'short', month: 'short', day: 'numeric' } : { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) + ' — ' + what;
+  out.sub = jbFmtSize(f.size);
+  out.sort = m[1] + 'T' + saved.slice(11);
+  return out;
+}
+function jbSafetyHtml(files, isAdmin) {
+  const items = files.map(jbSafetyParse);
+  const small = files.length <= 6;   // a handful of files is not crowded: show them
+  return JB_SAFETY_GROUPS.map(g => {
+    // newest first; files without a date in their name go after the dated ones
+    const rows = items.filter(x => x.group === g.id).sort((a, b) => ((b.day ? 1 : 0) - (a.day ? 1 : 0)) || b.sort.localeCompare(a.sort));
+    if (!rows.length && g.id === 'other') return '';
+    const open = rows.length > 0 && (jbSafetyOpen[g.id] != null ? jbSafetyOpen[g.id] : small);
+    const latest = rows.length ? (rows[0].day ? jbSafetyDay(rows[0].day) : (rows[0].f.lastModified ? new Date(rows[0].f.lastModified).toLocaleDateString() : '')) : '';
+    let html = '<button type="button" data-jb-sgroup="' + g.id + '" aria-expanded="' + (open ? 'true' : 'false') + '"' + (rows.length ? '' : ' disabled') +
+      ' style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:12px 14px;margin:0 0 8px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--dark);font:inherit;font-size:14px;font-weight:650;cursor:' + (rows.length ? 'pointer' : 'default') + ';' + (rows.length ? '' : 'opacity:.55;') + '">' +
+      '<span aria-hidden="true" style="display:inline-block;width:10px;color:var(--gray);font-size:11px;transition:transform .12s;' + (open ? 'transform:rotate(90deg);' : '') + '">&#9654;</span>' +
+      '<span>' + escHTML(g.label) + '</span>' +
+      '<span style="padding:1px 8px;border-radius:99px;background:var(--dz-hi);color:var(--dark);font-size:12px;font-weight:650">' + rows.length + '</span>' +
+      '<span style="margin-left:auto;font-size:12px;font-weight:500;color:var(--gray);white-space:nowrap">' + (rows.length ? (latest ? 'Latest ' + escHTML(latest) : '') : 'None yet') + '</span>' +
+    '</button>';
+    if (!open) return html;
+    const all = !!jbSafetyAll[g.id] || rows.length <= JB_SAFETY_PREVIEW + 2;
+    const shown = all ? rows : rows.slice(0, JB_SAFETY_PREVIEW);
+    const months = {};
+    rows.forEach(x => { const k = x.day.slice(0, 7); if (k) months[k] = (months[k] || 0) + 1; });
+    const byMonth = g.dated && Object.keys(months).length > 1;   // month headings once a group spans more than one
+    let lastKey = null;
+    // rows read left to right, newest first; headings and the "Show all" button take a full row
+    html += '<div style="margin:0 0 14px 6px;padding-left:10px;border-left:2px solid var(--border);display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:0 10px;align-items:start">';
+    shown.forEach(x => {
+      const k = x.day.slice(0, 7);
+      if (byMonth && k !== lastKey) {
+        lastKey = k;
+        html += '<div class="section-header" style="grid-column:1/-1;margin:8px 0 6px">' + (k ? escHTML(jbSafetyDay(k + '-01', { month: 'long', year: 'numeric' })) + ' · ' + months[k] : 'Other files') + '</div>';
+      }
+      html += jbFileRowHtml(x.f, isAdmin, x.title, x.sub);
+    });
+    if (!all) html += '<button type="button" class="btn" data-jb-sall="' + g.id + '" style="grid-column:1/-1;justify-self:start;margin:2px 0 4px">Show all ' + rows.length + '</button>';
+    return html + '</div>';
   }).join('');
 }
+document.addEventListener('click', (e) => {
+  const t = e.target.closest ? e.target.closest('[data-jb-sgroup],[data-jb-sall]') : null;
+  if (!t) return;
+  if (t.hasAttribute('data-jb-sall')) jbSafetyAll[t.getAttribute('data-jb-sall')] = true;
+  else {
+    const id = t.getAttribute('data-jb-sgroup');
+    jbSafetyOpen[id] = t.getAttribute('aria-expanded') !== 'true';
+    if (!jbSafetyOpen[id]) jbSafetyAll[id] = false;
+  }
+  jbRenderFiles();
+});
 
 // Admin-only: copy JHA / incident PDFs sent before the Safety folder existed into it
 document.addEventListener('click', (e) => {
@@ -8715,6 +8811,7 @@ function jbOpenProject(code, folder) {
   jbCurrentCode = code;
   jbCurrentFiles = [];
   jbCurrentLinks = Array.isArray(p.links) ? p.links.slice() : [];
+  jbSafetyOpen = {}; jbSafetyAll = {};
   jbActiveFolder = folder && JB_FOLDERS.some(x => x.id === folder) ? folder : 'ALL';
   document.getElementById('jb-home').style.display = 'none';
   const box = document.getElementById('jb-detail');
