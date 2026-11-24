@@ -3485,6 +3485,7 @@ body.tv-mode .aj-legend { font-size: 14px; }
       <button class="btn" data-jb-sort="size">File size</button>
     </div>
     <div id="jb-list"><div class="empty">Loading projects…</div></div>
+    <div id="jb-buckets"></div>
   </div>
   <div id="jb-detail" style="display:none"></div>
 </section>
@@ -8435,16 +8436,23 @@ if (!lcState.meta.date) {
 
 // === Job Books: shared projects + files (visible to every signed-in user) ===
 window.EBCC_PROJECTS = [];
+// Deleted projects (admins only). Deleting never destroys anything: the record and
+// every file are kept and "Restore" puts the project back.
+window.EBCC_DELETED = [];
+// Projects to offer wherever a job is picked. A deactivated project is still in
+// EBCC_PROJECTS (so its name and settings can be looked up) but is left out here.
+function jbLiveProjects() { return (window.EBCC_PROJECTS || []).filter(p => !p.archived); }
 
 function jbLoadProjects() {
   return fetch('/api/projects').then(r => r.ok ? r.json() : null).then(res => {
     if (!res || !res.projects) return;
     window.EBCC_PROJECTS = res.projects;
+    window.EBCC_DELETED = Array.isArray(res.deleted) ? res.deleted : [];
     jbRenderList();
     if (typeof applyJobFuel === 'function') applyJobFuel();
     if (typeof ajRefresh === 'function') ajRefresh();
     const dl = document.getElementById('ewt-job-list');
-    if (dl) dl.innerHTML = res.projects.map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.name) + '</option>').join('');
+    if (dl) dl.innerHTML = jbLiveProjects().map(p => '<option value="' + escAttr(p.code) + '">' + escHTML(p.name) + '</option>').join('');
   }).catch(() => {});
 }
 
@@ -8476,31 +8484,114 @@ function jbRecentTs(p) {
 function jbRenderList() {
   const list = document.getElementById('jb-list');
   const count = document.getElementById('jb-count');
-  const all = (window.EBCC_PROJECTS || []).slice();
+  const all = jbLiveProjects();
   const q = jbSearchQuery.trim().toLowerCase();
+  jbRenderBuckets(q);
   const searched = q ? all.filter(p => (String(p.name) + ' ' + String(p.code)).toLowerCase().includes(q)) : all;
   statePillsRender('jb-state-row', jbStateFilter, searched);
   const projs = searched.filter(p => stateMatch(p, jbStateFilter));
   if (count) count.textContent = projs.length === all.length ? '(' + all.length + ')' : '(' + projs.length + ' of ' + all.length + ')';
-  if (!all.length) { list.innerHTML = '<div class="empty">No projects yet — create the first one above.</div>'; return; }
+  if (!all.length) { list.innerHTML = '<div class="empty">' + ((window.EBCC_PROJECTS || []).length ? 'No current projects — the deactivated ones are below.' : 'No projects yet — create the first one above.') + '</div>'; return; }
   if (!projs.length) { list.innerHTML = '<div class="empty">No projects match' + (q ? ' "' + escHTML(jbSearchQuery.trim()) + '"' : '') + (jbStateFilter !== 'all' ? ' with that state' : '') + '.</div>'; return; }
   if (jbSort === 'name') projs.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   else if (jbSort === 'size') projs.sort((a, b) => (b.totalSize || 0) - (a.totalSize || 0));
   else if (jbSort === 'recent') projs.sort((a, b) => jbRecentTs(b) - jbRecentTs(a) || String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
   else projs.sort((a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
-  list.innerHTML = projs.map(p => {
-    const linkN = (p.links || []).length;
-    const meta = (p.fileCount
-      ? ' · ' + p.fileCount + ' file' + (p.fileCount === 1 ? '' : 's') + ' · ' + jbFmtSize(p.totalSize)
-      : ' · no files') + (linkN ? ' · ' + linkN + ' link' + (linkN === 1 ? '' : 's') : '') +
-      (p.state ? ' · ' + p.state : '') + (p.active ? ' · ACTIVE' : '') +
-      (jbSort === 'recent' && jbRecentTs(p) ? ' · updated ' + new Date(jbRecentTs(p)).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' }) : '');
-    return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jb-open="' + escAttr(p.code) + '">' +
-      '<div><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(p.code) + escHTML(meta) + '</div></div>' +
-      '<button class="btn" data-jb-open="' + escAttr(p.code) + '">Open</button>' +
-    '</div>';
-  }).join('');
+  list.innerHTML = projs.map(p => jbProjectRowHtml(p)).join('');
 }
+function jbFilesMeta(p) {
+  return p.fileCount ? p.fileCount + ' file' + (p.fileCount === 1 ? '' : 's') + ' · ' + jbFmtSize(p.totalSize) : 'no files';
+}
+function jbProjectRowHtml(p) {
+  const linkN = (p.links || []).length;
+  const meta = ' · ' + jbFilesMeta(p) + (linkN ? ' · ' + linkN + ' link' + (linkN === 1 ? '' : 's') : '') +
+    (p.state ? ' · ' + p.state : '') + (p.active && !p.archived ? ' · ACTIVE' : '') +
+    (p.archived && p.archivedAt ? ' · deactivated ' + new Date(p.archivedAt).toLocaleDateString() : '') +
+    (!p.archived && jbSort === 'recent' && jbRecentTs(p) ? ' · updated ' + new Date(jbRecentTs(p)).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' }) : '');
+  return '<div class="equipment-card" style="grid-template-columns:1fr auto;cursor:pointer" data-jb-open="' + escAttr(p.code) + '">' +
+    '<div><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(p.code) + escHTML(meta) + '</div></div>' +
+    '<button class="btn" data-jb-open="' + escAttr(p.code) + '">Open</button>' +
+  '</div>';
+}
+
+// ---- Deactivated + Deleted buckets under the project list ----
+// Deactivated: a finished job, parked. Everyone can still open it and its files.
+// Deleted (admins only): off the list for everyone, but nothing is destroyed —
+// Restore puts the project back with every file, link and setting.
+let jbBucketOpen = {};
+function jbBucketHeadHtml(id, label, n, open, note) {
+  return '<button type="button" data-jb-bucket="' + id + '" aria-expanded="' + (open ? 'true' : 'false') + '"' +
+    ' style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:12px 14px;margin:10px 0 8px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--dark);font:inherit;font-size:14px;font-weight:650;cursor:pointer">' +
+    '<span aria-hidden="true" style="display:inline-block;width:10px;color:var(--gray);font-size:11px;transition:transform .12s;' + (open ? 'transform:rotate(90deg);' : '') + '">&#9654;</span>' +
+    '<span>' + escHTML(label) + '</span>' +
+    '<span style="padding:1px 8px;border-radius:99px;background:var(--dz-hi);color:var(--dark);font-size:12px;font-weight:650">' + n + '</span>' +
+    '<span style="margin-left:auto;font-size:12px;font-weight:500;color:var(--gray);text-align:right">' + escHTML(note) + '</span>' +
+  '</button>';
+}
+function jbRenderBuckets(q) {
+  const box = document.getElementById('jb-buckets');
+  if (!box) return;
+  const hit = (p) => !q || (String(p.name) + ' ' + String(p.code)).toLowerCase().includes(q);
+  const byCode = (a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true });
+  const grid = 'margin:0 0 6px 6px;padding-left:10px;border-left:2px solid var(--border);display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:0 10px;align-items:start';
+  let html = '';
+  const offAll = (window.EBCC_PROJECTS || []).filter(p => p.archived);
+  if (offAll.length) {
+    const off = offAll.filter(hit).sort(byCode);
+    // a search that finds a deactivated job opens the bucket so the match is not hidden
+    const open = jbBucketOpen.off != null && !q ? jbBucketOpen.off : (q ? off.length > 0 : false);
+    html += jbBucketHeadHtml('off', 'Deactivated projects', q ? off.length + ' of ' + offAll.length : offAll.length, open, 'Files kept');
+    if (open) html += '<div style="' + grid + '">' + (off.length ? off.map(jbProjectRowHtml).join('') : '<div class="empty" style="grid-column:1/-1">None match.</div>') + '</div>';
+  }
+  const delAll = window.EBCC_IS_ADMIN ? (window.EBCC_DELETED || []) : [];
+  if (delAll.length) {
+    const del = delAll.filter(hit);
+    const open = jbBucketOpen.del != null && !q ? jbBucketOpen.del : (q ? del.length > 0 : false);
+    html += jbBucketHeadHtml('del', 'Deleted projects', q ? del.length + ' of ' + delAll.length : delAll.length, open, 'Admins only · files kept');
+    if (open) html += '<div style="' + grid + '">' + (del.length ? del.map(p =>
+      '<div class="equipment-card" style="grid-template-columns:1fr auto">' +
+        '<div><div class="name">' + escHTML(p.name) + '</div><div class="rate">' + escHTML(p.code) + ' · ' + escHTML(jbFilesMeta(p)) + ' kept' +
+          (p.deletedAt ? ' · deleted ' + new Date(p.deletedAt).toLocaleDateString() : '') + (p.deletedBy ? ' by ' + escHTML(String(p.deletedBy).split('@')[0]) : '') + '</div></div>' +
+        '<button class="btn" data-jb-restore="' + escAttr(p.code) + '">Restore</button>' +
+      '</div>').join('') : '<div class="empty" style="grid-column:1/-1">None match.</div>') + '</div>';
+  }
+  box.innerHTML = html;
+}
+// Deactivate / reactivate (admin). Resolves true when the server took it.
+function jbSetArchived(p, on) {
+  return fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'setArchived', code: p.code, archived: !!on }) })
+    .then(r => r.json().then(j => ({ ok: r.ok && j && j.ok, j })).catch(() => ({ ok: false, j: null })))
+    .then(out => {
+      if (!out.ok) { alert((out.j && out.j.error) || 'Could not ' + (on ? 'deactivate' : 'reactivate') + ' the project.'); return false; }
+      if (on) { p.archived = true; p.archivedAt = out.j.archivedAt || new Date().toISOString(); p.archivedBy = out.j.archivedBy || ''; }
+      else { delete p.archived; delete p.archivedAt; delete p.archivedBy; }
+      // a job that just left the pickers cannot stay selected on the calculators
+      if (on && typeof currentJobCode !== 'undefined' && currentJobCode === p.code && typeof pickCalcJob === 'function') pickCalcJob(null);
+      jbRenderList();
+      if (typeof ajRefresh === 'function') ajRefresh();
+      return true;
+    })
+    .catch(() => { alert('Offline — try again.'); return false; });
+}
+document.addEventListener('click', (e) => {
+  const head = e.target.closest ? e.target.closest('[data-jb-bucket]') : null;
+  if (head) { jbBucketOpen[head.getAttribute('data-jb-bucket')] = head.getAttribute('aria-expanded') !== 'true'; jbRenderBuckets(jbSearchQuery.trim().toLowerCase()); return; }
+  const rs = e.target.closest ? e.target.closest('[data-jb-restore]') : null;
+  if (!rs) return;
+  const code = rs.getAttribute('data-jb-restore');
+  const p = (window.EBCC_DELETED || []).find(x => x.code === code);
+  if (!p || !confirm('Restore "' + p.name + '" (' + p.code + ')?\n\nIt goes back on Job Books for everyone with its files, links and settings as they were.')) return;
+  rs.disabled = true; rs.textContent = 'Restoring…';
+  fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'restore', code: code }) })
+    .then(r => r.json().then(j => ({ ok: r.ok && j && j.ok, j })).catch(() => ({ ok: false, j: null })))
+    .then(out => {
+      if (!out.ok) { rs.disabled = false; rs.textContent = 'Restore'; alert((out.j && out.j.error) || 'Could not restore the project.'); return; }
+      window.EBCC_DELETED = (window.EBCC_DELETED || []).filter(x => x.code !== code);
+      jbRenderList();
+      jbLoadProjects();
+    })
+    .catch(() => { rs.disabled = false; rs.textContent = 'Restore'; alert('Offline — try again.'); });
+});
 
 document.getElementById('jb-search').addEventListener('input', (e) => {
   jbSearchQuery = e.target.value || '';
@@ -8817,14 +8908,18 @@ function jbOpenProject(code, folder) {
   const box = document.getElementById('jb-detail');
   box.style.display = '';
   box.innerHTML =
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">' +
       '<button class="btn" id="jb-back-btn">&larr; Back</button>' +
-      '<div style="min-width:0"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.name) + '</div>' +
+      '<div style="min-width:0;flex:1 1 150px"><div style="font-weight:650;font-size:16px;letter-spacing:-0.01em">' + escHTML(p.name) + '</div>' +
       '<div style="font-size:12.5px;color:var(--gray)">' + escHTML(p.code) + '</div></div>' +
-      '<button class="btn" id="jb-map-btn" style="margin-left:auto;flex-shrink:0" title="Site map from the KMZ / KML files in Plans, with the geotech borings">Map</button>' +
-      '<button class="btn" id="jb-hub-btn" style="flex-shrink:0" title="Action items, notes, schedule and more for this job">Project hub</button>' +
-      (window.EBCC_IS_ADMIN ? '<button class="btn" id="jb-delete-project" style="flex-shrink:0;color:var(--red);border-color:var(--red)">Delete project</button>' : '') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-left:auto">' +
+        '<button class="btn" id="jb-map-btn" style="flex-shrink:0" title="Site map from the KMZ / KML files in Plans, with the geotech borings">Map</button>' +
+        '<button class="btn" id="jb-hub-btn" style="flex-shrink:0" title="Action items, notes, schedule and more for this job">Project hub</button>' +
+        (window.EBCC_IS_ADMIN ? '<button class="btn" id="jb-archive-project" style="flex-shrink:0" title="' + (p.archived ? 'Put this job back on the project list and in the project searches' : 'Park a finished job: it moves to Deactivated projects and out of the project searches. Everything is kept.') + '">' + (p.archived ? 'Reactivate' : 'Deactivate') + '</button>' : '') +
+        (window.EBCC_IS_ADMIN ? '<button class="btn" id="jb-delete-project" style="flex-shrink:0;color:var(--red);border-color:var(--red)">Delete project</button>' : '') +
+      '</div>' +
     '</div>' +
+    (p.archived ? '<div style="margin:10px 0 2px;padding:10px 12px;border:1px solid var(--border);border-left:4px solid var(--gray);border-radius:10px;background:var(--card);font-size:13px;line-height:1.4"><b>This project is deactivated.</b> It is left out of the project searches and Active Jobs. Every file, link and record is still here' + (window.EBCC_IS_ADMIN ? ' — use Reactivate to bring it back.' : '.') + (p.archivedAt ? ' <span style="color:var(--gray)">Deactivated ' + escHTML(new Date(p.archivedAt).toLocaleDateString()) + (p.archivedBy ? ' by ' + escHTML(String(p.archivedBy).split('@')[0]) : '') + '.</span>' : '') + '</div>' : '') +
     // State picks the CA/TX rate library on Cost Per Yard and Flat Work for this job.
     '<div style="display:flex;align-items:center;gap:10px;margin:10px 0 4px;flex-wrap:wrap">' +
       '<span style="font-size:12px;font-weight:600;color:var(--gray)">State</span>' +
@@ -8891,12 +8986,28 @@ function jbOpenProject(code, folder) {
     document.getElementById('jb-home').style.display = '';
     jbLoadProjects();
   };
-  // Admin-only: delete the whole project. Typing the job number guards against
-  // a stray tap. Uploaded files stay in storage (recoverable); filed reports
-  // keep their stored project name.
+  // Admin-only: deactivate (park) or reactivate the project. Reversible, nothing is lost.
+  const jbArcBtn = document.getElementById('jb-archive-project');
+  if (jbArcBtn) jbArcBtn.onclick = () => {
+    const on = !p.archived;
+    if (on && !confirm('Deactivate "' + p.name + '"?\n\nIt moves to Deactivated projects at the bottom of Job Books and comes out of the project searches and Active Jobs.\n\nEvery file, link and record is kept, and you can reactivate it at any time.')) return;
+    jbArcBtn.disabled = true;
+    jbArcBtn.textContent = on ? 'Deactivating…' : 'Reactivating…';
+    jbSetArchived(p, on).then(ok => {
+      if (!ok) { jbArcBtn.disabled = false; jbArcBtn.textContent = on ? 'Deactivate' : 'Reactivate'; return; }
+      if (jbCurrentCode !== code) return;
+      if (on) document.getElementById('jb-back-btn').click();   // parked: back to the list
+      else jbOpenProject(code, jbActiveFolder);                 // back in service: redraw without the notice
+    });
+  };
+  // Admin-only: delete the whole project. Two guards against a stray tap: an
+  // "are you sure?" first, then typing the job number. Nothing is destroyed — the
+  // project's record and files are kept and an admin can restore it from
+  // Deleted projects; filed reports keep their stored project name.
   const jbDelBtn = document.getElementById('jb-delete-project');
   if (jbDelBtn) jbDelBtn.onclick = () => {
-    const typed = prompt('Delete "' + p.name + '" for EVERYONE?\n\nIt disappears from Job Books and every project search, along with its fuel rate and links. Uploaded files are kept in storage (recoverable), and reports already filed against it are not affected.\n\nType the job number (' + p.code + ') to confirm:');
+    if (!confirm('Are you sure you want to delete "' + p.name + '" (' + p.code + ')?\n\nIt comes off Job Books and every project search for EVERYONE.' + (p.archived ? '' : '\n\nIf the job is only finished, press Cancel and use Deactivate instead.'))) return;
+    const typed = prompt('Last check before deleting "' + p.name + '".\n\nIts files, links and settings are kept, and an admin can bring the project back from Deleted projects at the bottom of Job Books.\n\nType the job number (' + p.code + ') to delete it:');
     if (typed == null) return;
     if (typed.trim() !== String(p.code)) { alert('Job number did not match — nothing was deleted.'); return; }
     jbDelBtn.disabled = true;
@@ -9197,7 +9308,7 @@ document.getElementById('jb-create-btn').addEventListener('click', () => {
 
 // Project picker used by Post Spread on both calculator tabs
 function pickProject(cb, what, okLabel) {
-  const projs = window.EBCC_PROJECTS || [];
+  const projs = jbLiveProjects();
   if (!projs.length) { cb(null); return; }   // projects unknown (offline) — post without
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
@@ -9694,7 +9805,7 @@ function projCombo(inputId, resultsId, onSelect) {
   const inp = document.getElementById(inputId);
   const box = document.getElementById(resultsId);
   let code = '';
-  const projects = () => (window.EBCC_PROJECTS || []).slice()
+  const projects = () => jbLiveProjects()
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const close = () => { box.classList.remove('open'); box.innerHTML = ''; };
   function openList(q) {
@@ -10585,7 +10696,7 @@ function ajLabel(e) { return e.name + (ajQty(e) > 1 ? ' ×' + ajQty(e) : ''); }
 // Units on site: machines count by quantity, people one each.
 function ajCount(list, person) { return list.filter(e => ajIsPerson(e) === person).reduce((n, e) => n + ajQty(e), 0); }
 function ajActiveJobs() {
-  return (window.EBCC_PROJECTS || []).filter(p => p.active).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return (window.EBCC_PROJECTS || []).filter(p => p.active && !p.archived).sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 function ajPost(body) {
   return fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -11327,7 +11438,7 @@ function ajAiRender() {
   const box = document.getElementById('aj-ai-result');
   const pr = ajAiProposal;
   if (!pr) { box.innerHTML = ''; return; }
-  const projects = (window.EBCC_PROJECTS || []).slice().sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0) || String(a.name).localeCompare(String(b.name)));
+  const projects = jbLiveProjects().sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0) || String(a.name).localeCompare(String(b.name)));
   const code = pr.project ? pr.project.code : '';
   let html = pr.summary ? '<div class="aj-ai-sum">' + escHTML(pr.summary) + '</div>' : '';
   if (pr.questions && pr.questions.length) html += '<div class="aj-ai-q">' + pr.questions.map(q => '<div>' + escHTML(q) + '</div>').join('') + '</div>';

@@ -4,7 +4,14 @@
 // POST   -> { code, name } creates a project (any signed-in user)
 // POST   -> { mode:'addLink', code, name, url } adds a Procore/Autodesk-style
 //           link to a project (any signed-in user); mode:'removeLink' is admin only
-// DELETE -> ?code= removes a project (admin only; files in blob are left in place)
+// POST   -> { mode:'setArchived', code, archived } deactivates / reactivates a project
+//           (admin only). A deactivated project keeps everything; the app lists it in
+//           its own bucket and leaves it out of the project pickers.
+// POST   -> { mode:'restore', code } brings a deleted project back (admin only)
+// DELETE -> ?code= takes a project off the list (admin only). Nothing is destroyed:
+//           the project's record moves to `deleted` on the same doc and its files stay
+//           in blob storage, so 'restore' brings back the project exactly as it was.
+//           GET returns the deleted ones to admins as `deleted`.
 //
 // Stored as ONE doc in the records container under ownerId '__shared__', so it
 // never collides with per-user record queries. Writes use etag-checked replace
@@ -14,6 +21,8 @@ const { getJobBooksContainer, safeName } = require('../shared/blob');
 const { DOC_ID, DOC_PK, readDoc, updateProject } = require('../shared/projects');
 
 // Starter job books provided by Travis (2026-08)
+const same = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+
 const SEED = [
   ['26-292-03', 'PROSPER RETAIL'],
   ['26-120-03', 'PEPSI CO. TENANT IMPROVEMENTS'],
@@ -97,7 +106,15 @@ module.exports = async function (context, req) {
         const s = sizes[safeName(p.code)] || { n: 0, b: 0, t: 0 };
         return Object.assign({}, p, { fileCount: s.n, totalSize: s.b, lastFileAt: s.t ? new Date(s.t).toISOString() : '', board: boards[String(p.code).toLowerCase()] || null });
       }).sort((a, b) => String(b.code).localeCompare(String(a.code), undefined, { numeric: true }));
-      return json(context, 200, { projects: list });
+      const out = { projects: list };
+      // Deleted projects are only ever shown to admins, who can restore them.
+      if (isAdmin(me)) {
+        out.deleted = (Array.isArray(doc.deleted) ? doc.deleted : []).filter((p) => p && p.code).map((p) => {
+          const s = sizes[safeName(p.code)] || { n: 0, b: 0, t: 0 };
+          return { code: p.code, name: p.name, state: p.state || '', archived: !!p.archived, deletedAt: p.deletedAt || '', deletedBy: p.deletedBy || '', fileCount: s.n, totalSize: s.b };
+        }).sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
+      }
+      return json(context, 200, out);
     }
 
     if (method === 'POST') {
@@ -163,6 +180,50 @@ module.exports = async function (context, req) {
         });
         if (!p) return json(context, 404, { error: 'Project not found.' });
         return json(context, 200, { ok: true, active });
+      }
+
+      // ---- deactivate / reactivate (admin) — a finished job moves to the Deactivated
+      //      bucket in Job Books and out of the pickers. Nothing else about it changes:
+      //      files, links, board, schedule and its Active Jobs flag all stay as they are.
+      if (mode === 'setArchived') {
+        if (!isAdmin(me)) return json(context, 403, { error: 'Admin only.' });
+        const code = String((body && body.code) || '').trim();
+        if (!code) return json(context, 400, { error: 'code required.' });
+        const archived = !!(body && body.archived);
+        const p = await updateProject(records, code, (x) => {
+          if (archived) { x.archived = true; x.archivedBy = me.email; x.archivedAt = new Date().toISOString(); }
+          else { delete x.archived; delete x.archivedBy; delete x.archivedAt; }
+        });
+        if (!p) return json(context, 404, { error: 'Project not found.' });
+        return json(context, 200, { ok: true, archived, archivedAt: p.archivedAt || '', archivedBy: p.archivedBy || '' });
+      }
+
+      // ---- bring a deleted project back (admin) ----
+      if (mode === 'restore') {
+        if (!isAdmin(me)) return json(context, 403, { error: 'Admin only.' });
+        const code = String((body && body.code) || '').trim();
+        if (!code) return json(context, 400, { error: 'code required.' });
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const doc = await readDoc(records);
+          if (!doc) return json(context, 404, { error: 'No projects.' });
+          const bin = Array.isArray(doc.deleted) ? doc.deleted : [];
+          const p = bin.find((x) => x && same(x.code, code));
+          if (!p) return json(context, 404, { error: 'That project is not in the deleted list.' });
+          doc.data = doc.data || [];
+          if (doc.data.some((x) => x && same(x.code, code))) return json(context, 409, { error: 'A project with that job number is already on the list.' });
+          doc.deleted = bin.filter((x) => x !== p);
+          delete p.deletedAt; delete p.deletedBy;
+          p.restoredAt = new Date().toISOString(); p.restoredBy = me.email;
+          doc.data.push(p);
+          try {
+            await records.item(DOC_ID, DOC_PK).replace(doc, { accessCondition: { type: 'IfMatch', condition: doc._etag } });
+            return json(context, 200, { ok: true, project: { code: p.code, name: p.name } });
+          } catch (e) {
+            if (e.code === 412) continue; // raced another writer — retry
+            throw e;
+          }
+        }
+        return json(context, 500, { error: 'Busy — try again.' });
       }
 
       // ---- on-site schedule: machines + personnel with date ranges ----
@@ -279,6 +340,11 @@ module.exports = async function (context, req) {
         if ((doc.data || []).some((p) => p && p.code.toLowerCase() === code.toLowerCase())) {
           return json(context, 409, { error: 'A project with that code already exists.' });
         }
+        // A deleted project keeps its job number (its files are still stored under it),
+        // so a new one cannot quietly take it over.
+        if ((Array.isArray(doc.deleted) ? doc.deleted : []).some((p) => p && same(p.code, code))) {
+          return json(context, 409, { error: 'A deleted project already has that job number. An admin can restore it from Deleted projects at the bottom of Job Books.' });
+        }
         doc.data = doc.data || [];
         doc.data.push({ code, name, createdAt: new Date().toISOString(), createdBy: me.email });
         try {
@@ -299,7 +365,14 @@ module.exports = async function (context, req) {
       for (let attempt = 0; attempt < 5; attempt++) {
         const doc = await readDoc(records);
         if (!doc) return json(context, 404, { error: 'No projects.' });
-        doc.data = (doc.data || []).filter((p) => !(p && p.code === code));
+        // Soft delete: the record (state, fuel rate, links, schedule…) moves to
+        // `deleted` instead of being dropped, and no file is touched.
+        const gone = (doc.data || []).find((p) => p && same(p.code, code));
+        if (!gone) return json(context, 404, { error: 'Project not found.' });
+        doc.data = doc.data.filter((p) => p !== gone);
+        gone.deletedAt = new Date().toISOString(); gone.deletedBy = me.email;
+        doc.deleted = (Array.isArray(doc.deleted) ? doc.deleted : []).filter((p) => p && !same(p.code, code));
+        doc.deleted.push(gone);
         try {
           await records.item(DOC_ID, DOC_PK).replace(doc, { accessCondition: { type: 'IfMatch', condition: doc._etag } });
           return json(context, 200, { ok: true });

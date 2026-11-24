@@ -748,6 +748,9 @@
   function enableAdmin() {
     window.EBCC_IS_ADMIN = true; // page features (e.g. Job Books delete) key off this
     document.querySelectorAll('.admin-only').forEach(function (el) { el.style.display = ''; });
+    // The project list may have been drawn before we knew this was an admin: redraw it
+    // so the admin-only Deleted projects bucket shows.
+    try { if ((window.EBCC_PROJECTS || []).length && typeof window.jbRenderList === 'function') window.jbRenderList(); } catch (e) {}
     var tabBtn = document.querySelector('.tab[data-tab="admin"]');
     if (tabBtn) tabBtn.addEventListener('click', loadAdmin);
   }
