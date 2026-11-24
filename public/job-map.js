@@ -353,7 +353,9 @@
     '.ajm-fine{font-size:11px;color:var(--gray);margin-top:8px;line-height:1.4}',
     '.ajm-bor{display:flex;align-items:center;gap:4px;white-space:nowrap;transform:translate(-9px,-9px);cursor:pointer}',
     '.ajm-bor i{width:18px;height:18px;border-radius:50%;background:#b45309;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.6);flex:none;display:block;box-sizing:border-box}',
-    '.ajm-bor span{font-size:11.5px;font-weight:750;color:#fff;background:rgba(20,24,30,.82);border-radius:6px;padding:1px 5px;line-height:1.35}',
+    '.ajm-bor span{display:none;pointer-events:none;font-size:11.5px;font-weight:750;color:#fff;background:rgba(20,24,30,.82);border-radius:6px;padding:1px 5px;line-height:1.35}',
+    '.ajm-bor:hover span,.ajm-bor.is-sel span{display:block}',
+    '.ajm-bor:hover i{transform:scale(1.2)}',
     '.ajm-bor.is-pit i{border-radius:4px}',
     '.ajm-bor.is-manual i{background:#0e7490}',
     '.ajm-bor.is-auto i{background:#7c3aed}',
@@ -933,7 +935,7 @@
     if (!M.showBorings) return;
     boringsPlaced().forEach(function (b) {
       var cls = 'ajm-bor' + (b.kind === 'test pit' ? ' is-pit' : '') + (b.placed === 'manual' ? ' is-manual' : b.placed === 'auto' ? ' is-auto' : '') + (M.selBoring === b.id ? ' is-sel' : '');
-      var mk = L.marker([b.lat, b.lon], { icon: L.divIcon({ className: '', html: '<div class="' + cls + '"><i></i><span>' + esc(b.id) + '</span></div>', iconSize: [0, 0] }), keyboard: false, zIndexOffset: M.selBoring === b.id ? 1000 : 0 });
+      var mk = L.marker([b.lat, b.lon], { icon: L.divIcon({ className: '', html: '<div class="' + cls + '"><i></i><span>' + esc(b.id) + '</span></div>', iconSize: [0, 0] }), keyboard: false, riseOnHover: true, riseOffset: 2000, zIndexOffset: M.selBoring === b.id ? 1000 : 0 });
       mk.on('click', function (ev) { if (ev.originalEvent) ev.originalEvent.stopPropagation(); if (M.align) { alignTap(ev.latlng); return; } if (!M.placing) selectBoring(b.id, false); });
       M.boringGroup.addLayer(mk);
     });
