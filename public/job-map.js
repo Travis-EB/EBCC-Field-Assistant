@@ -1227,6 +1227,31 @@
     cv.getContext('2d').drawImage(im, x0, y0, size, size, 0, 0, out, out);
     return { data: cv.toDataURL('image/jpeg', 0.9).split(',')[1], w: out, h: out, ox: x0, oy: y0, k: size / out };
   }
+  // Run fn over items, n at a time; resolves when all are done (fn handles its own errors).
+  function inLanes(items, n, fn) {
+    var at = 0;
+    var lane = function () { return at < items.length ? Promise.resolve(fn(items[at++])).then(lane) : Promise.resolve(); };
+    var all = []; for (var i = 0; i < n; i++) all.push(lane());
+    return Promise.all(all);
+  }
+  // The pictures the AI is shown to find borings roughly: the whole plan shrunk
+  // for a handful of borings, or a grid of overlapping full-size parts for many.
+  // -> [{ data, w, h, x0, y0, sc, part }]  (x0,y0 = where the picture starts on the plan, sc = its shrink factor)
+  function planViews(im, count) {
+    var W = im.naturalWidth, H = im.naturalHeight, out = [];
+    var shot = function (x0, y0, w, h, sc, part) {
+      var cv = document.createElement('canvas'); cv.width = Math.round(w * sc); cv.height = Math.round(h * sc);
+      var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(im, x0, y0, w, h, 0, 0, cv.width, cv.height);
+      out.push({ data: cv.toDataURL('image/jpeg', 0.85).split(',')[1], w: cv.width, h: cv.height, x0: x0, y0: y0, sc: sc, part: part });
+    };
+    var g = count <= 40 ? 1 : count <= 100 ? 2 : 3;
+    if (g === 1) { shot(0, 0, W, H, Math.min(1, 1400 / Math.max(W, H)), false); return out; }
+    var tw = Math.min(W, Math.ceil(W / g * 1.18)), th = Math.min(H, Math.ceil(H / g * 1.18));   // 18% wider than a plain grid cell, so neighbours overlap
+    var sc = Math.min(1, 1600 / Math.max(tw, th));
+    for (var r = 0; r < g; r++) for (var c = 0; c < g; c++) shot(Math.round(c * (W - tw) / (g - 1)), Math.round(r * (H - th) / (g - 1)), tw, th, sc, true);
+    return out;
+  }
   // Find the borings on the pinned plan and place the ones it is sure of.
   // -> { placed: [ids], left: [ids], error }
   function autoPlace(plan, ids, progress) {
@@ -1238,17 +1263,31 @@
       // 1. where each number is written, from the PDF's own text
       var cands = {};
       (plan.labels || []).forEach(function (l) { if (ids.indexOf(l.id) >= 0) (cands[l.id] = cands[l.id] || []).push({ x: l.x, y: l.y }); });
-      // 2. anything not lettered as text (a scanned drawing): ask for a rough spot on the whole plan
+      // 2. anything not lettered as text (a scanned drawing): ask for a rough spot.
+      //    A few borings: one look at the whole plan. Many: the plan goes in
+      //    overlapping parts at full size (numbers stay readable, and no answer
+      //    has to list more borings than fit in one reply), every boring asked
+      //    about in every part — none is ever left out of the search.
       var missing = ids.filter(function (id) { return !cands[id]; });
       var coarse = Promise.resolve();
       if (missing.length) {
-        var sc = Math.min(1, 1400 / Math.max(im.naturalWidth, im.naturalHeight));
-        var cv = document.createElement('canvas'); cv.width = Math.round(im.naturalWidth * sc); cv.height = Math.round(im.naturalHeight * sc);
-        cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
-        if (progress) progress('Looking over the whole plan…');
-        coarse = call({ stage: 'coarse', ids: missing, image: { data: cv.toDataURL('image/jpeg', 0.85).split(',')[1], w: cv.width, h: cv.height } }).then(function (res) {
-          res.forEach(function (r) { var id = normId(r.id); if (r.found && missing.indexOf(id) >= 0 && !cands[id]) cands[id] = [{ x: r.x / sc, y: r.y / sc }]; });
-        }).catch(function (e) { error = e.message; });
+        var views = planViews(im, missing.length), jobs = [], seen = 0;
+        views.forEach(function (v) { for (var i = 0; i < missing.length; i += v.part ? 250 : 40) jobs.push({ v: v, ids: missing.slice(i, i + (v.part ? 250 : 40)) }); });
+        var found = {};
+        var say = function () { if (progress) progress(jobs.length === 1 ? 'Looking over the whole plan…' : 'Looking over the plan… part ' + Math.min(seen + 1, jobs.length) + ' of ' + jobs.length); };
+        say();
+        coarse = inLanes(jobs, 2, function (job) {
+          var v = job.v;
+          return call({ stage: 'coarse', part: v.part, ids: job.ids, image: { data: v.data, w: v.w, h: v.h } }).then(function (res) {
+            res.forEach(function (r) {
+              var id = normId(r.id);
+              if (!r.found || job.ids.indexOf(id) < 0 || !(r.x >= 0 && r.y >= 0 && r.x <= v.w && r.y <= v.h)) return;
+              var x = v.x0 + r.x / v.sc, y = v.y0 + r.y / v.sc, list = found[id] = found[id] || [];
+              // two overlapping parts both see the same symbol: one close-up is enough
+              if (!list.some(function (c) { return Math.hypot(c.x - x, c.y - y) < 130; }) && list.length < 3) list.push({ x: x, y: y });
+            });
+          }).catch(function (e) { error = e.message; }).then(function () { seen++; say(); });
+        }).then(function () { Object.keys(found).forEach(function (id) { cands[id] = found[id]; }); });
       }
       return coarse.then(function () {
         // 3. a close-up of every candidate: the centre of the symbol itself
@@ -1261,9 +1300,8 @@
             res.forEach(function (r) { var t = grp[r.n - 1]; if (t && !t.hit) t.hit = r; });
           }).catch(function (e) { error = e.message; }).then(function () { done += grp.length; if (progress) progress('Finding the borings on the plan… ' + Math.min(done, tasks.length) + ' of ' + tasks.length); });
         };
-        var lanes = [0, 1].map(function (lane) { return (function next(i) { return i < groups.length ? runGroup(groups[i]).then(function () { return next(i + 2); }) : Promise.resolve(); })(lane); });
         if (progress && tasks.length) progress('Finding the borings on the plan… 0 of ' + tasks.length);
-        return Promise.all(lanes).then(function () { return tasks; });
+        return inLanes(groups, 3, runGroup).then(function () { return tasks; });
       });
     }).then(function (tasks) {
       if (M.code !== code) return { placed: [], left: [], error: '' };
@@ -1281,10 +1319,16 @@
         items.push({ id: id, lat: ll.lat, lon: ll.lng });
       });
       if (!items.length) return { placed: [], left: ids, error: error };
-      return post({ mode: 'placeBorings', auto: true, items: items }).then(function (j) {
-        if (!j || !j.ok) return { placed: [], left: ids, error: (j && j.error) || 'could not save' };
-        M.state = j.map;
-        var placed = items.map(function (i) { return i.id; });
+      // saved 150 at a time (the server takes 200 a call), so a big job is never cut short
+      var placed = [], batches = [];
+      for (var bi = 0; bi < items.length; bi += 150) batches.push(items.slice(bi, bi + 150));
+      return inLanes(batches, 1, function (batch) {
+        return post({ mode: 'placeBorings', auto: true, items: batch }).then(function (j) {
+          if (!j || !j.ok) { error = (j && j.error) || 'could not save'; return; }
+          M.state = j.map;
+          batch.forEach(function (i) { placed.push(i.id); });
+        });
+      }).then(function () {
         return { placed: placed, left: ids.filter(function (id) { return placed.indexOf(id) < 0; }), error: error };
       });
     }).catch(function (e) { return { placed: [], left: ids, error: (e && e.message) || 'something went wrong' }; });

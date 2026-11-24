@@ -6,7 +6,9 @@
 //
 //   coarse  one picture of the whole plan + the boring numbers
 //           -> roughly where each one is (only used for numbers the PDF's own
-//              text layer did not already locate)
+//              text layer did not already locate). A plan with many borings
+//              comes as several overlapping parts instead (part = true): each
+//              answer then lists only the borings drawn in that part.
 //   refine  up to 8 close-ups, one boring each
 //           -> the centre of that boring's SYMBOL in the close-up
 //
@@ -42,7 +44,13 @@ const JSON_ONLY = '\n\nReply with ONE JSON object and nothing else (no prose, no
 
 const img = (data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } });
 
-function coarseContent(image, ids) {
+function coarseContent(image, ids, part) {
+  // A plan with a great many borings is sent in overlapping parts at full size, so the numbers stay readable.
+  if (part) return [
+    img(image.data),
+    { type: 'text', text: 'This is ONE PART of a larger plan, ' + image.w + ' x ' + image.h + ' pixels. The plan shows these explorations, but most of them are in other parts: ' + ids.join(', ') + '.\n' +
+      'Give a result (n = 0, found = true) ONLY for each exploration whose symbol you can see in this picture, with its approximate symbol position in this picture. Leave every other exploration out of the results entirely — do not list the ones that are not in this picture. Each will be checked again on a close-up, so approximate is fine. Read the numbers carefully: B-18 is not B-118 or B-81.' },
+  ];
   return [
     img(image.data),
     { type: 'text', text: 'This is the whole plan, ' + image.w + ' x ' + image.h + ' pixels. Find these explorations: ' + ids.join(', ') + '.\n' +
@@ -101,7 +109,7 @@ async function locate(content, deadline) {
     const data = readText(message);
     if (!data || !Array.isArray(data.results)) throw new Error(message.stop_reason === 'max_tokens' ? 'the answer was cut off' : 'the answer could not be read');
     return {
-      results: data.results.slice(0, 120).map((x) => ({
+      results: data.results.slice(0, 260).map((x) => ({
         n: Math.round(Number(x && x.n)) || 0, id: String((x && x.id) || '').slice(0, 40), found: !!(x && x.found),
         x: Number(x && x.x), y: Number(x && x.y), confidence: ['high', 'medium', 'low'].includes(x && x.confidence) ? x.confidence : 'low',
       })).filter((x) => !x.found || (isFinite(x.x) && isFinite(x.y))),

@@ -61,7 +61,11 @@ function plansOf(doc) {
 // What the browser gets: no file ids or batch ids, borings with their final spot.
 function publicMap(doc) {
   const g = doc.geotech;
-  const out = { code: doc.code, defaultFile: doc.defaultFile || null, geotech: null, plans: plansOf(doc), updatedAt: doc.updatedAt || '' };
+  const plans = plansOf(doc);
+  // `plan` (the page saved last) is for a browser still running the screen from before plans became a list:
+  // without it that screen believes nothing is pinned and skips the automatic placement altogether.
+  const latest = plans.slice().sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0] || null;
+  const out = { code: doc.code, defaultFile: doc.defaultFile || null, geotech: null, plans, plan: latest, updatedAt: doc.updatedAt || '' };
   if (!g) return out;
   const chunks = Array.isArray(g.chunks) ? g.chunks : [];
   const placements = doc.placements || {};
@@ -380,9 +384,14 @@ module.exports = async function (context, req) {
       const clean = (i) => ({ data: i.data.replace(/^data:image\/jpeg;base64,/, ''), w: Math.round(i.w), h: Math.round(i.h) });
       let content;
       if (body.stage === 'coarse') {
-        const ids = (Array.isArray(body.ids) ? body.ids : []).map((x) => String(x).slice(0, 40)).filter(Boolean).slice(0, 80);
+        // A whole-plan look answers for every number asked, so it is kept short; a look at one PART of a big
+        // plan only answers for the ones drawn in that part, so it can be asked about all of them.
+        const part = !!body.part;
+        const all = (Array.isArray(body.ids) ? body.ids : []).map((x) => String(x).slice(0, 40)).filter(Boolean);
+        const ids = all.slice(0, part ? 260 : 80);
         if (!okImg(body.image) || !ids.length) return json(context, 400, { error: 'Bad request.' });
-        content = planLocate.coarseContent(clean(body.image), ids);
+        if (ids.length < all.length) return json(context, 400, { error: 'Too many borings in one request (' + all.length + ').' });   // never drop some silently
+        content = planLocate.coarseContent(clean(body.image), ids, part);
       } else if (body.stage === 'refine') {
         const crops = (Array.isArray(body.crops) ? body.crops : []).slice(0, 8);
         if (!crops.length || !crops.every((c) => okImg(c) && c.id)) return json(context, 400, { error: 'Bad request.' });
