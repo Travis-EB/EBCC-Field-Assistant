@@ -315,7 +315,8 @@
     // tool buttons with the layers panel stacked under them, however the buttons wrap
     '.ajm-top{position:absolute;top:10px;left:10px;right:10px;bottom:10px;z-index:20;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none}',
     '.ajm-top>*{pointer-events:auto}',
-    '.ajm-tools{display:flex;gap:6px;flex-wrap:wrap;flex:none}',
+    '.ajm-top>.ajm-tools{display:flex;gap:6px;flex-wrap:wrap;flex:none;pointer-events:none}',
+    '.ajm-tools>*{pointer-events:auto}',
     '.ajm-tool{font:inherit;font-size:12.5px;font-weight:650;padding:7px 11px;border-radius:99px;border:1px solid rgba(0,0,0,.14);background:#fff;color:#23272e;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.18)}',
     '.ajm-tool.on{background:#23272e;color:#fff;border-color:#23272e}',
     '#ajm-layers{flex:0 1 auto;min-height:0;width:min(310px,100%);overflow:auto;background:var(--card);color:var(--dark);border:1px solid var(--border);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:10px 12px;font-size:13px;display:none}',
@@ -354,8 +355,10 @@
     '.ajm-bor{display:flex;align-items:center;gap:4px;white-space:nowrap;transform:translate(-9px,-9px);cursor:pointer}',
     '.ajm-bor i{width:18px;height:18px;border-radius:50%;background:#b45309;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.6);flex:none;display:block;box-sizing:border-box}',
     '.ajm-bor span{display:none;pointer-events:none;font-size:11.5px;font-weight:750;color:#fff;background:rgba(20,24,30,.82);border-radius:6px;padding:1px 5px;line-height:1.35}',
-    '.ajm-bor:hover span,.ajm-bor.is-sel span{display:block}',
-    '.ajm-bor:hover i{transform:scale(1.2)}',
+    '.ajm-bor.is-sel span{display:block}',
+    '@media (hover:hover) and (pointer:fine){.ajm-bor:hover span{display:block}.ajm-bor:hover i{transform:scale(1.2)}}',
+    // a fingertip-sized target around the dot on touch screens
+    '@media (pointer:coarse){.ajm-bor::before{content:"";position:absolute;left:-11px;top:-11px;width:40px;height:40px;border-radius:50%}}',
     '.ajm-bor.is-pit i{border-radius:4px}',
     '.ajm-bor.is-manual i{background:#0e7490}',
     '.ajm-bor.is-auto i{background:#7c3aed}',
@@ -477,6 +480,14 @@
     var L = window.L;
     M.map = L.map('ajm-map', { zoomControl: false, preferCanvas: true, maxZoom: 21, zoomSnap: 0.5, attributionControl: true });
     L.control.zoom({ position: 'bottomright' }).addTo(M.map);
+    // Leaflet drops a tap as soon as the pointer has moved 3 px ("that was a drag").
+    // A fingertip nearly always moves that much, so on a phone most taps on a
+    // boring, a line or the map itself were thrown away. Fingers get 14 px.
+    var slack = function (px) { var d = M.map.dragging && M.map.dragging._draggable; if (d && d.options) d.options.clickTolerance = px; };
+    var mapEl = M.map.getContainer();
+    mapEl.addEventListener('pointerdown', function (e) { slack(e.pointerType === 'mouse' ? 4 : 14); }, true);
+    mapEl.addEventListener('touchstart', function () { slack(14); }, { capture: true, passive: true });
+    slack(fingers() ? 14 : 4);
     M.map.attributionControl.setPrefix(false);
     M.baseLayers.sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 21, maxNativeZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' });
     M.baseLayers.street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 21, maxNativeZoom: 19, attribution: '© OpenStreetMap contributors' });
@@ -490,7 +501,11 @@
     M.meGroup = L.layerGroup().addTo(M.map);
     M.map.setView([32.9, -97.0], 10);
     M.alignMarks = L.layerGroup().addTo(M.map);
-    M.map.on('click', function (e) { if (M.align) alignTap(e.latlng); else if (M.placing) placeAt(e.latlng); });
+    M.map.on('click', function (e) {
+      if (M.align) alignTap(e.latlng);
+      else if (M.placing) placeAt(e.latlng);
+      else { var nb = boringNear(e.latlng); if (nb) selectBoring(nb.id, false); }
+    });
     M.map.on('locationfound', onLocated);
     M.map.on('locationerror', function (e) { stopLocate(); msg('ajm-msg', 'Could not get your location' + (e && e.message ? ' — ' + esc(e.message) : '') + '.', 'warn'); });
   }
@@ -531,6 +546,8 @@
     obj.on('click', function (e) {
       if (M.align || M.placing) return;   // left alone, Leaflet hands the tap on to the map
       window.L.DomEvent.stop(e);
+      var nb = boringNear(e.latlng);
+      if (nb) { selectBoring(nb.id, false); return; }   // the finger was on a boring, not on this line or area
       window.L.popup({ maxWidth: maxWidth }).setLatLng(e.latlng).setContent(html).openOn(M.map);
     });
   }
@@ -933,13 +950,36 @@
     var L = window.L;
     M.boringGroup.clearLayers();
     if (!M.showBorings) return;
+    var touch = fingers();
     boringsPlaced().forEach(function (b) {
       var cls = 'ajm-bor' + (b.kind === 'test pit' ? ' is-pit' : '') + (b.placed === 'manual' ? ' is-manual' : b.placed === 'auto' ? ' is-auto' : '') + (M.selBoring === b.id ? ' is-sel' : '');
-      var mk = L.marker([b.lat, b.lon], { icon: L.divIcon({ className: '', html: '<div class="' + cls + '"><i></i><span>' + esc(b.id) + '</span></div>', iconSize: [0, 0] }), keyboard: false, riseOnHover: true, riseOffset: 2000, zIndexOffset: M.selBoring === b.id ? 1000 : 0 });
-      mk.on('click', function (ev) { if (ev.originalEvent) ev.originalEvent.stopPropagation(); if (M.align) { alignTap(ev.latlng); return; } if (!M.placing) selectBoring(b.id, false); });
+      var mk = L.marker([b.lat, b.lon], { icon: L.divIcon({ className: '', html: '<div class="' + cls + '"><i></i><span>' + esc(b.id) + '</span></div>', iconSize: [0, 0] }), keyboard: false, riseOnHover: !touch, riseOffset: 2000, zIndexOffset: M.selBoring === b.id ? 1000 : 0 });
+      mk.on('click', function (ev) {
+        if (ev.originalEvent) ev.originalEvent.stopPropagation();
+        var at = tapPoint(ev);
+        if (M.align) { alignTap(at); return; }
+        if (M.placing) return;
+        var near = boringNear(at);   // two targets overlapping: the one closer to the finger wins
+        selectBoring((near || b).id, false);
+      });
       M.boringGroup.addLayer(mk);
     });
   }
+  function fingers() { try { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) { return false; } }
+  // The boring nearest a tap, if one is within reach of it (a fingertip on a touch
+  // screen, a few pixels with a mouse). A dot is small and a site can have 180 of
+  // them, so "which element was hit" is not good enough on a phone.
+  function boringNear(latlng) {
+    if (!M.map || !M.showBorings || !latlng) return null;
+    var p0 = M.map.latLngToContainerPoint(latlng), best = null, bestD = fingers() ? 30 : 13;
+    boringsPlaced().forEach(function (b) {
+      var p = M.map.latLngToContainerPoint([b.lat, b.lon]), d = Math.hypot(p.x - p0.x, p.y - p0.y);
+      if (d < bestD) { bestD = d; best = b; }
+    });
+    return best;
+  }
+  // Where the finger actually came down (a marker's own click event reports the marker's position instead).
+  function tapPoint(ev) { try { return ev.originalEvent && ev.originalEvent.clientX != null ? M.map.mouseEventToLatLng(ev.originalEvent) : ev.latlng; } catch (e) { return ev.latlng; } }
   function boring(id) { var g = M.state && M.state.geotech; return g && g.borings ? g.borings.find(function (b) { return b.id === id; }) : null; }
   function selectBoring(id, pan) {
     var b = boring(id); if (!b) return;
